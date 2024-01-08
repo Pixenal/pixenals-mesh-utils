@@ -7,8 +7,6 @@ typedef struct {
 	int32_t byteIndex;
 } UvgpByteString;
 
-typedef struct UvgpFileLoaded *PUvgpFileLoaded;
-
 typedef struct {
 	float x;
 	float y;
