@@ -29,7 +29,7 @@ typedef struct {
 
 typedef struct {
 	int32_t loopAmount;
-	Loop loops[4];
+	Loop loops[16];
 } Face;
 
 Vec2 vec2Multiply(Vec2 a, Vec2 b);
@@ -41,6 +41,7 @@ Vec2 vec2Add(Vec2 a, Vec2 b);
 void vec2AddEqual(Vec2 *a, Vec2 b);
 void vec2MultiplyEqualScalar(Vec2 *a, float b);
 Vec2 vec2MultiplyScalar(Vec2 a, float b);
+float vec2Dot(Vec2 a, Vec2 b);
 
 #define V2MUL ,Multiply,
 #define V2MULEQL ,MultiplyEqual,
@@ -51,5 +52,6 @@ Vec2 vec2MultiplyScalar(Vec2 a, float b);
 #define V2ADDEQL ,AddEqual,
 #define V2MULSEQL ,MultiplyEqualScalar,
 #define V2MULS ,MultiplyScalar,
+#define V2DOT ,Dot,
 #define INFIX(a,o,b) vec2##o((a),(b))
 #define _(a) INFIX(a)

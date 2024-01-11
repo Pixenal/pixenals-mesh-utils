@@ -48,3 +48,7 @@ Vec2 vec2MultiplyScalar(Vec2 a, float b) {
 	Vec2 c = {.x = a.x * b, .y = a.y * b};
 	return c;
 }
+
+float vec2Dot(Vec2 a, Vec2 b) {
+	return a.x * b.x + a.y * b.y;
+}
