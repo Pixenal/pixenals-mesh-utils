@@ -18,6 +18,11 @@ typedef struct {
 	float z;
 } Vec3;
 
+typedef struct {
+	int32_t x;
+	int32_t y;
+} iVec2;
+
 Vec2 vec2Multiply(Vec2 a, Vec2 b);
 void vec2MultiplyEqual(Vec2 *a, Vec2 b);
 Vec2 vec2DivideScalar(Vec2 a, float b);
@@ -31,8 +36,11 @@ void vec2MultiplyEqualScalar(Vec2 *a, float b);
 Vec2 vec2MultiplyScalar(Vec2 a, float b);
 float vec2Dot(Vec2 a, Vec2 b);
 Vec2 vec2Cross(Vec2 a);
+Vec2 vec2ModScalar(Vec2 a, float b);
+void vec2ModEqualScalar(Vec2 *a, float b);
 int32_t vec2GreaterThan(Vec2 a, Vec2 b);
 int32_t vec2LessThan(Vec2 a, Vec2 b);
+int32_t vec2LessThanEqualTo(Vec2 a, Vec2 b);
 Vec3 cartesianToBarycentric(Vec3 *triVert0, Vec3 *triVert1, Vec3 *triVert2,
                             Vec3 *point);
 Vec3 barycentricToCartesian(Vec3 *triVert0, Vec3 *triVert1, Vec3 *triVert2,
@@ -50,7 +58,10 @@ Vec3 barycentricToCartesian(Vec3 *triVert0, Vec3 *triVert1, Vec3 *triVert2,
 #define V2MULSEQL ,MultiplyEqualScalar,
 #define V2MULS ,MultiplyScalar,
 #define V2DOT ,Dot,
+#define V2MODS ,ModScalar,
+#define V2MODEQLS ,ModEqualScalar,
 #define V2GREAT ,GreaterThan,
 #define V2LESS ,LessThan,
+#define V2LESSEQL ,LessThanEqualTo,
 #define INFIX(a,o,b) vec2##o((a),(b))
 #define _(a) INFIX(a)

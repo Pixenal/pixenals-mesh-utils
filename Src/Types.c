@@ -1,4 +1,5 @@
 #include "Types.h"
+#include "math.h"
 
 Vec2 vec2Multiply(Vec2 a, Vec2 b) {
 	Vec2 c;
@@ -67,11 +68,27 @@ Vec2 vec2Cross(Vec2 a) {
 	Vec2 b = {a.y, -a.x};
 	return b;
 }
+
+Vec2 vec2ModScalar(Vec2 a, float b) {
+	Vec2 c = {fmod(a.x, b), fmod(a.y, b)};
+	return c;
+}
+
+void vec2ModEqualScalar(Vec2 *a, float b) {
+	a->x = fmod(a->x, b);
+	a->y = fmod(a->y, b);
+}
+
 int32_t vec2GreaterThan(Vec2 a, Vec2 b) {
 	return (a.x > b.x) && (a.y > b.y);
 }
+
 int32_t vec2LessThan(Vec2 a, Vec2 b) {
 	return (a.x < b.x) && (a.y < b.y);
+}
+
+int32_t vec2LessThanEqualTo(Vec2 a, Vec2 b) {
+	return (a.x <= b.x) && (a.y <= b.y);
 }
 
 Vec3 barycentricToCartesian(Vec3 *triVert0, Vec3 *triVert1, Vec3 *triVert2,
