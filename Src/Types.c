@@ -30,6 +30,11 @@ Vec2 vec2Subtract(Vec2 a, Vec2 b) {
 	return c;
 }
 
+void vec2SubtractEqual(Vec2 *a, Vec2 b) {
+	a->x -= b.x;
+	a->y -= b.y;
+}
+
 Vec2 vec2SubtractScalar(Vec2 a, float b) {
 	Vec2 c = {a.x - b, a.y - b};
 	return c;

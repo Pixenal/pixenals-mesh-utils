@@ -28,6 +28,7 @@ void vec2MultiplyEqual(Vec2 *a, Vec2 b);
 Vec2 vec2DivideScalar(Vec2 a, float b);
 void vec2DivideEqualScalar(Vec2 *a, float b);
 Vec2 vec2Subtract(Vec2 a, Vec2 b);
+void vec2SubtractEqual(Vec2 *a, Vec2 b);
 Vec2 vec2SubtractScalar(Vec2 a, float b);
 Vec2 vec2Add(Vec2 a, Vec2 b);
 Vec2 vec2AddScalar(Vec2 a, float b);
@@ -51,6 +52,7 @@ Vec3 barycentricToCartesian(Vec3 *triVert0, Vec3 *triVert1, Vec3 *triVert2,
 #define V2DIVS ,DivideScalar,
 #define V2DIVSEQL ,DivideEqualScalar,
 #define V2SUB ,Subtract,
+#define V2SUBEQL ,SubtractEqual,
 #define V2SUBS ,SubtractScalar,
 #define V2ADD ,Add,
 #define V2ADDS ,AddScalar,
