@@ -23,6 +23,46 @@ typedef struct {
 	int32_t y;
 } iVec2;
 
+typedef struct {
+	int32_t vertAmount;
+	Vec3 *vertBuffer;
+	int32_t loopAmount;
+	int32_t *loopBuffer;
+	int32_t faceAmount;
+	int32_t *faceBuffer;
+	Vec2 *uvBuffer;
+} BlenderMeshData;
+
+typedef struct Cell {
+	uint32_t localIndex;
+	uint32_t initialized;
+	struct Cell *children;
+	int32_t faceAmount;
+	int32_t *faces;
+	int32_t cellIndex;
+	Vec2 boundsMin;
+	Vec2 boundsMax;
+} Cell;
+
+typedef struct {
+	Cell **cells;
+	int32_t cellAmount;
+	int32_t faceAmount;
+} FaceCellsInfo;
+
+//TODO: reduce faces to 4 in order to lower this from 12
+typedef struct {
+	int8_t used;
+	int8_t loopAmount;
+	int32_t loops[24];
+} VertAdj;
+
+typedef struct {
+	int32_t *jobsCompleted;
+	BlenderMeshData localMesh;
+	BlenderMeshData mesh;
+} ThreadArg;
+
 Vec2 vec2Multiply(Vec2 a, Vec2 b);
 void vec2MultiplyEqual(Vec2 *a, Vec2 b);
 Vec2 vec2DivideScalar(Vec2 a, float b);
