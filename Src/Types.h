@@ -58,6 +58,7 @@ typedef struct {
 } VertAdj;
 
 typedef struct {
+	int32_t id;
 	int32_t *jobsCompleted;
 	BlenderMeshData localMesh;
 	BlenderMeshData mesh;
