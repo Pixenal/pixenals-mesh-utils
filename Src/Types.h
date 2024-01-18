@@ -51,15 +51,17 @@ typedef struct {
 } FaceCellsInfo;
 
 //TODO: reduce faces to 4 in order to lower this from 12
-typedef struct {
-	int8_t used;
-	int8_t loopAmount;
+typedef struct VertAdj{
+	struct VertAdj *next;
+	int32_t vert;
+	int32_t loopAmount;
 	int32_t loops[24];
 } VertAdj;
 
 typedef struct {
 	int32_t id;
 	int32_t *jobsCompleted;
+	int32_t averageVertAdjDepth;
 	BlenderMeshData localMesh;
 	BlenderMeshData mesh;
 } ThreadArg;
