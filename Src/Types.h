@@ -23,6 +23,12 @@ typedef struct {
 	int32_t y;
 } iVec2;
 
+typedef struct BoundaryVert{
+	struct BoundaryVert *next;
+	int32_t vert;
+	int32_t loopAmount;
+} BoundaryVert;
+
 typedef struct {
 	int32_t vertAmount;
 	Vec3 *vertBuffer;
@@ -54,17 +60,26 @@ typedef struct {
 typedef struct VertAdj{
 	struct VertAdj *next;
 	int32_t vert;
+	int32_t uvgpVert;
 	int32_t loopAmount;
-	int32_t loops[24];
 } VertAdj;
 
 typedef struct {
 	int32_t id;
 	int32_t *jobsCompleted;
 	int32_t averageVertAdjDepth;
+	int32_t *boundaryFaceStart;
+	BoundaryVert *boundaryBuffer;
 	BlenderMeshData localMesh;
+	int32_t *boundaryVerts;
+	int32_t boundaryVertAmount;
 	BlenderMeshData mesh;
 } ThreadArg;
+
+Vec3 vec3SubtractScalar(Vec3 a, float b);
+Vec3 vec3AddScalar(Vec3 a, float b);
+int32_t vec3GreaterThan(Vec3 a, Vec3 b);
+int32_t vec3LessThan(Vec3 a, Vec3 b);
 
 Vec2 vec2Multiply(Vec2 a, Vec2 b);
 void vec2MultiplyEqual(Vec2 *a, Vec2 b);
@@ -90,23 +105,29 @@ Vec3 cartesianToBarycentric(Vec3 *triVert0, Vec3 *triVert1, Vec3 *triVert2,
 Vec3 barycentricToCartesian(Vec3 *triVert0, Vec3 *triVert1, Vec3 *triVert2,
                             Vec3 *point);
 
-#define V2MUL ,Multiply,
-#define V2MULEQL ,MultiplyEqual,
-#define V2DIVS ,DivideScalar,
-#define V2DIVSEQL ,DivideEqualScalar,
-#define V2SUB ,Subtract,
-#define V2SUBEQL ,SubtractEqual,
-#define V2SUBS ,SubtractScalar,
-#define V2ADD ,Add,
-#define V2ADDS ,AddScalar,
-#define V2ADDEQL ,AddEqual,
-#define V2MULSEQL ,MultiplyEqualScalar,
-#define V2MULS ,MultiplyScalar,
-#define V2DOT ,Dot,
-#define V2MODS ,ModScalar,
-#define V2MODEQLS ,ModEqualScalar,
-#define V2GREAT ,GreaterThan,
-#define V2LESS ,LessThan,
-#define V2LESSEQL ,LessThanEqualTo,
-#define INFIX(a,o,b) vec2##o((a),(b))
+
+#define V3SUBS ,3SubtractScalar,
+#define V3ADDS ,3AddScalar,
+#define V3GREAT ,3GreaterThan,
+#define V3LESS ,3LessThan,
+
+#define V2MUL ,2Multiply,
+#define V2MULEQL ,2MultiplyEqual,
+#define V2DIVS ,2DivideScalar,
+#define V2DIVSEQL ,2DivideEqualScalar,
+#define V2SUB ,2Subtract,
+#define V2SUBEQL ,2SubtractEqual,
+#define V2SUBS ,2SubtractScalar,
+#define V2ADD ,2Add,
+#define V2ADDS ,2AddScalar,
+#define V2ADDEQL ,2AddEqual,
+#define V2MULSEQL ,2MultiplyEqualScalar,
+#define V2MULS ,2MultiplyScalar,
+#define V2DOT ,2Dot,
+#define V2MODS ,2ModScalar,
+#define V2MODEQLS ,2ModEqualScalar,
+#define V2GREAT ,2GreaterThan,
+#define V2LESS ,2LessThan,
+#define V2LESSEQL ,2LessThanEqualTo,
+#define INFIX(a,o,b) vec##o((a),(b))
 #define _(a) INFIX(a)

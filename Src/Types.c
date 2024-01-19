@@ -1,6 +1,24 @@
 #include "Types.h"
 #include "math.h"
 
+Vec3 vec3SubtractScalar(Vec3 a, float b) {
+	Vec3 c = {a.x - b, a.y - b, a.z - b};
+	return c;
+}
+
+Vec3 vec3AddScalar(Vec3 a, float b) {
+	Vec3 c = {a.x + b, a.y + b, a.z + b};
+	return c;
+}
+
+int32_t vec3GreaterThan(Vec3 a, Vec3 b) {
+	return (a.x > b.x) && (a.y > b.y) && (a.z > b.z);
+}
+
+int32_t vec3LessThan(Vec3 a, Vec3 b) {
+	return (a.x < b.x) && (a.y < b.y) && (a.z < b.z);
+}
+
 Vec2 vec2Multiply(Vec2 a, Vec2 b) {
 	Vec2 c;
 	c.x = a.x * b.x;
