@@ -21,20 +21,31 @@ typedef struct {
 typedef struct {
 	int32_t x;
 	int32_t y;
+	int32_t z;
+	int32_t w;
+} iVec4;
+
+typedef struct {
+	int32_t x;
+	int32_t y;
 } iVec2;
 
 typedef struct BoundaryVert{
 	struct BoundaryVert *next;
-	int32_t vert;
-	int32_t loopAmount;
+	int32_t faceIndex;
+	int32_t face;
+	int32_t valid;
 } BoundaryVert;
 
 typedef struct {
 	int32_t vertAmount;
+	int32_t boundaryVertAmount;
 	Vec3 *vertBuffer;
 	int32_t loopAmount;
+	int32_t boundaryLoopAmount;
 	int32_t *loopBuffer;
 	int32_t faceAmount;
+	int32_t boundaryFaceAmount;
 	int32_t *faceBuffer;
 	Vec2 *uvBuffer;
 } BlenderMeshData;
@@ -45,6 +56,8 @@ typedef struct Cell {
 	struct Cell *children;
 	int32_t faceAmount;
 	int32_t *faces;
+	int32_t edgeFaceAmount;
+	int32_t *edgeFaces;
 	int32_t cellIndex;
 	Vec2 boundsMin;
 	Vec2 boundsMax;
@@ -52,6 +65,7 @@ typedef struct Cell {
 
 typedef struct {
 	Cell **cells;
+	int8_t *cellType;
 	int32_t cellAmount;
 	int32_t faceAmount;
 } FaceCellsInfo;
@@ -71,6 +85,13 @@ typedef struct {
 	int32_t *boundaryFaceStart;
 	BoundaryVert *boundaryBuffer;
 	BlenderMeshData localMesh;
+	int32_t bufferSize;
+	int32_t totalVerts;
+	int32_t totalLoops;
+	int32_t totalFaces;
+	BoundaryVert **finalBoundary;
+	int32_t totalBoundaryFaces;
+	int32_t loopBufferSize;
 	int32_t *boundaryVerts;
 	int32_t boundaryVertAmount;
 	BlenderMeshData mesh;
