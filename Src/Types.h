@@ -33,6 +33,7 @@ typedef struct {
 typedef struct BoundaryVert{
 	struct BoundaryVert *next;
 	int32_t faceIndex;
+	int32_t firstVert;
 	int32_t face;
 	int32_t valid;
 } BoundaryVert;
