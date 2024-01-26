@@ -2,12 +2,6 @@
 #include <stdint.h>
 
 typedef struct {
-	unsigned char *string;
-	int32_t nextBitIndex;
-	int32_t byteIndex;
-} UvgpByteString;
-
-typedef struct {
 	float x;
 	float y;
 } Vec2;
@@ -17,6 +11,18 @@ typedef struct {
 	float y;
 	float z;
 } Vec3;
+
+typedef struct {
+	Vec3 a;
+	Vec3 b;
+	Vec3 c;
+} TriXyz;
+
+typedef struct {
+	Vec2 a;
+	Vec2 b;
+	Vec2 c;
+} TriUv;
 
 typedef struct {
 	int32_t x;
@@ -31,7 +37,7 @@ typedef struct {
 } iVec2;
 
 typedef struct BoundaryVert{
-	struct BoundaryVert *next;
+	struct BoundaryVert *pNext;
 	int32_t faceIndex;
 	int32_t firstVert;
 	int32_t face;
@@ -41,61 +47,70 @@ typedef struct BoundaryVert{
 typedef struct {
 	int32_t vertAmount;
 	int32_t boundaryVertAmount;
-	Vec3 *vertBuffer;
+	Vec3 *pVerts;
 	int32_t loopAmount;
 	int32_t boundaryLoopAmount;
-	int32_t *loopBuffer;
+	int32_t *pLoops;
+	Vec3 *pNormals;
 	int32_t faceAmount;
 	int32_t boundaryFaceAmount;
-	int32_t *faceBuffer;
-	Vec2 *uvBuffer;
-} BlenderMeshData;
+	int32_t *pFaces;
+	Vec2 *pUvs;
+} MeshData;
 
 typedef struct Cell {
 	uint32_t localIndex;
 	uint32_t initialized;
-	struct Cell *children;
+	struct Cell *pChildren;
 	int32_t faceAmount;
-	int32_t *faces;
+	int32_t *pFaces;
 	int32_t edgeFaceAmount;
-	int32_t *edgeFaces;
+	int32_t *pEdgeFaces;
 	int32_t cellIndex;
 	Vec2 boundsMin;
 	Vec2 boundsMax;
 } Cell;
 
 typedef struct {
-	Cell **cells;
-	int8_t *cellType;
+	Cell **pCells;
+	int8_t *pCellType;
 	int32_t cellAmount;
 	int32_t faceAmount;
 } FaceCellsInfo;
 
 //TODO: reduce faces to 4 in order to lower this from 12
 typedef struct VertAdj{
-	struct VertAdj *next;
+	struct VertAdj *pNext;
 	int32_t vert;
-	int32_t uvgpVert;
+	int32_t ruvmVert;
 	int32_t loopAmount;
 } VertAdj;
 
 typedef struct {
+	Vec3 loop;
+	int32_t index;
+	int32_t sort;
+	int32_t baseLoop;
+	Vec2 uv;
+} LoopBuffer;
+
+typedef struct {
 	int32_t id;
-	int32_t *jobsCompleted;
+	int32_t *pJobsCompleted;
 	int32_t averageVertAdjDepth;
-	int32_t *boundaryFaceStart;
-	BoundaryVert *boundaryBuffer;
-	BlenderMeshData localMesh;
+	int32_t *pBoundaryFaceStart;
+	BoundaryVert *pBoundaryBuffer;
+	MeshData localMesh;
 	int32_t bufferSize;
 	int32_t totalVerts;
 	int32_t totalLoops;
 	int32_t totalFaces;
-	BoundaryVert **finalBoundary;
+	BoundaryVert **pFinalBoundary;
 	int32_t totalBoundaryFaces;
 	int32_t loopBufferSize;
-	int32_t *boundaryVerts;
+	int32_t *pBoundaryVerts;
 	int32_t boundaryVertAmount;
-	BlenderMeshData mesh;
+	MeshData mesh;
 } ThreadArg;
 
 Vec3 vec3SubtractScalar(Vec3 a, float b);
@@ -104,28 +119,26 @@ int32_t vec3GreaterThan(Vec3 a, Vec3 b);
 int32_t vec3LessThan(Vec3 a, Vec3 b);
 
 Vec2 vec2Multiply(Vec2 a, Vec2 b);
-void vec2MultiplyEqual(Vec2 *a, Vec2 b);
+void vec2MultiplyEqual(Vec2 *pA, Vec2 b);
 Vec2 vec2DivideScalar(Vec2 a, float b);
-void vec2DivideEqualScalar(Vec2 *a, float b);
+void vec2DivideEqualScalar(Vec2 *pA, float b);
 Vec2 vec2Subtract(Vec2 a, Vec2 b);
-void vec2SubtractEqual(Vec2 *a, Vec2 b);
+void vec2SubtractEqual(Vec2 *pA, Vec2 b);
 Vec2 vec2SubtractScalar(Vec2 a, float b);
 Vec2 vec2Add(Vec2 a, Vec2 b);
 Vec2 vec2AddScalar(Vec2 a, float b);
-void vec2AddEqual(Vec2 *a, Vec2 b);
-void vec2MultiplyEqualScalar(Vec2 *a, float b);
+void vec2AddEqual(Vec2 *pA, Vec2 b);
+void vec2MultiplyEqualScalar(Vec2 *pA, float b);
 Vec2 vec2MultiplyScalar(Vec2 a, float b);
 float vec2Dot(Vec2 a, Vec2 b);
 Vec2 vec2Cross(Vec2 a);
 Vec2 vec2ModScalar(Vec2 a, float b);
-void vec2ModEqualScalar(Vec2 *a, float b);
+void vec2ModEqualScalar(Vec2 *pA, float b);
 int32_t vec2GreaterThan(Vec2 a, Vec2 b);
 int32_t vec2LessThan(Vec2 a, Vec2 b);
 int32_t vec2LessThanEqualTo(Vec2 a, Vec2 b);
-Vec3 cartesianToBarycentric(Vec3 *triVert0, Vec3 *triVert1, Vec3 *triVert2,
-                            Vec3 *point);
-Vec3 barycentricToCartesian(Vec3 *triVert0, Vec3 *triVert1, Vec3 *triVert2,
-                            Vec3 *point);
+Vec3 cartesianToBarycentric(Vec2 *pTri, Vec3 *pPoint);
+Vec3 barycentricToCartesian(Vec3 *pTri, Vec3 *pPoint);
 
 
 #define V3SUBS ,3SubtractScalar,

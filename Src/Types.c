@@ -114,17 +114,15 @@ int32_t vec2LessThanEqualTo(Vec2 a, Vec2 b) {
 	return (a.x <= b.x) && (a.y <= b.y);
 }
 
-Vec3 barycentricToCartesian(Vec3 *triVert0, Vec3 *triVert1, Vec3 *triVert2,
-                            Vec3 *point) {
+Vec3 barycentricToCartesian(Vec3 *pTri, Vec3 *pPoint) {
 	Vec3 pointCartesian;
-	pointCartesian.x = (point->x * triVert0->x) + (point->y * triVert1->x) + (point->z * triVert2->x);
-	pointCartesian.y = (point->x * triVert0->y) + (point->y * triVert1->y) + (point->z * triVert2->y);
-	pointCartesian.z = (point->x * triVert0->z) + (point->y * triVert1->z) + (point->z * triVert2->z);
+	pointCartesian.x = (pPoint->x * pTri[0].x) + (pPoint->y * pTri[1].x) + (pPoint->z * pTri[2].x);
+	pointCartesian.y = (pPoint->x * pTri[0].y) + (pPoint->y * pTri[1].y) + (pPoint->z * pTri[2].y);
+	pointCartesian.z = (pPoint->x * pTri[0].z) + (pPoint->y * pTri[1].z) + (pPoint->z * pTri[2].z);
 	return pointCartesian;
 }
 
-Vec3 cartesianToBarycentric(Vec3 *triVert0, Vec3 *triVert1, Vec3 *triVert2,
-                            Vec3 *point) {
+Vec3 cartesianToBarycentric(Vec2 *pTri, Vec3 *pPoint) {
 	Vec3 pointBc;
 	double derta = .0;
 	double dertau = .0;
@@ -132,17 +130,17 @@ Vec3 cartesianToBarycentric(Vec3 *triVert0, Vec3 *triVert1, Vec3 *triVert2,
 
 	/*Perform cramers rule*/
 
-	derta = (triVert0->x * triVert1->y) - (triVert0->x * triVert2->y) -
-			(triVert1->x * triVert0->y) + (triVert1->x * triVert2->y) +
-			(triVert2->x * triVert0->y) - (triVert2->x * triVert1->y);
+	derta = (pTri[0].x * pTri[1].y) - (pTri[0].x * pTri[2].y) -
+			(pTri[1].x * pTri[0].y) + (pTri[1].x * pTri[2].y) +
+			(pTri[2].x * pTri[0].y) - (pTri[2].x * pTri[1].y);
 	/*Get determinate of Au*/
-	dertau = (point->x * triVert1->y) - (point->x * triVert2->y) -
-			 (triVert1->x * point->y) + (triVert1->x * triVert2->y) +
-			 (triVert2->x * point->y) - (triVert2->x * triVert1->y);
+	dertau = (pPoint->x * pTri[1].y) - (pPoint->x * pTri[2].y) -
+			 (pTri[1].x * pPoint->y) + (pTri[1].x * pTri[2].y) +
+			 (pTri[2].x * pPoint->y) - (pTri[2].x * pTri[1].y);
 	/*Get determinate of Av*/
-	dertav = (triVert0->x * point->y) - (triVert0->x * triVert2->y) -
-			 (point->x * triVert0->y) + (point->x * triVert2->y) +
-			 (triVert2->x * triVert0->y) - (triVert2->x * point->y);
+	dertav = (pTri[0].x * pPoint->y) - (pTri[0].x * pTri[2].y) -
+			 (pPoint->x * pTri[0].y) + (pPoint->x * pTri[2].y) +
+			 (pTri[2].x * pTri[0].y) - (pTri[2].x * pPoint->y);
 
 	/*u = dert(Au) / dert(A)*/
 	pointBc.x = dertau / derta;
