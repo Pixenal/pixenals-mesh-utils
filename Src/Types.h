@@ -44,16 +44,22 @@ typedef struct BoundaryVert{
 	int32_t valid;
 } BoundaryVert;
 
+typedef struct EdgeTable {
+	struct EdgeTable *pNext;
+	int32_t vert;
+	int32_t loops;
+} EdgeTable;
+
 typedef struct {
-	int32_t vertAmount;
-	int32_t boundaryVertAmount;
+	int32_t vertSize;
+	int32_t boundaryVertSize;
 	Vec3 *pVerts;
-	int32_t loopAmount;
-	int32_t boundaryLoopAmount;
+	int32_t loopSize;
+	int32_t boundaryLoopSize;
 	int32_t *pLoops;
 	Vec3 *pNormals;
-	int32_t faceAmount;
-	int32_t boundaryFaceAmount;
+	int32_t faceSize;
+	int32_t boundaryFaceSize;
 	int32_t *pFaces;
 	Vec2 *pUvs;
 } MeshData;
@@ -62,9 +68,9 @@ typedef struct Cell {
 	uint32_t localIndex;
 	uint32_t initialized;
 	struct Cell *pChildren;
-	int32_t faceAmount;
+	int32_t faceSize;
 	int32_t *pFaces;
-	int32_t edgeFaceAmount;
+	int32_t edgeFaceSize;
 	int32_t *pEdgeFaces;
 	int32_t cellIndex;
 	Vec2 boundsMin;
@@ -73,18 +79,23 @@ typedef struct Cell {
 
 typedef struct {
 	Cell **pCells;
-	int8_t *pCellType;
-	int32_t cellAmount;
-	int32_t faceAmount;
+	int32_t *pCellType;
+	int32_t cellSize;
+	int32_t faceSize;
 } FaceCellsInfo;
 
-//TODO: reduce faces to 4 in order to lower this from 12
 typedef struct VertAdj{
 	struct VertAdj *pNext;
 	int32_t vert;
 	int32_t ruvmVert;
-	int32_t loopAmount;
+	int32_t loopSize;
 } VertAdj;
+
+typedef struct {
+	VertAdj *pVertTable;
+	BoundaryVert *pBoundaryTable;
+	EdgeTable *pEdgeTable;
+} MergeTables;
 
 typedef struct {
 	Vec3 loop;
@@ -109,7 +120,7 @@ typedef struct {
 	int32_t totalBoundaryFaces;
 	int32_t loopBufferSize;
 	int32_t *pBoundaryVerts;
-	int32_t boundaryVertAmount;
+	int32_t boundaryVertSize;
 	MeshData mesh;
 } ThreadArg;
 
