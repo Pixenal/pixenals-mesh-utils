@@ -39,6 +39,7 @@ typedef struct {
 typedef struct BoundaryVert{
 	struct BoundaryVert *pNext;
 	int32_t faceIndex;
+	int32_t tile;
 	int32_t firstVert;
 	int32_t face;
 	int32_t valid;
@@ -46,7 +47,9 @@ typedef struct BoundaryVert{
 
 typedef struct EdgeTable {
 	struct EdgeTable *pNext;
+	int32_t ruvmVert;
 	int32_t vert;
+	int32_t tile;
 	int32_t loops;
 } EdgeTable;
 
@@ -128,6 +131,7 @@ Vec3 vec3SubtractScalar(Vec3 a, float b);
 Vec3 vec3AddScalar(Vec3 a, float b);
 int32_t vec3GreaterThan(Vec3 a, Vec3 b);
 int32_t vec3LessThan(Vec3 a, Vec3 b);
+int32_t vec3ApproxEqual(Vec3 a, Vec3 b);
 
 Vec2 vec2Multiply(Vec2 a, Vec2 b);
 void vec2MultiplyEqual(Vec2 *pA, Vec2 b);
@@ -156,6 +160,7 @@ Vec3 barycentricToCartesian(Vec3 *pTri, Vec3 *pPoint);
 #define V3ADDS ,3AddScalar,
 #define V3GREAT ,3GreaterThan,
 #define V3LESS ,3LessThan,
+#define V3APXEQL ,3ApproxEqual,
 
 #define V2MUL ,2Multiply,
 #define V2MULEQL ,2MultiplyEqual,
