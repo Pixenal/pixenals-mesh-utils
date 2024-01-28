@@ -42,7 +42,8 @@ typedef struct BoundaryVert{
 	int32_t tile;
 	int32_t firstVert;
 	int32_t face;
-	int32_t valid;
+	int32_t type;
+	int32_t job;
 } BoundaryVert;
 
 typedef struct EdgeTable {
@@ -108,23 +109,29 @@ typedef struct {
 	Vec2 uv;
 } LoopBuffer;
 
+typedef struct BoundaryDir {
+	struct BoundaryDir *pNext;
+	BoundaryVert *pEntry;
+} BoundaryDir;
+
 typedef struct {
 	int32_t id;
 	int32_t *pJobsCompleted;
 	int32_t averageVertAdjDepth;
 	int32_t *pBoundaryFaceStart;
-	BoundaryVert *pBoundaryBuffer;
+	BoundaryDir *pBoundaryBuffer;
+	int32_t boundaryBufferSize;
+	int32_t totalBoundaryFaces;
 	MeshData localMesh;
 	int32_t bufferSize;
 	int32_t totalVerts;
 	int32_t totalLoops;
 	int32_t totalFaces;
-	BoundaryVert **pFinalBoundary;
-	int32_t totalBoundaryFaces;
 	int32_t loopBufferSize;
 	int32_t *pBoundaryVerts;
 	int32_t boundaryVertSize;
 	MeshData mesh;
+	int32_t vertBase;
 } ThreadArg;
 
 Vec3 vec3SubtractScalar(Vec3 a, float b);
