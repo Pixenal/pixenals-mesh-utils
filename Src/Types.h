@@ -40,9 +40,10 @@ typedef struct BoundaryVert{
 	struct BoundaryVert *pNext;
 	int32_t faceIndex;
 	int32_t tile;
-	int32_t firstVert;
+	int8_t firstVert;
+	int8_t lastVert;
 	int32_t face;
-	int32_t type;
+	int8_t type;
 	int32_t job;
 } BoundaryVert;
 
@@ -134,8 +135,13 @@ typedef struct {
 	int32_t vertBase;
 } ThreadArg;
 
+Vec3 vec3MultiplyScalar(Vec3 a, float b);
+void vec3DivideEqualScalar(Vec3 *pA, float b);
 Vec3 vec3SubtractScalar(Vec3 a, float b);
 Vec3 vec3AddScalar(Vec3 a, float b);
+Vec3 vec3Add(Vec3 a, Vec3 b);
+Vec3 vec3Subtract(Vec3 a, Vec3 b);
+void vec3AddEqual(Vec3 *pA, Vec3 b);
 int32_t vec3GreaterThan(Vec3 a, Vec3 b);
 int32_t vec3LessThan(Vec3 a, Vec3 b);
 int32_t vec3ApproxEqual(Vec3 a, Vec3 b);
@@ -163,8 +169,13 @@ Vec3 cartesianToBarycentric(Vec2 *pTri, Vec3 *pPoint);
 Vec3 barycentricToCartesian(Vec3 *pTri, Vec3 *pPoint);
 
 
+#define V3MULS ,3MultiplyScalar,
+#define V3DIVEQLS ,3DivideEqualScalar,
+#define V3SUB ,3Subtract,
 #define V3SUBS ,3SubtractScalar,
 #define V3ADDS ,3AddScalar,
+#define V3ADD ,3Add,
+#define V3ADDEQL ,3AddEqual,
 #define V3GREAT ,3GreaterThan,
 #define V3LESS ,3LessThan,
 #define V3APXEQL ,3ApproxEqual,

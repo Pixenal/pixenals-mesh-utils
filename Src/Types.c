@@ -1,14 +1,41 @@
 #include "Types.h"
 #include "math.h"
 
+Vec3 vec3MultiplyScalar(Vec3 a, float b) {
+	Vec3 c = {a.x * b, a.y * b, a.z * b};
+	return c;
+}
+
+void vec3DivideEqualScalar(Vec3 *pA, float b) {
+	pA->x /= b;
+	pA->y /= b;
+	pA->z /= b;
+}
+
 Vec3 vec3SubtractScalar(Vec3 a, float b) {
 	Vec3 c = {a.x - b, a.y - b, a.z - b};
+	return c;
+}
+
+Vec3 vec3Subtract(Vec3 a, Vec3 b) {
+	Vec3 c = {a.x - b.x, a.y - b.y, a.z - b.z};
 	return c;
 }
 
 Vec3 vec3AddScalar(Vec3 a, float b) {
 	Vec3 c = {a.x + b, a.y + b, a.z + b};
 	return c;
+}
+
+Vec3 vec3Add(Vec3 a, Vec3 b) {
+	Vec3 c = {a.x + b.x, a.y + b.y, a.z + b.z};
+	return c;
+}
+
+void vec3AddEqual(Vec3 *pA, Vec3 b) {
+	pA->x += b.x;
+	pA->y += b.y;
+	pA->z += b.z;
 }
 
 int32_t vec3GreaterThan(Vec3 a, Vec3 b) {
