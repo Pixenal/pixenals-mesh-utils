@@ -104,6 +104,11 @@ void vec2AddEqual(Vec2 *a, Vec2 b) {
 	a->y += b.y;
 }
 
+void vec2AddEqualScalar(Vec2 *pA, float b) {
+	pA->x += b;
+	pA->y += b;
+}
+
 void vec2MultiplyEqualScalar(Vec2 *a, float b) {
 	a->x *= b;
 	a->y *= b;
@@ -144,6 +149,20 @@ int32_t vec2LessThan(Vec2 a, Vec2 b) {
 int32_t vec2LessThanEqualTo(Vec2 a, Vec2 b) {
 	return (a.x <= b.x) && (a.y <= b.y);
 }
+
+float customFloor(float a) {
+	int32_t aTrunc = a;
+	aTrunc -= ((float)aTrunc != a) && (a < .0f);
+	return aTrunc;
+}
+
+iVec2 vec2FloorAssign(Vec2 *pA) {
+	iVec2 c;
+	c.x = pA->x = customFloor(pA->x);
+	c.y = pA->y = customFloor(pA->y);
+	return c;
+}
+
 
 Vec3 barycentricToCartesian(Vec3 *pTri, Vec3 *pPoint) {
 	Vec3 pointCartesian;

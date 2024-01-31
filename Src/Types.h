@@ -36,6 +36,12 @@ typedef struct {
 	int32_t y;
 } iVec2;
 
+typedef struct {
+	int32_t start;
+	int32_t end;
+	int32_t size;
+} FaceInfo;
+
 typedef struct BoundaryVert{
 	struct BoundaryVert *pNext;
 	int32_t faceIndex;
@@ -156,6 +162,7 @@ Vec2 vec2SubtractScalar(Vec2 a, float b);
 Vec2 vec2Add(Vec2 a, Vec2 b);
 Vec2 vec2AddScalar(Vec2 a, float b);
 void vec2AddEqual(Vec2 *pA, Vec2 b);
+void vec2AddEqualScalar(Vec2 *pA, float b);
 void vec2MultiplyEqualScalar(Vec2 *pA, float b);
 Vec2 vec2MultiplyScalar(Vec2 a, float b);
 float vec2Dot(Vec2 a, Vec2 b);
@@ -165,6 +172,8 @@ void vec2ModEqualScalar(Vec2 *pA, float b);
 int32_t vec2GreaterThan(Vec2 a, Vec2 b);
 int32_t vec2LessThan(Vec2 a, Vec2 b);
 int32_t vec2LessThanEqualTo(Vec2 a, Vec2 b);
+float customFloor(float a);
+iVec2 vec2FloorAssign(Vec2 *pA);
 Vec3 cartesianToBarycentric(Vec2 *pTri, Vec3 *pPoint);
 Vec3 barycentricToCartesian(Vec3 *pTri, Vec3 *pPoint);
 
@@ -190,6 +199,7 @@ Vec3 barycentricToCartesian(Vec3 *pTri, Vec3 *pPoint);
 #define V2ADD ,2Add,
 #define V2ADDS ,2AddScalar,
 #define V2ADDEQL ,2AddEqual,
+#define V2ADDEQLS ,2AddEqualScalar,
 #define V2MULSEQL ,2MultiplyEqualScalar,
 #define V2MULS ,2MultiplyScalar,
 #define V2DOT ,2Dot,
