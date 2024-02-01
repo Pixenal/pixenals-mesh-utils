@@ -40,6 +40,7 @@ typedef struct {
 	int32_t start;
 	int32_t end;
 	int32_t size;
+	int32_t index;
 } FaceInfo;
 
 typedef struct BoundaryVert{
@@ -115,6 +116,11 @@ typedef struct {
 	int32_t baseLoop;
 	Vec2 uv;
 } LoopBuffer;
+
+typedef struct {
+	LoopBuffer buf[12];
+	int32_t size;
+} LoopBufferWrap;
 
 typedef struct BoundaryDir {
 	struct BoundaryDir *pNext;
