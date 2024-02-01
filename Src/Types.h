@@ -87,6 +87,8 @@ typedef struct Cell {
 	int32_t cellIndex;
 	Vec2 boundsMin;
 	Vec2 boundsMax;
+	int32_t linkEdgeSize;
+	int32_t *pLinkEdges;
 } Cell;
 
 typedef struct {
@@ -145,6 +147,7 @@ typedef struct {
 	int32_t boundaryVertSize;
 	MeshData mesh;
 	int32_t vertBase;
+	int64_t averageRuvmFacesPerFace;
 } ThreadArg;
 
 Vec3 vec3MultiplyScalar(Vec3 a, float b);
@@ -176,6 +179,7 @@ Vec2 vec2Cross(Vec2 a);
 Vec2 vec2ModScalar(Vec2 a, float b);
 void vec2ModEqualScalar(Vec2 *pA, float b);
 int32_t vec2GreaterThan(Vec2 a, Vec2 b);
+int32_t vec2GreaterThanEqualTo(Vec2 a, Vec2 b);
 int32_t vec2LessThan(Vec2 a, Vec2 b);
 int32_t vec2LessThanEqualTo(Vec2 a, Vec2 b);
 float customFloor(float a);
@@ -183,6 +187,8 @@ iVec2 vec2FloorAssign(Vec2 *pA);
 Vec3 cartesianToBarycentric(Vec2 *pTri, Vec3 *pPoint);
 Vec3 barycentricToCartesian(Vec3 *pTri, Vec3 *pPoint);
 
+
+int32_t checkFaceIsInBounds(Vec2 min, Vec2 max, FaceInfo face, MeshData *pMesh);
 
 #define V3MULS ,3MultiplyScalar,
 #define V3DIVEQLS ,3DivideEqualScalar,
@@ -212,6 +218,7 @@ Vec3 barycentricToCartesian(Vec3 *pTri, Vec3 *pPoint);
 #define V2MODS ,2ModScalar,
 #define V2MODEQLS ,2ModEqualScalar,
 #define V2GREAT ,2GreaterThan,
+#define V2GREATEQL ,2GreaterThanEqualTo,
 #define V2LESS ,2LessThan,
 #define V2LESSEQL ,2LessThanEqualTo,
 #define INFIX(a,o,b) vec##o((a),(b))

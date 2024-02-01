@@ -138,6 +138,10 @@ void vec2ModEqualScalar(Vec2 *a, float b) {
 	a->y = fmod(a->y, b);
 }
 
+int32_t vec2GreaterThanEqualTo(Vec2 a, Vec2 b) {
+	return (a.x >= b.x) && (a.y >= b.y);
+}
+
 int32_t vec2GreaterThan(Vec2 a, Vec2 b) {
 	return (a.x > b.x) && (a.y > b.y);
 }
@@ -200,4 +204,17 @@ Vec3 cartesianToBarycentric(Vec2 *pTri, Vec3 *pPoint) {
 	pointBc.z = 1.0 - pointBc.x - pointBc.y;
 
 	return pointBc;
+}
+
+int32_t checkFaceIsInBounds(Vec2 min, Vec2 max, FaceInfo face, MeshData *pMesh) {
+		int32_t isInside = 0;
+		for (int32_t j = 0; j < face.size; ++j) {
+			int32_t vertIndex = pMesh->pLoops[face.start + j];
+			Vec2 *vert = (Vec2 *)(pMesh->pVerts + vertIndex);
+			if (_(*vert V2GREATEQL min) && _(*vert V2LESSEQL max)) {
+				isInside = 1;
+				break;
+			}
+		}
+		return isInside;
 }
