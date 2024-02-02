@@ -131,7 +131,6 @@ typedef struct BoundaryDir {
 
 typedef struct {
 	int32_t id;
-	int32_t *pJobsCompleted;
 	int32_t averageVertAdjDepth;
 	int32_t *pBoundaryFaceStart;
 	BoundaryDir *pBoundaryBuffer;
@@ -149,6 +148,22 @@ typedef struct {
 	int32_t vertBase;
 	int64_t averageRuvmFacesPerFace;
 } ThreadArg;
+
+typedef struct {
+	int32_t id;
+	int32_t *pJobsCompleted;
+	BoundaryDir *pBoundaryBuffer;
+	int32_t boundaryBufferSize;
+	int32_t averageVertAdjDepth;
+	MeshData mesh;
+	int64_t averageRuvmFacesPerFace;
+	MeshData localMesh;
+	int32_t vertBase;
+	int32_t totalBoundaryFaces;
+	int32_t totalVerts;
+	int32_t totalLoops;
+	int32_t totalFaces;
+} SendOffArgs;
 
 Vec3 vec3MultiplyScalar(Vec3 a, float b);
 void vec3DivideEqualScalar(Vec3 *pA, float b);
