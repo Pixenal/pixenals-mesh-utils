@@ -1,5 +1,7 @@
-#include "Types.h"
-#include "math.h"
+#include <math.h>
+#include <float.h>
+
+#include <Types.h>
 
 Vec3 vec3MultiplyScalar(Vec3 a, float b) {
 	Vec3 c = {a.x * b, a.y * b, a.z * b};
@@ -44,10 +46,6 @@ int32_t vec3GreaterThan(Vec3 a, Vec3 b) {
 
 int32_t vec3LessThan(Vec3 a, Vec3 b) {
 	return (a.x < b.x) && (a.y < b.y) && (a.z < b.z);
-}
-
-int32_t vec3ApproxEqual(Vec3 a, Vec3 b) {
-	return 0;
 }
 
 Vec2 vec2Multiply(Vec2 a, Vec2 b) {
@@ -206,7 +204,7 @@ Vec3 cartesianToBarycentric(Vec2 *pTri, Vec3 *pPoint) {
 	return pointBc;
 }
 
-int32_t checkFaceIsInBounds(Vec2 min, Vec2 max, FaceInfo face, MeshData *pMesh) {
+int32_t checkFaceIsInBounds(Vec2 min, Vec2 max, FaceInfo face, Mesh *pMesh) {
 		int32_t isInside = 0;
 		for (int32_t j = 0; j < face.size; ++j) {
 			int32_t vertIndex = pMesh->pLoops[face.start + j];
@@ -217,4 +215,26 @@ int32_t checkFaceIsInBounds(Vec2 min, Vec2 max, FaceInfo face, MeshData *pMesh) 
 			}
 		}
 		return isInside;
+}
+
+uint32_t ruvmFnvHash(uint8_t *value, int32_t valueSize, uint32_t size) {
+	uint32_t hash = 2166136261;
+	for (int32_t i = 0; i < valueSize; ++i) {
+		hash ^= value[i];
+		hash *= 16777619;
+	}
+	hash %= size;
+	return hash;
+}
+
+void getFaceBounds(FaceBounds *pBounds, Vec2 *pUvs, FaceInfo faceInfo) {
+	pBounds->fMin.x = pBounds->fMin.y = FLT_MAX;
+	pBounds->fMax.x = pBounds->fMax.y = .0f;
+	for (int32_t i = 0; i < faceInfo.size; ++i) {
+		Vec2 *uv = pUvs + faceInfo.start + i;
+		pBounds->fMin.x = uv->x < pBounds->fMin.x ? uv->x : pBounds->fMin.x;
+		pBounds->fMin.y = uv->y < pBounds->fMin.y ? uv->y : pBounds->fMin.y;
+		pBounds->fMax.x = uv->x > pBounds->fMax.x ? uv->x : pBounds->fMax.x;
+		pBounds->fMax.y = uv->y > pBounds->fMax.y ? uv->y : pBounds->fMax.y;
+	}
 }

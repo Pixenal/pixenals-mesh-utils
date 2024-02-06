@@ -1,16 +1,10 @@
 #pragma once
 #include <stdint.h>
+#include <Mesh.h>
+#include <RUVM.h>
 
-typedef struct {
-	float x;
-	float y;
-} Vec2;
-
-typedef struct {
-	float x;
-	float y;
-	float z;
-} Vec3;
+typedef RuvmVec2 Vec2;
+typedef RuvmVec3 Vec3;
 
 typedef struct {
 	Vec3 a;
@@ -61,20 +55,6 @@ typedef struct EdgeTable {
 	int32_t tile;
 	int32_t loops;
 } EdgeTable;
-
-typedef struct {
-	int32_t vertSize;
-	int32_t boundaryVertSize;
-	Vec3 *pVerts;
-	int32_t loopSize;
-	int32_t boundaryLoopSize;
-	int32_t *pLoops;
-	Vec3 *pNormals;
-	int32_t faceSize;
-	int32_t boundaryFaceSize;
-	int32_t *pFaces;
-	Vec2 *pUvs;
-} MeshData;
 
 typedef struct Cell {
 	uint32_t localIndex;
@@ -130,13 +110,15 @@ typedef struct BoundaryDir {
 } BoundaryDir;
 
 typedef struct {
+	RuvmAllocator alloc;
+	RuvmMap pMap;
 	int32_t id;
 	int32_t averageVertAdjDepth;
 	int32_t *pBoundaryFaceStart;
 	BoundaryDir *pBoundaryBuffer;
 	int32_t boundaryBufferSize;
 	int32_t totalBoundaryFaces;
-	MeshData localMesh;
+	WorkMesh localMesh;
 	int32_t bufferSize;
 	int32_t totalVerts;
 	int32_t totalLoops;
@@ -144,26 +126,63 @@ typedef struct {
 	int32_t loopBufferSize;
 	int32_t *pBoundaryVerts;
 	int32_t boundaryVertSize;
-	MeshData mesh;
+	Mesh mesh;
 	int32_t vertBase;
 	int64_t averageRuvmFacesPerFace;
 } ThreadArg;
 
 typedef struct {
+	RuvmContext pContext;
+	RuvmMap pMap;
+	void *pMutex;
 	int32_t id;
 	int32_t *pJobsCompleted;
 	BoundaryDir *pBoundaryBuffer;
 	int32_t boundaryBufferSize;
 	int32_t averageVertAdjDepth;
-	MeshData mesh;
+	Mesh mesh;
 	int64_t averageRuvmFacesPerFace;
-	MeshData localMesh;
+	WorkMesh localMesh;
 	int32_t vertBase;
 	int32_t totalBoundaryFaces;
 	int32_t totalVerts;
 	int32_t totalLoops;
 	int32_t totalFaces;
 } SendOffArgs;
+
+typedef struct {
+	iVec2 min, max;
+	Vec2 fMin, fMax;
+	Vec2 fMinSmall, fMaxSmall;
+} FaceBounds;
+
+typedef struct {
+	int32_t index;
+	Vec2 vert;
+	Vec2 vertNext;
+	Vec2 dir;
+	Vec2 dirBack;
+} LoopInfo;
+
+typedef struct {
+	int32_t loopStart;
+	int32_t boundaryLoopStart;
+	int32_t firstRuvmVert, lastRuvmVert;
+	int32_t ruvmLoops;
+	int32_t vertIndex;
+	int32_t loopIndex;
+} AddClippedFaceVars;
+
+typedef struct {
+	uint64_t timeSpent[3];
+	int32_t maxDepth;
+} DebugAndPerfVars;
+
+typedef struct {
+	Vec2 uv[3];
+	Vec3 xyz[3];
+	Vec3 *pNormals;
+} BaseTriVerts;
 
 Vec3 vec3MultiplyScalar(Vec3 a, float b);
 void vec3DivideEqualScalar(Vec3 *pA, float b);
@@ -174,7 +193,6 @@ Vec3 vec3Subtract(Vec3 a, Vec3 b);
 void vec3AddEqual(Vec3 *pA, Vec3 b);
 int32_t vec3GreaterThan(Vec3 a, Vec3 b);
 int32_t vec3LessThan(Vec3 a, Vec3 b);
-int32_t vec3ApproxEqual(Vec3 a, Vec3 b);
 
 Vec2 vec2Multiply(Vec2 a, Vec2 b);
 void vec2MultiplyEqual(Vec2 *pA, Vec2 b);
@@ -202,8 +220,10 @@ iVec2 vec2FloorAssign(Vec2 *pA);
 Vec3 cartesianToBarycentric(Vec2 *pTri, Vec3 *pPoint);
 Vec3 barycentricToCartesian(Vec3 *pTri, Vec3 *pPoint);
 
+int32_t checkFaceIsInBounds(Vec2 min, Vec2 max, FaceInfo face, Mesh *pMesh);
+void getFaceBounds(FaceBounds *pBounds, Vec2 *pUvs, FaceInfo faceInfo);
 
-int32_t checkFaceIsInBounds(Vec2 min, Vec2 max, FaceInfo face, MeshData *pMesh);
+uint32_t ruvmFnvHash(uint8_t *value, int32_t valueSize, uint32_t size);
 
 #define V3MULS ,3MultiplyScalar,
 #define V3DIVEQLS ,3DivideEqualScalar,
