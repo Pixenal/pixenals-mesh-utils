@@ -46,6 +46,9 @@ typedef struct BoundaryVert{
 	int32_t face;
 	int8_t type;
 	int32_t job;
+	int8_t hasPreservedEdge;
+	int32_t baseLoop;
+	int8_t baseLoops[8];
 } BoundaryVert;
 
 typedef struct EdgeTable {
@@ -97,6 +100,7 @@ typedef struct {
 	int32_t sort;
 	int32_t baseLoop;
 	Vec2 uv;
+	int8_t isBaseLoop;
 } LoopBuffer;
 
 typedef struct {
@@ -110,6 +114,7 @@ typedef struct BoundaryDir {
 } BoundaryDir;
 
 typedef struct {
+	int32_t maxLoopSize;
 	RuvmAllocator alloc;
 	RuvmMap pMap;
 	int32_t id;
@@ -129,6 +134,7 @@ typedef struct {
 	Mesh mesh;
 	int32_t vertBase;
 	int64_t averageRuvmFacesPerFace;
+	int8_t *pInVertTable;
 } ThreadArg;
 
 typedef struct {
@@ -148,6 +154,7 @@ typedef struct {
 	int32_t totalVerts;
 	int32_t totalLoops;
 	int32_t totalFaces;
+	int8_t *pInVertTable;
 } SendOffArgs;
 
 typedef struct {
@@ -158,6 +165,9 @@ typedef struct {
 
 typedef struct {
 	int32_t index;
+	int32_t indexNext;
+	int8_t localIndex;
+	int8_t localIndexNext;
 	Vec2 vert;
 	Vec2 vertNext;
 	Vec2 dir;
@@ -212,8 +222,10 @@ Vec2 vec2Cross(Vec2 a);
 Vec2 vec2ModScalar(Vec2 a, float b);
 void vec2ModEqualScalar(Vec2 *pA, float b);
 int32_t vec2GreaterThan(Vec2 a, Vec2 b);
+int32_t vec2GreaterThanScalar(Vec2 a, float b);
 int32_t vec2GreaterThanEqualTo(Vec2 a, Vec2 b);
 int32_t vec2LessThan(Vec2 a, Vec2 b);
+int32_t vec2LessThanScalar(Vec2 a, float b);
 int32_t vec2LessThanEqualTo(Vec2 a, Vec2 b);
 float customFloor(float a);
 iVec2 vec2FloorAssign(Vec2 *pA);
@@ -253,8 +265,10 @@ uint32_t ruvmFnvHash(uint8_t *value, int32_t valueSize, uint32_t size);
 #define V2MODS ,2ModScalar,
 #define V2MODEQLS ,2ModEqualScalar,
 #define V2GREAT ,2GreaterThan,
+#define V2GREATS ,2GreaterThanScalar,
 #define V2GREATEQL ,2GreaterThanEqualTo,
 #define V2LESS ,2LessThan,
+#define V2LESSS ,2LessThanScalar,
 #define V2LESSEQL ,2LessThanEqualTo,
 #define INFIX(a,o,b) vec##o((a),(b))
 #define _(a) INFIX(a)
