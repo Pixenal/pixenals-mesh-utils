@@ -54,9 +54,12 @@ typedef struct BoundaryVert{
 typedef struct EdgeTable {
 	struct EdgeTable *pNext;
 	int32_t ruvmVert;
+	int32_t ruvmVertNext;
 	int32_t vert;
 	int32_t tile;
 	int32_t loops;
+	int32_t baseEdge;
+	int32_t baseVert;
 } EdgeTable;
 
 typedef struct Cell {
