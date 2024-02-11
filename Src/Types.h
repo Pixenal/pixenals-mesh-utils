@@ -62,6 +62,10 @@ typedef struct EdgeTable {
 	int32_t baseVert;
 } EdgeTable;
 
+typedef struct {
+	int32_t verts[2];
+} EdgeVerts;
+
 typedef struct Cell {
 	uint32_t localIndex;
 	uint32_t initialized;
@@ -143,6 +147,8 @@ typedef struct {
 typedef struct {
 	RuvmContext pContext;
 	RuvmMap pMap;
+	int32_t bufferSize;
+	int32_t loopBufferSize;
 	void *pMutex;
 	int32_t id;
 	int32_t *pJobsCompleted;
@@ -230,6 +236,9 @@ int32_t vec2GreaterThanEqualTo(Vec2 a, Vec2 b);
 int32_t vec2LessThan(Vec2 a, Vec2 b);
 int32_t vec2LessThanScalar(Vec2 a, float b);
 int32_t vec2LessThanEqualTo(Vec2 a, Vec2 b);
+int32_t vec2NotEqual(Vec2 a, Vec2 b);
+int32_t vec2Equal(Vec2 a, Vec2 b);
+
 float customFloor(float a);
 iVec2 vec2FloorAssign(Vec2 *pA);
 Vec3 cartesianToBarycentric(Vec2 *pTri, Vec3 *pPoint);
@@ -273,5 +282,8 @@ uint32_t ruvmFnvHash(uint8_t *value, int32_t valueSize, uint32_t size);
 #define V2LESS ,2LessThan,
 #define V2LESSS ,2LessThanScalar,
 #define V2LESSEQL ,2LessThanEqualTo,
+#define V2NOTEQL ,2NotEqual,
+#define V2EQL ,2Equal,
+
 #define INFIX(a,o,b) vec##o((a),(b))
 #define _(a) INFIX(a)

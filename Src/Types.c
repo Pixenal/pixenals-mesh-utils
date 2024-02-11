@@ -160,6 +160,14 @@ int32_t vec2LessThanEqualTo(Vec2 a, Vec2 b) {
 	return (a.x <= b.x) && (a.y <= b.y);
 }
 
+int32_t vec2NotEqual(Vec2 a, Vec2 b) {
+	return a.x != b.x || a.y != b.y;
+}
+
+int32_t vec2Equal(Vec2 a, Vec2 b) {
+	return a.x == b.x && a.y == b.y;
+}
+
 float customFloor(float a) {
 	int32_t aTrunc = a;
 	aTrunc -= ((float)aTrunc != a) && (a < .0f);
@@ -213,6 +221,7 @@ Vec3 cartesianToBarycentric(Vec2 *pTri, Vec3 *pPoint) {
 }
 
 int32_t checkFaceIsInBounds(Vec2 min, Vec2 max, FaceInfo face, Mesh *pMesh) {
+		/*
 		int32_t isInside = 0;
 		for (int32_t j = 0; j < face.size; ++j) {
 			int32_t vertIndex = pMesh->pLoops[face.start + j];
@@ -223,6 +232,34 @@ int32_t checkFaceIsInBounds(Vec2 min, Vec2 max, FaceInfo face, Mesh *pMesh) {
 			}
 		}
 		return isInside;
+		*/
+	Vec2 faceMin, faceMax;
+	faceMin.x = faceMin.y = FLT_MAX;
+	faceMax.x = faceMax.y = 0;
+	for (int32_t i = 0; i < face.size; ++i) {
+		int32_t vertIndex = pMesh->pLoops[face.start + i];
+		Vec3 *pVert = pMesh->pVerts + vertIndex;
+		if (pVert->x < faceMin.x) {
+			faceMin.x = pVert->x;
+		}
+		if (pVert->y < faceMin.y) {
+			faceMin.y = pVert->y;
+		}
+		if (pVert->x > faceMax.x) {
+			faceMax.x = pVert->x;
+		}
+		if (pVert->y > faceMax.y) {
+			faceMax.y = pVert->y;
+		}
+	}
+	iVec2 inside;
+	inside.x = (faceMin.x > min.x && faceMin.x < max.x) ||
+	           (faceMax.x > min.x && faceMax.x < max.x) ||
+			   (faceMin.x < min.x && faceMax.x > max.x);
+	inside.y = (faceMin.y > min.y && faceMin.y < max.y) ||
+	           (faceMax.y > min.y && faceMax.y < max.y) ||
+			   (faceMin.y < min.y && faceMax.y > max.y);
+	return inside.x && inside.y;
 }
 
 uint32_t ruvmFnvHash(uint8_t *value, int32_t valueSize, uint32_t size) {
