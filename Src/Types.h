@@ -47,8 +47,10 @@ typedef struct BoundaryVert{
 	int8_t type;
 	int32_t job;
 	int8_t hasPreservedEdge;
-	int32_t baseLoop;
+	int32_t baseFace;
 	int8_t baseLoops[8];
+	int8_t temp;
+	int8_t seam;
 } BoundaryVert;
 
 typedef struct EdgeTable {
@@ -142,6 +144,7 @@ typedef struct {
 	int32_t vertBase;
 	int64_t averageRuvmFacesPerFace;
 	int8_t *pInVertTable;
+	EdgeVerts *pEdgeVerts;
 } ThreadArg;
 
 typedef struct {
@@ -164,6 +167,7 @@ typedef struct {
 	int32_t totalLoops;
 	int32_t totalFaces;
 	int8_t *pInVertTable;
+	EdgeVerts *pEdgeVerts;
 } SendOffArgs;
 
 typedef struct {
