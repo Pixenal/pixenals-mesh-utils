@@ -283,3 +283,24 @@ void getFaceBounds(FaceBounds *pBounds, Vec2 *pUvs, FaceInfo faceInfo) {
 		pBounds->fMax.y = uv->y > pBounds->fMax.y ? uv->y : pBounds->fMax.y;
 	}
 }
+
+int32_t checkIfEdgeIsSeam(int32_t edgeIndex, FaceInfo face, int32_t loop,
+                          RuvmMesh *pMesh, EdgeVerts *pEdgeVerts) {
+	int32_t *pVerts = pEdgeVerts[edgeIndex].verts;
+	if (pVerts[1] < 0) {
+		return 2;
+	}
+	else {
+		int32_t whichLoop = pVerts[0] == face.start + loop;
+		int32_t otherLoop = pVerts[whichLoop];
+		int32_t iNext = (loop + 1) % face.size;
+		int32_t nextBaseLoop = face.start + iNext;
+		Vec2 uv = pMesh->pUvs[nextBaseLoop];
+		Vec2 uvOther = pMesh->pUvs[otherLoop];
+		int32_t isSeam = _(uv V2NOTEQL uvOther);
+		if (isSeam) {
+			return 1;
+		}
+	}
+	return 0;
+}

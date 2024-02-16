@@ -51,6 +51,8 @@ typedef struct BoundaryVert{
 	int8_t baseLoops[8];
 	int8_t temp;
 	int8_t seam;
+	int8_t seams;
+	int16_t fSorts[8];
 } BoundaryVert;
 
 typedef struct EdgeTable {
@@ -62,7 +64,15 @@ typedef struct EdgeTable {
 	int32_t loops;
 	int32_t baseEdge;
 	int32_t baseVert;
+	int8_t seam;
+	int8_t preserve;
+	int8_t isBase;
 } EdgeTable;
+
+typedef struct VertSeamTable {
+	struct VertSeamTable *pNext;
+	int32_t seams;
+} VertSeamTable;
 
 typedef struct {
 	int32_t verts[2];
@@ -107,9 +117,12 @@ typedef struct {
 	Vec3 loop;
 	int32_t index;
 	int32_t sort;
+	int32_t fSort;
 	int32_t baseLoop;
 	Vec2 uv;
 	int8_t isBaseLoop;
+	int8_t seam;
+	int8_t preserve;
 } LoopBuffer;
 
 typedef struct {
@@ -143,7 +156,6 @@ typedef struct {
 	Mesh mesh;
 	int32_t vertBase;
 	int64_t averageRuvmFacesPerFace;
-	int8_t *pInVertTable;
 	EdgeVerts *pEdgeVerts;
 } ThreadArg;
 
@@ -167,6 +179,7 @@ typedef struct {
 	int32_t totalLoops;
 	int32_t totalFaces;
 	int8_t *pInVertTable;
+	int8_t *pVertSeamTable;
 	EdgeVerts *pEdgeVerts;
 } SendOffArgs;
 
@@ -178,6 +191,10 @@ typedef struct {
 
 typedef struct {
 	int32_t index;
+	int32_t edgeIndex;
+	int32_t edgeIndexNext;
+	int8_t edgeIsSeam;
+	int8_t edgeNextIsSeam;
 	int32_t indexNext;
 	int8_t localIndex;
 	int8_t localIndexNext;
@@ -250,6 +267,8 @@ Vec3 barycentricToCartesian(Vec3 *pTri, Vec3 *pPoint);
 
 int32_t checkFaceIsInBounds(Vec2 min, Vec2 max, FaceInfo face, Mesh *pMesh);
 void getFaceBounds(FaceBounds *pBounds, Vec2 *pUvs, FaceInfo faceInfo);
+int32_t checkIfEdgeIsSeam(int32_t edgeIndex, FaceInfo face, int32_t loop,
+                          RuvmMesh *pMesh, EdgeVerts *pEdgeVerts);
 
 uint32_t ruvmFnvHash(uint8_t *value, int32_t valueSize, uint32_t size);
 
