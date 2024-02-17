@@ -59,6 +59,7 @@ typedef struct EdgeTable {
 	struct EdgeTable *pNext;
 	int32_t ruvmVert;
 	int32_t ruvmVertNext;
+	int32_t ruvmFace;
 	int32_t vert;
 	int32_t tile;
 	int32_t loops;
@@ -67,6 +68,9 @@ typedef struct EdgeTable {
 	int8_t seam;
 	int8_t preserve;
 	int8_t isBase;
+	int32_t job;
+	int8_t baseEdgeSign;
+	int32_t loopIndex;
 } EdgeTable;
 
 typedef struct VertSeamTable {
