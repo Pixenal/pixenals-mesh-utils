@@ -48,6 +48,15 @@ int32_t vec3LessThan(Vec3 a, Vec3 b) {
 	return (a.x < b.x) && (a.y < b.y) && (a.z < b.z);
 }
 
+Vec3 vec3Lerp(Vec3 a, Vec3 b, float alpha) {
+	float alphaInverse = 1.0f - alpha;
+	Vec3 c;
+	c.x = a.x * alphaInverse + b.x * alpha;
+	c.y = a.y * alphaInverse + b.y * alpha;
+	c.z = a.z * alphaInverse + b.z * alpha;
+	return c;
+}
+
 Vec2 vec2Multiply(Vec2 a, Vec2 b) {
 	Vec2 c;
 	c.x = a.x * b.x;
@@ -166,6 +175,23 @@ int32_t vec2NotEqual(Vec2 a, Vec2 b) {
 
 int32_t vec2Equal(Vec2 a, Vec2 b) {
 	return a.x == b.x && a.y == b.y;
+}
+
+int32_t vec2WindingCompare(Vec2 a, Vec2 b, Vec2 centre, int32_t fallBack) {
+	Vec2 aDiff = _(a V2SUB centre);
+	Vec2 bDiff = _(b V2SUB centre);
+	float cross = aDiff.x * bDiff.y - bDiff.x * aDiff.y;
+	if (cross != .0f) {
+		return cross > .0f;
+	}
+	if (fallBack) {
+	float aDist = aDiff.x * aDiff.x + aDiff.y * aDiff.y;
+	float bDist = bDiff.x * bDiff.x + bDiff.y * bDiff.y;
+	return bDist > aDist;
+	}
+	else {
+		return 2;
+	}
 }
 
 float customFloor(float a) {

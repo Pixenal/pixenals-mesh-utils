@@ -135,6 +135,7 @@ typedef struct {
 	int8_t isBaseLoop;
 	int8_t seam;
 	int8_t preserve;
+	Vec3 normal;
 } LoopBuffer;
 
 typedef struct {
@@ -239,6 +240,7 @@ Vec3 vec3Subtract(Vec3 a, Vec3 b);
 void vec3AddEqual(Vec3 *pA, Vec3 b);
 int32_t vec3GreaterThan(Vec3 a, Vec3 b);
 int32_t vec3LessThan(Vec3 a, Vec3 b);
+Vec3 vec3Lerp(Vec3 a, Vec3 b, float alpha);
 
 Vec2 vec2Multiply(Vec2 a, Vec2 b);
 void vec2MultiplyEqual(Vec2 *pA, Vec2 b);
@@ -265,6 +267,7 @@ int32_t vec2LessThanScalar(Vec2 a, float b);
 int32_t vec2LessThanEqualTo(Vec2 a, Vec2 b);
 int32_t vec2NotEqual(Vec2 a, Vec2 b);
 int32_t vec2Equal(Vec2 a, Vec2 b);
+int32_t vec2WindingCompare(Vec2 a, Vec2 b, Vec2 centre, int32_t fallBack);
 
 float customFloor(float a);
 iVec2 vec2FloorAssign(Vec2 *pA);
