@@ -98,10 +98,17 @@ typedef struct Cell {
 } Cell;
 
 typedef struct {
+	iVec2 min, max;
+	Vec2 fMin, fMax;
+	Vec2 fMinSmall, fMaxSmall;
+} FaceBounds;
+
+typedef struct {
 	Cell **pCells;
 	int32_t *pCellType;
 	int32_t cellSize;
 	int32_t faceSize;
+	FaceBounds faceBounds;
 } FaceCellsInfo;
 
 typedef struct VertAdj{
@@ -109,6 +116,7 @@ typedef struct VertAdj{
 	int32_t vert;
 	int32_t ruvmVert;
 	int32_t loopSize;
+	int32_t baseFace;
 } VertAdj;
 
 typedef struct {
@@ -186,12 +194,6 @@ typedef struct {
 	int8_t *pVertSeamTable;
 	EdgeVerts *pEdgeVerts;
 } SendOffArgs;
-
-typedef struct {
-	iVec2 min, max;
-	Vec2 fMin, fMax;
-	Vec2 fMinSmall, fMaxSmall;
-} FaceBounds;
 
 typedef struct {
 	int32_t index;
