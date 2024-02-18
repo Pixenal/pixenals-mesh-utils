@@ -31,6 +31,18 @@ typedef struct {
 } iVec2;
 
 typedef struct {
+	float d[2][3];
+} Mat2x3;
+
+typedef struct {
+	float d[2][2];
+} Mat2x2;
+
+typedef struct {
+	float d[3][3];
+} Mat3x3;
+
+typedef struct {
 	int32_t start;
 	int32_t end;
 	int32_t size;
@@ -233,6 +245,7 @@ typedef struct {
 
 Vec3 vec3MultiplyScalar(Vec3 a, float b);
 void vec3DivideEqualScalar(Vec3 *pA, float b);
+Vec3 vec3DivideScalar(Vec3 a, float b);
 Vec3 vec3SubtractScalar(Vec3 a, float b);
 Vec3 vec3AddScalar(Vec3 a, float b);
 Vec3 vec3Add(Vec3 a, Vec3 b);
@@ -241,6 +254,10 @@ void vec3AddEqual(Vec3 *pA, Vec3 b);
 int32_t vec3GreaterThan(Vec3 a, Vec3 b);
 int32_t vec3LessThan(Vec3 a, Vec3 b);
 Vec3 vec3Lerp(Vec3 a, Vec3 b, float alpha);
+Vec3 vec3Cross(Vec3 a, Vec3 b);
+Vec3 vec3UnitFromPoints(Vec3 a, Vec3 b);
+Vec3 vec3MultiplyMat3x3(Vec3 a, Mat3x3 *pB);
+Vec3 vec3Normalize(Vec3 a);
 
 Vec2 vec2Multiply(Vec2 a, Vec2 b);
 void vec2MultiplyEqual(Vec2 *pA, Vec2 b);
@@ -279,10 +296,18 @@ void getFaceBounds(FaceBounds *pBounds, Vec2 *pUvs, FaceInfo faceInfo);
 int32_t checkIfEdgeIsSeam(int32_t edgeIndex, FaceInfo face, int32_t loop,
                           RuvmMesh *pMesh, EdgeVerts *pEdgeVerts);
 
+Mat2x2 mat2x2Adjugate(Mat2x2 a);
+float mat2x2Determinate(Mat2x2 a);
+void mat2x2MultiplyEqualScalar(Mat2x2 *pA, float b);
+Mat2x2 mat2x2Invert(Mat2x2 a);
+
+Mat2x3 mat2x2MultiplyMat2x3(Mat2x2 a, Mat2x3 b);
+
 uint32_t ruvmFnvHash(uint8_t *value, int32_t valueSize, uint32_t size);
 
 #define V3MULS ,3MultiplyScalar,
 #define V3DIVEQLS ,3DivideEqualScalar,
+#define V3DIVS ,3DivideScalar,
 #define V3SUB ,3Subtract,
 #define V3SUBS ,3SubtractScalar,
 #define V3ADDS ,3AddScalar,
@@ -290,7 +315,9 @@ uint32_t ruvmFnvHash(uint8_t *value, int32_t valueSize, uint32_t size);
 #define V3ADDEQL ,3AddEqual,
 #define V3GREAT ,3GreaterThan,
 #define V3LESS ,3LessThan,
+#define V3CROSS ,3Cross,
 #define V3APXEQL ,3ApproxEqual,
+#define V3MULM3X3 ,3MultiplyMat3x3,
 
 #define V2MUL ,2Multiply,
 #define V2MULEQL ,2MultiplyEqual,

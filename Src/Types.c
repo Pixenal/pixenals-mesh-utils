@@ -14,6 +14,11 @@ void vec3DivideEqualScalar(Vec3 *pA, float b) {
 	pA->z /= b;
 }
 
+Vec3 vec3DivideScalar(Vec3 a, float b) {
+	Vec3 c = {a.x / b, a.y / b, a.z / b};
+	return c;
+}
+
 Vec3 vec3SubtractScalar(Vec3 a, float b) {
 	Vec3 c = {a.x - b, a.y - b, a.z - b};
 	return c;
@@ -55,6 +60,34 @@ Vec3 vec3Lerp(Vec3 a, Vec3 b, float alpha) {
 	c.y = a.y * alphaInverse + b.y * alpha;
 	c.z = a.z * alphaInverse + b.z * alpha;
 	return c;
+}
+
+Vec3 vec3UnitFromPoints(Vec3 a, Vec3 b) {
+	Vec3 dir = _(b V3SUB a); //direction
+	float magnitude = sqrt(dir.x * dir.x + dir.y * dir.y);
+	return _(dir V3DIVS magnitude);
+}
+
+Vec3 vec3Cross(Vec3 a, Vec3 b) {
+	Vec3 c = {
+		.x = a.y * b.z - a.z * b.y,
+		.y = a.z * b.x - a.x * b.z,
+		.z = a.x * b.y - a.y * b.x
+	};
+	return c;
+}
+
+Vec3 vec3MultiplyMat3x3(Vec3 a, Mat3x3 *pB) {
+	Vec3 c;
+	c.x = a.x * pB->d[0][0] + a.y * pB->d[1][0] + a.z * pB->d[2][0];
+	c.y = a.x * pB->d[0][1] + a.y * pB->d[1][1] + a.z * pB->d[2][1];
+	c.z = a.x * pB->d[0][2] + a.y * pB->d[1][2] + a.z * pB->d[2][2];
+	return c;
+}
+
+Vec3 vec3Normalize(Vec3 a) {
+	float magnitude = sqrt(a.x * a.x + a.y * a.y + a.z * a.z);
+	return _(a V3DIVS magnitude);
 }
 
 Vec2 vec2Multiply(Vec2 a, Vec2 b) {
@@ -192,6 +225,44 @@ int32_t vec2WindingCompare(Vec2 a, Vec2 b, Vec2 centre, int32_t fallBack) {
 	else {
 		return 2;
 	}
+}
+
+Mat2x2 mat2x2Adjugate(Mat2x2 a) {
+	Mat2x2 c;
+	c.d[0][0] = a.d[1][1];
+	c.d[0][1] = -a.d[0][1];
+	c.d[1][0] = -a.d[1][0];
+	c.d[1][1] = a.d[0][0];
+	return c;
+}
+
+float mat2x2Determinate(Mat2x2 a) {
+	return a.d[0][0] * a.d[1][1] - a.d[0][1] * a.d[1][0];
+}
+
+void mat2x2MultiplyEqualScalar(Mat2x2 *pA, float b) {
+	pA->d[0][0] *= b;
+	pA->d[0][1] *= b;
+	pA->d[1][0] *= b;
+	pA->d[1][1] *= b;
+}
+
+Mat2x2 mat2x2Invert(Mat2x2 a) {
+	float determinate = mat2x2Determinate(a);
+	Mat2x2 inverse = mat2x2Adjugate(a);
+	mat2x2MultiplyEqualScalar(&inverse, 1.0f / determinate);
+	return inverse;
+}
+
+Mat2x3 mat2x2MultiplyMat2x3(Mat2x2 a, Mat2x3 b) {
+	Mat2x3 c;
+	c.d[0][0] = a.d[0][0] * b.d[0][0] + a.d[0][1] * b.d[1][0];
+	c.d[0][1] = a.d[0][0] * b.d[0][1] + a.d[0][1] * b.d[1][1];
+	c.d[0][2] = a.d[0][0] * b.d[0][2] + a.d[0][1] * b.d[1][2];
+	c.d[1][0] = a.d[1][0] * b.d[0][0] + a.d[1][1] * b.d[1][0];
+	c.d[1][1] = a.d[1][0] * b.d[0][1] + a.d[1][1] * b.d[1][1];
+	c.d[1][2] = a.d[1][0] * b.d[0][2] + a.d[1][1] * b.d[1][2];
+	return c;
 }
 
 float customFloor(float a) {
