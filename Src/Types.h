@@ -77,9 +77,7 @@ typedef struct EdgeTable {
 	int32_t loops;
 	int32_t baseEdge;
 	int32_t baseVert;
-	int8_t seam;
-	int8_t preserve;
-	int8_t isBase;
+	int8_t keepBaseLoop;
 	int32_t job;
 	int8_t baseEdgeSign;
 	int32_t loopIndex;
@@ -117,7 +115,7 @@ typedef struct {
 
 typedef struct {
 	Cell **pCells;
-	int32_t *pCellType;
+	int8_t *pCellType;
 	int32_t cellSize;
 	int32_t faceSize;
 	FaceBounds faceBounds;
