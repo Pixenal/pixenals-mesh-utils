@@ -49,6 +49,13 @@ typedef struct {
 	int32_t index;
 } FaceInfo;
 
+typedef struct {
+	int32_t triCount;
+	int32_t *pTris;
+	int32_t loopCount;
+	int32_t *pLoops;
+} FaceTriangulated;
+
 typedef struct BoundaryVert{
 	struct BoundaryVert *pNext;
 	int32_t faceIndex;
@@ -257,6 +264,7 @@ Vec3 vec3UnitFromPoints(Vec3 a, Vec3 b);
 Vec3 vec3MultiplyMat3x3(Vec3 a, Mat3x3 *pB);
 Vec3 vec3Normalize(Vec3 a);
 
+Vec2 vec2Abs(Vec2 a);
 Vec2 vec2Multiply(Vec2 a, Vec2 b);
 void vec2MultiplyEqual(Vec2 *pA, Vec2 b);
 Vec2 vec2DivideScalar(Vec2 a, float b);
@@ -302,6 +310,10 @@ Mat2x2 mat2x2Invert(Mat2x2 a);
 Mat2x3 mat2x2MultiplyMat2x3(Mat2x2 a, Mat2x3 b);
 
 uint32_t ruvmFnvHash(uint8_t *value, int32_t valueSize, uint32_t size);
+
+int32_t checkIfEdgeIsPreserve(RuvmMesh* pMesh, int32_t edge);
+
+FaceTriangulated triangulateFace(RuvmAllocator alloc, FaceInfo baseFace, RuvmMesh *mesh);
 
 #define V3MULS ,3MultiplyScalar,
 #define V3DIVEQLS ,3DivideEqualScalar,

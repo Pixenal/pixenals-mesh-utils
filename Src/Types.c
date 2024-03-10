@@ -90,6 +90,16 @@ Vec3 vec3Normalize(Vec3 a) {
 	return _(a V3DIVS magnitude);
 }
 
+Vec2 vec2Abs(Vec2 a) {
+	if (a.x < .0f) {
+		a.x *= -1.0f;
+	}
+	if (a.y < .0f) {
+		a.y *= -1.0f;
+	}
+	return a;
+}
+
 Vec2 vec2Multiply(Vec2 a, Vec2 b) {
 	Vec2 c;
 	c.x = a.x * b.x;
@@ -400,4 +410,75 @@ int32_t checkIfEdgeIsSeam(int32_t edgeIndex, FaceInfo face, int32_t loop,
 		}
 	}
 	return 0;
+}
+
+int32_t checkIfEdgeIsPreserve(RuvmMesh* pMesh, int32_t edge) {
+	return pMesh->pEdgePreserve ? pMesh->pEdgePreserve[edge] : 0;
+}
+
+static int32_t getOtherVert(int32_t i, int32_t faceSize, int8_t *pVertsRemoved) {
+	int32_t ib = (i + 1) % faceSize;
+	//search from i + 1 to facesize, and if non found,
+	//then run again from 0 to facesize. If non found then,
+	//return error
+	int32_t attempts = 0;
+	do {
+		attempts++;
+		for (; ib < faceSize; ++ib) {
+			if (!pVertsRemoved[ib]) {
+				return ib;
+			}
+		}
+		ib = 0;
+	} while (attempts == 1);
+	return -1;
+}
+
+FaceTriangulated triangulateFace(RuvmAllocator alloc, FaceInfo baseFace, RuvmMesh *pMesh) {
+	FaceTriangulated outMesh = {0};
+	int32_t triCount = baseFace.size - 2;
+	outMesh.pTris = alloc.pMalloc(sizeof(int32_t) * triCount);
+	int32_t loopCount = triCount * 3;
+	outMesh.pLoops = alloc.pMalloc(sizeof(int32_t) * loopCount);
+	
+	int8_t *pVertsRemoved = alloc.pCalloc(baseFace.size, 1);
+	int32_t loopsLeft = baseFace.size;
+	do {
+		//loop through ears, and find one with shortest edge
+		float minDist = FLT_MAX; //min distance
+		int32_t nextEar[3];
+		for (int32_t i = 0; i < baseFace.size; ++i) {
+			if (pVertsRemoved[i]) {
+				continue;
+			}
+			int32_t ib = getOtherVert(i, baseFace.size, pVertsRemoved);
+			int32_t ic = getOtherVert(ib, baseFace.size, pVertsRemoved);
+			Vec2 uva = pMesh->pUvs[baseFace.start + i];
+			Vec2 uvb = pMesh->pUvs[baseFace.start + ib];
+			Vec2 uvc = pMesh->pUvs[baseFace.start + ic];
+			int32_t windingDir = vec2WindingCompare(uva, uvb, uvc, 0);
+			if (!windingDir) {
+				continue;
+			}
+			Vec2 vDist = vec2Abs(_(uvc V2SUB uva));
+			float dist = sqrt(vDist.x * vDist.x + vDist.y * vDist.y); //distance
+			if (dist < minDist) {
+				minDist = dist;
+				nextEar[0] = i;
+				nextEar[1] = ib;
+				nextEar[2] = ic;
+			}
+		}
+		outMesh.pTris[outMesh.triCount] = outMesh.loopCount;
+		for (int32_t i = 0; i < 3; ++i) {
+			//set to equal loop index, rather than vert index
+			outMesh.pLoops[outMesh.loopCount] = nextEar[i];
+			outMesh.loopCount++;
+		}
+		outMesh.triCount++;
+		pVertsRemoved[nextEar[1]] = 1;
+		loopsLeft--;
+	} while (loopsLeft >= 3);
+	alloc.pFree(pVertsRemoved);
+	return outMesh;
 }
