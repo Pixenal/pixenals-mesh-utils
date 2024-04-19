@@ -4,18 +4,21 @@
 
 #include <RUVM.h>
 
-typedef RuvmMesh Mesh;
+typedef struct {
+	RuvmMesh mesh;
+	RuvmAttrib *pVerts;
+	RuvmAttrib *pUvs;
+	RuvmAttrib *pNormals;
+	int32_t boundaryVertSize;
+	int32_t boundaryLoopSize;
+	int32_t boundaryEdgeSize;
+	int32_t boundaryFaceSize;
+} BufMesh;
 
 typedef struct {
-	int32_t vertCount;
-	int32_t boundaryVertSize;
-	RuvmVec3 *pVerts;
-	int32_t loopCount;
-	int32_t boundaryLoopSize;
-	int32_t *pLoops;
-	RuvmVec3 *pNormals;
-	int32_t faceCount;
-	int32_t boundaryFaceSize;
-	int32_t *pFaces;
-	RuvmVec2 *pUvs;
-} WorkMesh;
+	RuvmMesh mesh;
+	RuvmAttrib *pVerts;
+	RuvmAttrib *pUvs;
+	RuvmAttrib *pNormals;
+	RuvmAttrib *pEdgePreserve;
+} Mesh;

@@ -7,6 +7,56 @@ typedef RuvmVec2 Vec2;
 typedef RuvmVec3 Vec3;
 
 typedef struct {
+	double x;
+	double y;
+	double z;
+} Vec364;
+
+typedef struct {
+	double x;
+	double y;
+} Vec264;
+
+typedef struct {
+	int8_t x;
+	int8_t y;
+	int8_t z;
+} iVec38;
+
+typedef struct {
+	int16_t x;
+	int16_t y;
+	int16_t z;
+} iVec316;
+
+typedef struct {
+	int32_t x;
+	int32_t y;
+	int32_t z;
+} iVec3;
+
+typedef struct {
+	int64_t x;
+	int64_t y;
+	int64_t z;
+} iVec364;
+
+typedef struct {
+	int8_t x;
+	int8_t y;
+} iVec28;
+
+typedef struct {
+	int16_t x;
+	int16_t y;
+} iVec216;
+
+typedef struct {
+	int64_t x;
+	int64_t y;
+} iVec264;
+
+typedef struct {
 	Vec3 a;
 	Vec3 b;
 	Vec3 c;
@@ -68,6 +118,8 @@ typedef struct BoundaryVert{
 	int8_t hasPreservedEdge;
 	int32_t baseFace;
 	int8_t baseLoops[8];
+	int8_t onLine;
+	int8_t isRuvm;
 	int8_t temp;
 	int8_t seam;
 	int8_t seams;
@@ -76,9 +128,8 @@ typedef struct BoundaryVert{
 
 typedef struct EdgeTable {
 	struct EdgeTable *pNext;
-	int32_t ruvmVert;
-	int32_t ruvmVertNext;
 	int32_t ruvmFace;
+	int32_t ruvmEdge;
 	int32_t vert;
 	int32_t tile;
 	int32_t loops;
@@ -89,6 +140,14 @@ typedef struct EdgeTable {
 	int8_t baseEdgeSign;
 	int32_t loopIndex;
 } EdgeTable;
+
+typedef struct RealEdgeTable {
+	struct RealEdgeTable *pNext;
+	int32_t edge;
+	int32_t inEdge;
+	int32_t mapFace;
+	int32_t valid;
+} SeamEdgeTable;
 
 typedef struct VertSeamTable {
 	struct VertSeamTable *pNext;
@@ -131,10 +190,18 @@ typedef struct {
 typedef struct VertAdj{
 	struct VertAdj *pNext;
 	int32_t vert;
-	int32_t ruvmVert;
 	int32_t loopSize;
 	int32_t baseFace;
+	int32_t mapVert;
 } VertAdj;
+
+typedef struct MeshBufEdgeTable  {
+	struct MeshBufEdgeTable *pNext;
+	int32_t edge;
+	int32_t refFace;
+	int32_t refEdge;
+	int32_t loopCount;
+} MeshBufEdgeTable;
 
 typedef struct {
 	VertAdj *pVertTable;
@@ -148,12 +215,25 @@ typedef struct {
 	int32_t sort;
 	int32_t fSort;
 	int32_t baseLoop;
+	int32_t refEdge;
 	Vec2 uv;
+	int8_t onLine;
+	int32_t onLineBase;
 	int8_t isBaseLoop;
 	int8_t seam;
 	int8_t preserve;
 	Vec3 normal;
+	Vec3 bc; //bearycentric coords
+	int32_t triLoops[3];
 } LoopBuffer;
+
+typedef struct OnLineTable {
+	struct OnLineTable *pNext;
+	int32_t baseEdgeOrLoop;
+	int32_t ruvmVert;
+	int32_t outVert;
+	int32_t type;
+} OnLineTable;
 
 typedef struct {
 	LoopBuffer buf[12];
@@ -175,10 +255,12 @@ typedef struct {
 	BoundaryDir *pBoundaryBuffer;
 	int32_t boundaryBufferSize;
 	int32_t totalBoundaryFaces;
-	WorkMesh localMesh;
+	int32_t totalBoundaryEdges;
+	BufMesh bufMesh;
 	int32_t bufferSize;
 	int32_t totalVerts;
 	int32_t totalLoops;
+	int32_t totalEdges;
 	int32_t totalFaces;
 	int32_t loopBufferSize;
 	int32_t *pBoundaryVerts;
@@ -187,6 +269,7 @@ typedef struct {
 	int32_t vertBase;
 	int64_t averageRuvmFacesPerFace;
 	EdgeVerts *pEdgeVerts;
+	RuvmCommonAttribList *pCommonAttribList;
 } ThreadArg;
 
 typedef struct {
@@ -202,15 +285,19 @@ typedef struct {
 	int32_t averageVertAdjDepth;
 	Mesh mesh;
 	int64_t averageRuvmFacesPerFace;
-	WorkMesh localMesh;
+	BufMesh bufMesh;
 	int32_t vertBase;
+	int32_t edgeBase;
 	int32_t totalBoundaryFaces;
+	int32_t totalBoundaryEdges;
 	int32_t totalVerts;
 	int32_t totalLoops;
+	int32_t totalEdges;
 	int32_t totalFaces;
 	int8_t *pInVertTable;
 	int8_t *pVertSeamTable;
 	EdgeVerts *pEdgeVerts;
+	RuvmCommonAttribList *pCommonAttribList;
 } SendOffArgs;
 
 typedef struct {
@@ -235,6 +322,7 @@ typedef struct {
 	int32_t ruvmLoops;
 	int32_t vertIndex;
 	int32_t loopIndex;
+	int32_t edgeIndex;
 } AddClippedFaceVars;
 
 typedef struct {
@@ -247,6 +335,56 @@ typedef struct {
 	Vec3 xyz[3];
 	Vec3 *pNormals;
 } BaseTriVerts;
+
+Vec364 vec364MultiplyScalar(Vec364 a, double b);
+void vec364DivideEqualScalar(Vec364 *pA, double b);
+Vec364 vec364DivideScalar(Vec364 a, double b);
+void vec364AddEqual(Vec364 *pA, Vec364 b);
+
+Vec264 vec264MultiplyScalar(Vec264 a, double b);
+void vec264DivideEqualScalar(Vec264 *pA, double b);
+Vec264 vec264DivideScalar(Vec264 a, double b);
+void vec264AddEqual(Vec264 *pA, Vec264 b);
+
+iVec38 veci38MultiplyScalar(iVec38 a, float b);
+void vec38DivideEqualScalar(iVec38 *pA, float b);
+iVec38 veci38DivideScalar(iVec38 a, float b);
+void veci38AddEqual(iVec38 *pA, iVec38 b);
+
+iVec316 veci316MultiplyScalar(iVec316 a, float b);
+void veci316DivideEqualScalar(iVec316 *pA, float b);
+iVec316 veci316DivideScalar(iVec316 a, float b);
+void veci316AddEqual(iVec316 *pA, iVec316 b);
+
+iVec3 veci3MultiplyScalar(iVec3 a, float b);
+void veci3DivideEqualScalar(iVec3 *pA, float b);
+iVec3 veci3DivideScalar(iVec3 a, float b);
+void veci3AddEqual(iVec3 *pA, iVec3 b);
+
+iVec364 veci364MultiplyScalar(iVec364 a, float b);
+void veci364DivideEqualScalar(iVec364 *pA, float b);
+iVec364 veci364DivideScalar(iVec364 a, float b);
+void veci364AddEqual(iVec364 *pA, iVec364 b);
+
+iVec28 veci28MultiplyScalar(iVec28 a, float b);
+void veci28DivideEqualScalar(iVec28 *pA, float b);
+iVec28 veci28DivideScalar(iVec28 a, float b);
+void veci28AddEqual(iVec28 *pA, iVec28 b);
+
+iVec216 veci216MultiplyScalar(iVec216 a, float b);
+void veci216DivideEqualScalar(iVec216 *pA, float b);
+iVec216 veci216DivideScalar(iVec216 a, float b);
+void veci216AddEqual(iVec216 *pA, iVec216 b);
+
+iVec2 veci2MultiplyScalar(iVec2 a, float b);
+void veci2DivideEqualScalar(iVec2 *pA, float b);
+iVec2 veci2DivideScalar(iVec2 a, float b);
+void veci2AddEqual(iVec2 *pA, iVec2 b);
+
+iVec264 veci264MultiplyScalar(iVec264 a, float b);
+void veci264DivideEqualScalar(iVec264 *pA, float b);
+iVec264 veci264DivideScalar(iVec264 a, float b);
+void veci264AddEqual(iVec264 *pA, iVec264 b);
 
 Vec3 vec3MultiplyScalar(Vec3 a, float b);
 void vec3DivideEqualScalar(Vec3 *pA, float b);
@@ -298,9 +436,9 @@ Vec3 cartesianToBarycentric(Vec2 *pTri, Vec3 *pPoint);
 Vec3 barycentricToCartesian(Vec3 *pTri, Vec3 *pPoint);
 
 int32_t checkFaceIsInBounds(Vec2 min, Vec2 max, FaceInfo face, Mesh *pMesh);
-void getFaceBounds(FaceBounds *pBounds, Vec2 *pUvs, FaceInfo faceInfo);
+void getFaceBounds(FaceBounds *pBounds, RuvmAttrib *pUvs, FaceInfo faceInfo);
 int32_t checkIfEdgeIsSeam(int32_t edgeIndex, FaceInfo face, int32_t loop,
-                          RuvmMesh *pMesh, EdgeVerts *pEdgeVerts);
+                          Mesh *pMesh, EdgeVerts *pEdgeVerts);
 
 Mat2x2 mat2x2Adjugate(Mat2x2 a);
 float mat2x2Determinate(Mat2x2 a);
@@ -311,9 +449,663 @@ Mat2x3 mat2x2MultiplyMat2x3(Mat2x2 a, Mat2x3 b);
 
 uint32_t ruvmFnvHash(uint8_t *value, int32_t valueSize, uint32_t size);
 
-int32_t checkIfEdgeIsPreserve(RuvmMesh* pMesh, int32_t edge);
 
-FaceTriangulated triangulateFace(RuvmAllocator alloc, FaceInfo baseFace, RuvmMesh *mesh);
+int32_t checkIfEdgeIsPreserve(Mesh* pMesh, int32_t edge);
+FaceTriangulated triangulateFace(RuvmAllocator alloc, FaceInfo baseFace, Mesh *pMesh);
+
+void blendAttribReplace_I8(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                           RuvmAttrib *pB, int32_t iB);
+void blendAttribReplace_I16(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                            RuvmAttrib *pB, int32_t iB);
+void blendAttribReplace_I32(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                            RuvmAttrib *pB, int32_t iB);
+void blendAttribReplace_I64(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                            RuvmAttrib *pB, int32_t iB);
+void blendAttribReplace_F32(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                            RuvmAttrib *pB, int32_t iB);
+void blendAttribReplace_F64(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                            RuvmAttrib *pB, int32_t iB);
+void blendAttribReplace_V2_I8(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                              RuvmAttrib *pB, int32_t iB);
+void blendAttribReplace_V2_I16(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribReplace_V2_I32(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribReplace_V2_I64(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribReplace_V2_F32(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribReplace_V2_I64(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribReplace_V3_I8(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                              RuvmAttrib *pB, int32_t iB);
+void blendAttribReplace_V3_I16(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribReplace_V3_I32(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribReplace_V3_I64(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribReplace_V3_F32(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribReplace_V3_I64(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribReplace_V4_I8(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                              RuvmAttrib *pB, int32_t iB);
+void blendAttribReplace_V4_I16(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribReplace_V4_I32(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribReplace_V4_I64(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribReplace_V4_F32(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribReplace_V4_I64(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribMultiply_I8(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                           RuvmAttrib *pB, int32_t iB);
+void blendAttribMultiply_I16(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                            RuvmAttrib *pB, int32_t iB);
+void blendAttribMultiply_I32(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                            RuvmAttrib *pB, int32_t iB);
+void blendAttribMultiply_I64(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                            RuvmAttrib *pB, int32_t iB);
+void blendAttribMultiply_F32(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                            RuvmAttrib *pB, int32_t iB);
+void blendAttribMultiply_F64(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                            RuvmAttrib *pB, int32_t iB);
+void blendAttribMultiply_V2_I8(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                              RuvmAttrib *pB, int32_t iB);
+void blendAttribMultiply_V2_I16(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribMultiply_V2_I32(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribMultiply_V2_I64(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribMultiply_V2_F32(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribMultiply_V2_I64(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribMultiply_V3_I8(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                              RuvmAttrib *pB, int32_t iB);
+void blendAttribMultiply_V3_I16(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribMultiply_V3_I32(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribMultiply_V3_I64(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribMultiply_V3_F32(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribMultiply_V3_I64(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribMultiply_V4_I8(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                              RuvmAttrib *pB, int32_t iB);
+void blendAttribMultiply_V4_I16(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribMultiply_V4_I32(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribMultiply_V4_I64(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribMultiply_V4_F32(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribMultiply_V4_I64(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribDivide_I8(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                           RuvmAttrib *pB, int32_t iB);
+void blendAttribDivide_I16(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                            RuvmAttrib *pB, int32_t iB);
+void blendAttribDivide_I32(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                            RuvmAttrib *pB, int32_t iB);
+void blendAttribDivide_I64(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                            RuvmAttrib *pB, int32_t iB);
+void blendAttribDivide_F32(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                            RuvmAttrib *pB, int32_t iB);
+void blendAttribDivide_F64(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                            RuvmAttrib *pB, int32_t iB);
+void blendAttribDivide_V2_I8(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                              RuvmAttrib *pB, int32_t iB);
+void blendAttribDivide_V2_I16(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribDivide_V2_I32(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribDivide_V2_I64(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribDivide_V2_F32(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribDivide_V2_I64(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribDivide_V3_I8(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                              RuvmAttrib *pB, int32_t iB);
+void blendAttribDivide_V3_I16(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribDivide_V3_I32(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribDivide_V3_I64(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribDivide_V3_F32(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribDivide_V3_I64(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribDivide_V4_I8(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                              RuvmAttrib *pB, int32_t iB);
+void blendAttribDivide_V4_I16(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribDivide_V4_I32(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribDivide_V4_I64(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribDivide_V4_F32(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribDivide_V4_I64(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribAdd_I8(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                           RuvmAttrib *pB, int32_t iB);
+void blendAttribAdd_I16(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                            RuvmAttrib *pB, int32_t iB);
+void blendAttribAdd_I32(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                            RuvmAttrib *pB, int32_t iB);
+void blendAttribAdd_I64(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                            RuvmAttrib *pB, int32_t iB);
+void blendAttribAdd_F32(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                            RuvmAttrib *pB, int32_t iB);
+void blendAttribAdd_F64(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                            RuvmAttrib *pB, int32_t iB);
+void blendAttribAdd_V2_I8(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                              RuvmAttrib *pB, int32_t iB);
+void blendAttribAdd_V2_I16(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribAdd_V2_I32(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribAdd_V2_I64(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribAdd_V2_F32(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribAdd_V2_I64(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribAdd_V3_I8(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                              RuvmAttrib *pB, int32_t iB);
+void blendAttribAdd_V3_I16(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribAdd_V3_I32(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribAdd_V3_I64(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribAdd_V3_F32(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribAdd_V3_I64(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribAdd_V4_I8(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                              RuvmAttrib *pB, int32_t iB);
+void blendAttribAdd_V4_I16(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribAdd_V4_I32(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribAdd_V4_I64(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribAdd_V4_F32(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribAdd_V4_I64(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribAdd_I8(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                           RuvmAttrib *pB, int32_t iB);
+void blendAttribAdd_I16(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                            RuvmAttrib *pB, int32_t iB);
+void blendAttribAdd_I32(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                            RuvmAttrib *pB, int32_t iB);
+void blendAttribAdd_I64(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                            RuvmAttrib *pB, int32_t iB);
+void blendAttribAdd_F32(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                            RuvmAttrib *pB, int32_t iB);
+void blendAttribAdd_F64(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                            RuvmAttrib *pB, int32_t iB);
+void blendAttribAdd_V2_I8(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                              RuvmAttrib *pB, int32_t iB);
+void blendAttribAdd_V2_I16(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribAdd_V2_I32(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribAdd_V2_I64(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribAdd_V2_F32(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribAdd_V2_I64(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribAdd_V3_I8(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                              RuvmAttrib *pB, int32_t iB);
+void blendAttribAdd_V3_I16(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribAdd_V3_I32(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribAdd_V3_I64(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribAdd_V3_F32(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribAdd_V3_I64(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribAdd_V4_I8(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                              RuvmAttrib *pB, int32_t iB);
+void blendAttribAdd_V4_I16(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribAdd_V4_I32(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribAdd_V4_I64(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribAdd_V4_F32(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribAdd_V4_I64(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribSubtract_I8(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                           RuvmAttrib *pB, int32_t iB);
+void blendAttribSubtract_I16(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                            RuvmAttrib *pB, int32_t iB);
+void blendAttribSubtract_I32(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                            RuvmAttrib *pB, int32_t iB);
+void blendAttribSubtract_I64(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                            RuvmAttrib *pB, int32_t iB);
+void blendAttribSubtract_F32(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                            RuvmAttrib *pB, int32_t iB);
+void blendAttribSubtract_F64(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                            RuvmAttrib *pB, int32_t iB);
+void blendAttribSubtract_V2_I8(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                              RuvmAttrib *pB, int32_t iB);
+void blendAttribSubtract_V2_I16(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribSubtract_V2_I32(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribSubtract_V2_I64(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribSubtract_V2_F32(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribSubtract_V2_I64(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribSubtract_V3_I8(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                              RuvmAttrib *pB, int32_t iB);
+void blendAttribSubtract_V3_I16(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribSubtract_V3_I32(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribSubtract_V3_I64(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribSubtract_V3_F32(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribSubtract_V3_I64(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribSubtract_V4_I8(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                              RuvmAttrib *pB, int32_t iB);
+void blendAttribSubtract_V4_I16(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribSubtract_V4_I32(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribSubtract_V4_I64(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribSubtract_V4_F32(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribSubtract_V4_I64(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribAddSub_I8(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                           RuvmAttrib *pB, int32_t iB);
+void blendAttribAddSub_I16(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                            RuvmAttrib *pB, int32_t iB);
+void blendAttribAddSub_I32(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                            RuvmAttrib *pB, int32_t iB);
+void blendAttribAddSub_I64(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                            RuvmAttrib *pB, int32_t iB);
+void blendAttribAddSub_F32(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                            RuvmAttrib *pB, int32_t iB);
+void blendAttribAddSub_F64(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                            RuvmAttrib *pB, int32_t iB);
+void blendAttribAddSub_V2_I8(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                              RuvmAttrib *pB, int32_t iB);
+void blendAttribAddSub_V2_I16(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribAddSub_V2_I32(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribAddSub_V2_I64(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribAddSub_V2_F32(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribAddSub_V2_I64(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribAddSub_V3_I8(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                              RuvmAttrib *pB, int32_t iB);
+void blendAttribAddSub_V3_I16(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribAddSub_V3_I32(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribAddSub_V3_I64(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribAddSub_V3_F32(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribAddSub_V3_I64(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribAddSub_V4_I8(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                              RuvmAttrib *pB, int32_t iB);
+void blendAttribAddSub_V4_I16(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribAddSub_V4_I32(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribAddSub_V4_I64(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribAddSub_V4_F32(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribAddSub_V4_I64(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribLighten_I8(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                           RuvmAttrib *pB, int32_t iB);
+void blendAttribLighten_I16(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                            RuvmAttrib *pB, int32_t iB);
+void blendAttribLighten_I32(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                            RuvmAttrib *pB, int32_t iB);
+void blendAttribLighten_I64(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                            RuvmAttrib *pB, int32_t iB);
+void blendAttribLighten_F32(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                            RuvmAttrib *pB, int32_t iB);
+void blendAttribLighten_F64(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                            RuvmAttrib *pB, int32_t iB);
+void blendAttribLighten_V2_I8(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                              RuvmAttrib *pB, int32_t iB);
+void blendAttribLighten_V2_I16(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribLighten_V2_I32(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribLighten_V2_I64(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribLighten_V2_F32(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribLighten_V2_I64(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribLighten_V3_I8(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                              RuvmAttrib *pB, int32_t iB);
+void blendAttribLighten_V3_I16(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribLighten_V3_I32(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribLighten_V3_I64(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribLighten_V3_F32(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribLighten_V3_I64(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribLighten_V4_I8(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                              RuvmAttrib *pB, int32_t iB);
+void blendAttribLighten_V4_I16(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribLighten_V4_I32(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribLighten_V4_I64(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribLighten_V4_F32(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribLighten_V4_I64(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribDarken_I8(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                           RuvmAttrib *pB, int32_t iB);
+void blendAttribDarken_I16(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                            RuvmAttrib *pB, int32_t iB);
+void blendAttribDarken_I32(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                            RuvmAttrib *pB, int32_t iB);
+void blendAttribDarken_I64(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                            RuvmAttrib *pB, int32_t iB);
+void blendAttribDarken_F32(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                            RuvmAttrib *pB, int32_t iB);
+void blendAttribDarken_F64(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                            RuvmAttrib *pB, int32_t iB);
+void blendAttribDarken_V2_I8(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                              RuvmAttrib *pB, int32_t iB);
+void blendAttribDarken_V2_I16(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribDarken_V2_I32(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribDarken_V2_I64(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribDarken_V2_F32(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribDarken_V2_I64(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribDarken_V3_I8(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                              RuvmAttrib *pB, int32_t iB);
+void blendAttribDarken_V3_I16(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribDarken_V3_I32(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribDarken_V3_I64(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribDarken_V3_F32(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribDarken_V3_I64(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribDarken_V4_I8(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                              RuvmAttrib *pB, int32_t iB);
+void blendAttribDarken_V4_I16(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribDarken_V4_I32(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribDarken_V4_I64(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribDarken_V4_F32(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribDarken_V4_I64(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribOverlay_I8(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                           RuvmAttrib *pB, int32_t iB);
+void blendAttribOverlay_I16(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                            RuvmAttrib *pB, int32_t iB);
+void blendAttribOverlay_I32(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                            RuvmAttrib *pB, int32_t iB);
+void blendAttribOverlay_I64(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                            RuvmAttrib *pB, int32_t iB);
+void blendAttribOverlay_F32(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                            RuvmAttrib *pB, int32_t iB);
+void blendAttribOverlay_F64(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                            RuvmAttrib *pB, int32_t iB);
+void blendAttribOverlay_V2_I8(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                              RuvmAttrib *pB, int32_t iB);
+void blendAttribOverlay_V2_I16(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribOverlay_V2_I32(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribOverlay_V2_I64(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribOverlay_V2_F32(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribOverlay_V2_I64(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribOverlay_V3_I8(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                              RuvmAttrib *pB, int32_t iB);
+void blendAttribOverlay_V3_I16(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribOverlay_V3_I32(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribOverlay_V3_I64(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribOverlay_V3_F32(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribOverlay_V3_I64(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribOverlay_V4_I8(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                              RuvmAttrib *pB, int32_t iB);
+void blendAttribOverlay_V4_I16(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribOverlay_V4_I32(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribOverlay_V4_I64(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribOverlay_V4_F32(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribOverlay_V4_I64(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribSoftLight_I8(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                           RuvmAttrib *pB, int32_t iB);
+void blendAttribSoftLight_I16(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                            RuvmAttrib *pB, int32_t iB);
+void blendAttribSoftLight_I32(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                            RuvmAttrib *pB, int32_t iB);
+void blendAttribSoftLight_I64(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                            RuvmAttrib *pB, int32_t iB);
+void blendAttribSoftLight_F32(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                            RuvmAttrib *pB, int32_t iB);
+void blendAttribSoftLight_F64(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                            RuvmAttrib *pB, int32_t iB);
+void blendAttribSoftLight_V2_I8(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                              RuvmAttrib *pB, int32_t iB);
+void blendAttribSoftLight_V2_I16(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribSoftLight_V2_I32(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribSoftLight_V2_I64(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribSoftLight_V2_F32(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribSoftLight_V2_I64(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribSoftLight_V3_I8(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                              RuvmAttrib *pB, int32_t iB);
+void blendAttribSoftLight_V3_I16(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribSoftLight_V3_I32(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribSoftLight_V3_I64(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribSoftLight_V3_F32(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribSoftLight_V3_I64(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribSoftLight_V4_I8(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                              RuvmAttrib *pB, int32_t iB);
+void blendAttribSoftLight_V4_I16(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribSoftLight_V4_I32(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribSoftLight_V4_I64(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribSoftLight_V4_F32(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribSoftLight_V4_I64(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribColorDodge_I8(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                           RuvmAttrib *pB, int32_t iB);
+void blendAttribColorDodge_I16(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                            RuvmAttrib *pB, int32_t iB);
+void blendAttribColorDodge_I32(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                            RuvmAttrib *pB, int32_t iB);
+void blendAttribColorDodge_I64(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                            RuvmAttrib *pB, int32_t iB);
+void blendAttribColorDodge_F32(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                            RuvmAttrib *pB, int32_t iB);
+void blendAttribColorDodge_F64(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                            RuvmAttrib *pB, int32_t iB);
+void blendAttribColorDodge_V2_I8(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                              RuvmAttrib *pB, int32_t iB);
+void blendAttribColorDodge_V2_I16(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribColorDodge_V2_I32(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribColorDodge_V2_I64(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribColorDodge_V2_F32(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribColorDodge_V2_I64(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribColorDodge_V3_I8(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                              RuvmAttrib *pB, int32_t iB);
+void blendAttribColorDodge_V3_I16(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribColorDodge_V3_I32(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribColorDodge_V3_I64(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribColorDodge_V3_F32(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribColorDodge_V3_I64(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribColorDodge_V4_I8(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                              RuvmAttrib *pB, int32_t iB);
+void blendAttribColorDodge_V4_I16(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribColorDodge_V4_I32(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribColorDodge_V4_I64(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribColorDodge_V4_F32(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribColorDodge_V4_I64(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                               RuvmAttrib *pB, int32_t iB);
+void blendAttribAppend_Str(RuvmAttrib *pD, int32_t iD, RuvmAttrib *pA, int32_t iA,
+                           RuvmAttrib *pB, int32_t iB);
+
+int32_t getAttribSize(RuvmAttribType type);
+RuvmAttrib *getAttrib(char *pName, RuvmAttrib *pAttribs, int32_t attribCount);
+Vec3 *attribAsV3(RuvmAttrib *pAttrib, int32_t index);
+Vec2 *attribAsV2(RuvmAttrib *pAttrib, int32_t index);
+int32_t *attribAsI32(RuvmAttrib *pAttrib, int32_t index);
+void *attribAsVoid(RuvmAttrib *pAttrib, int32_t index);
+int32_t copyAttrib(RuvmAttrib *pDest, int32_t iDest,
+                   RuvmAttrib *pSrc, int32_t iSrc);
+void copyAllAttribs(RuvmAttrib *pDest, int32_t iDest,
+                    RuvmAttrib *pSrc, int32_t iSrc,
+                    int32_t attribCount);
+RuvmTypeDefault *getTypeDefaultConfig(RuvmTypeDefaultConfig *pConfig,
+                                      RuvmAttribType type);
+RuvmCommonAttrib *getCommonAttrib(RuvmCommonAttrib *pAttribs, int32_t attribCount,
+                                  char *pName);
+void interpolateAttrib(RuvmAttrib *pDest, int32_t iDest, RuvmAttrib *pSrc,
+                       int32_t iSrcA, int32_t iSrcB, int32_t iSrcC, Vec3 bc);
+void blendAttribs(RuvmAttrib *pDest, int32_t iDest, RuvmAttrib *pA, int32_t iA,
+                  RuvmAttrib *pB, int32_t iB, RuvmBlendConfig blendConfig);
+
+#define V3_F64_MULS 	,364MultiplyScalar,
+#define V3_F64_DIVEQLS 	,364DivideEqualScalar,
+#define V3_F64_DIVS 	,364DivideScalar,
+#define V3_F64_ADDEQL 	,364AddEqual,
+
+#define V2_F64_MUL  	,264MultiplyScalar,
+#define V2_F64_DIVEQLS	,264DivideEqualScalar,
+#define V2_F64_DIVS 	,264DivideScalar,
+#define V2_F64_ADDEQL 	,264AddEqual,
+
+#define V3_I8_MULS		,i38MultiplyScalar,
+#define V3_I8_DIVEQLS	,i38DivideEqualScalar,
+#define V3_I8_DIVS		,i38DivideScalar,
+#define V3_I8_ADDEQL	,i38AddEqual,
+
+#define V3_I16_MULS		,i316MultiplyScalar,
+#define V3_I16_DIVEQLS	,i316DivideEqualScalar,
+#define V3_I16_DIVS		,i316DivideScalar,
+#define V3_I16_ADDEQL	,i316AddEqual,
+
+#define V3_I32_MULS		,i3MultiplyScalar,
+#define V3_I32_DIVEQLS	,i3DivideEqualScalar,
+#define V3_I32_DIVS		,i3DivideScalar,
+#define V3_I32_ADDEQL	,i3AddEqual,
+
+#define V3_I64_MULS		,i364MultiplyScalar,
+#define V3_I64_DIVEQLS	,i364DivideEqualScalar,
+#define V3_I64_DIVS		,i364DivideScalar,
+#define V3_I64_ADDEQL	,i364AddEqual,
+
+#define V3_I64_MULS		,i364MultiplyScalar,
+#define V3_I64_DIVEQLS	,i364DivideEqualScalar,
+#define V3_I64_DIVS		,i364DivideScalar,
+#define V3_I64_ADDEQL	,i364AddEqual,
+
+#define V2_I8_MULS		,i28MultiplyScalar,
+#define V2_I8_DIVEQLS	,i28DivideEqualScalar,
+#define V2_I8_DIVS		,i28DivideScalar,
+#define V2_I8_ADDEQL	,i28AddEqual,
+
+#define V2_I16_MULS		,i216MultiplyScalar,
+#define V2_I16_DIVEQLS	,i216DivideEqualScalar,
+#define V2_I16_DIVS		,i216DivideScalar,
+#define V2_I16_ADDEQL	,i216AddEqual,
+
+#define V2_I32_MULS		,i2MultiplyScalar,
+#define V2_I32_DIVEQLS	,i2DivideEqualScalar,
+#define V2_I32_DIVS		,i2DivideScalar,
+#define V2_I32_ADDEQL	,i2AddEqual,
+
+#define V2_I64_MULS		,i264MultiplyScalar,
+#define V2_I64_DIVEQLS	,i264DivideEqualScalar,
+#define V2_I64_DIVS		,i264DivideScalar,
+#define V2_I64_ADDEQL	,i264AddEqual,
 
 #define V3MULS ,3MultiplyScalar,
 #define V3DIVEQLS ,3DivideEqualScalar,
