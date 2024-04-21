@@ -342,6 +342,12 @@ int32_t vec3LessThan(Vec3 a, Vec3 b) {
 	return (a.x < b.x) && (a.y < b.y) && (a.z < b.z);
 }
 
+int32_t vec3AproxEqual(Vec3 a, Vec3 b) {
+	Vec3 bLow = _(b V3SUBS FLOAT_EQUAL_MARGIN);
+	Vec3 bHigh = _(b V3ADDS FLOAT_EQUAL_MARGIN);
+	return _(a V3LESS bHigh) && _(a V3GREAT bLow);
+}
+
 Vec3 vec3Lerp(Vec3 a, Vec3 b, float alpha) {
 	float alphaInverse = 1.0f - alpha;
 	Vec3 c;
@@ -507,6 +513,12 @@ int32_t vec2NotEqual(Vec2 a, Vec2 b) {
 
 int32_t vec2Equal(Vec2 a, Vec2 b) {
 	return a.x == b.x && a.y == b.y;
+}
+
+int32_t vec2AproxEqual(Vec2 a, Vec2 b) {
+	Vec2 bLow = _(b V2SUBS FLOAT_EQUAL_MARGIN);
+	Vec2 bHigh = _(b V2ADDS FLOAT_EQUAL_MARGIN);
+	return _(a V2LESS bHigh) && _(a V2GREAT bLow);
 }
 
 int32_t vec2WindingCompare(Vec2 a, Vec2 b, Vec2 centre, int32_t fallBack) {

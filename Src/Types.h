@@ -3,6 +3,8 @@
 #include <Mesh.h>
 #include <RUVM.h>
 
+#define FLOAT_EQUAL_MARGIN .0001f
+
 typedef RuvmVec2 Vec2;
 typedef RuvmVec3 Vec3;
 
@@ -137,7 +139,6 @@ typedef struct EdgeTable {
 	int32_t baseVert;
 	int8_t keepBaseLoop;
 	int32_t job;
-	int8_t baseEdgeSign;
 	int32_t loopIndex;
 } EdgeTable;
 
@@ -396,6 +397,7 @@ Vec3 vec3Subtract(Vec3 a, Vec3 b);
 void vec3AddEqual(Vec3 *pA, Vec3 b);
 int32_t vec3GreaterThan(Vec3 a, Vec3 b);
 int32_t vec3LessThan(Vec3 a, Vec3 b);
+int32_t vec3AproxEqual(Vec3 a, Vec3 b);
 Vec3 vec3Lerp(Vec3 a, Vec3 b, float alpha);
 Vec3 vec3Cross(Vec3 a, Vec3 b);
 Vec3 vec3UnitFromPoints(Vec3 a, Vec3 b);
@@ -428,6 +430,7 @@ int32_t vec2LessThanScalar(Vec2 a, float b);
 int32_t vec2LessThanEqualTo(Vec2 a, Vec2 b);
 int32_t vec2NotEqual(Vec2 a, Vec2 b);
 int32_t vec2Equal(Vec2 a, Vec2 b);
+int32_t vec2AproxEqual(Vec2 a, Vec2 b);
 int32_t vec2WindingCompare(Vec2 a, Vec2 b, Vec2 centre, int32_t fallBack);
 
 float customFloor(float a);
@@ -1118,7 +1121,7 @@ void blendAttribs(RuvmAttrib *pDest, int32_t iDest, RuvmAttrib *pA, int32_t iA,
 #define V3GREAT ,3GreaterThan,
 #define V3LESS ,3LessThan,
 #define V3CROSS ,3Cross,
-#define V3APXEQL ,3ApproxEqual,
+#define V3APROXEQL ,3AproxEqual,
 #define V3MULM3X3 ,3MultiplyMat3x3,
 
 #define V2MUL ,2Multiply,
@@ -1145,6 +1148,7 @@ void blendAttribs(RuvmAttrib *pDest, int32_t iDest, RuvmAttrib *pA, int32_t iA,
 #define V2LESSEQL ,2LessThanEqualTo,
 #define V2NOTEQL ,2NotEqual,
 #define V2EQL ,2Equal,
+#define V2APROXEQL ,2AproxEqual,
 
 #define INFIX(a,o,b) vec##o((a),(b))
 #define _(a) INFIX(a)
