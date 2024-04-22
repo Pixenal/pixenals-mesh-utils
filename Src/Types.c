@@ -385,6 +385,10 @@ Vec3 vec3Normalize(Vec3 a) {
 	return _(a V3DIVS magnitude);
 }
 
+float vec3Dot(Vec3 a, Vec3 b) {
+	return a.x * b.x + a.y * b.y + a.z * b.z;
+}
+
 Vec2 vec2Abs(Vec2 a) {
 	if (a.x < .0f) {
 		a.x *= -1.0f;
@@ -562,6 +566,46 @@ Mat2x2 mat2x2Invert(Mat2x2 a) {
 	float determinate = mat2x2Determinate(a);
 	Mat2x2 inverse = mat2x2Adjugate(a);
 	mat2x2MultiplyEqualScalar(&inverse, 1.0f / determinate);
+	return inverse;
+}
+
+float mat3x3Determinate(Mat3x3 *pA) {
+	float aDet = pA->d[1][1] * pA->d[2][2] - pA->d[2][1] * pA->d[1][2];
+	float bDet = pA->d[0][1] * pA->d[2][2] - pA->d[2][1] * pA->d[0][2];
+	float cDet = pA->d[0][1] * pA->d[1][2] - pA->d[1][1] * pA->d[0][2];
+	return pA->d[0][0] * aDet - pA->d[1][0] * bDet + pA->d[2][0] * cDet;
+}
+
+Mat3x3 mat3x3Adjugate(Mat3x3 *pA) {
+	Mat3x3 c;
+	c.d[0][0] = pA->d[1][1] * pA->d[2][2] - pA->d[2][1] * pA->d[1][2];
+	c.d[0][1] = pA->d[0][1] * pA->d[2][2] - pA->d[2][1] * pA->d[0][2];
+	c.d[0][2] = pA->d[0][1] * pA->d[1][2] - pA->d[1][1] * pA->d[0][2];
+	c.d[1][0] = pA->d[1][0] * pA->d[2][2] - pA->d[2][0] * pA->d[1][2];
+	c.d[1][1] = pA->d[0][0] * pA->d[2][2] - pA->d[2][0] * pA->d[0][2];
+	c.d[1][2] = pA->d[0][0] * pA->d[1][2] - pA->d[1][0] * pA->d[0][2];
+	c.d[2][0] = pA->d[1][0] * pA->d[2][1] - pA->d[2][0] * pA->d[1][1];
+	c.d[2][1] = pA->d[0][0] * pA->d[2][1] - pA->d[2][0] * pA->d[0][1];
+	c.d[2][2] = pA->d[0][0] * pA->d[1][1] - pA->d[1][0] * pA->d[0][1];
+	c.d[1][0] *= -1.0f;
+	c.d[0][1] *= -1.0f;
+	c.d[2][1] *= -1.0f;
+	c.d[1][2] *= -1.0f;
+	return c;
+}
+
+void mat3x3MultiplyEqualScalar(Mat3x3 *pA, float b) {
+	for (int32_t i = 0; i < 3; ++i) {
+		for (int32_t j = 0; j < 3; ++j) {
+			pA->d[i][j] *= b;
+		}
+	}
+}
+
+Mat3x3 mat3x3Invert(Mat3x3 *pA) {
+	float determinate = mat3x3Determinate(pA);
+	Mat3x3 inverse = mat3x3Adjugate(pA);
+	mat3x3MultiplyEqualScalar(&inverse, 1.0f / determinate);
 	return inverse;
 }
 

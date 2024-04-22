@@ -140,6 +140,7 @@ typedef struct EdgeTable {
 	int8_t keepBaseLoop;
 	int32_t job;
 	int32_t loopIndex;
+	int32_t loop;
 } EdgeTable;
 
 typedef struct RealEdgeTable {
@@ -332,9 +333,8 @@ typedef struct {
 } DebugAndPerfVars;
 
 typedef struct {
-	Vec2 uv[3];
-	Vec3 xyz[3];
-	Vec3 *pNormals;
+	Vec2 uv[4];
+	Vec3 xyz[4];
 } BaseTriVerts;
 
 Vec364 vec364MultiplyScalar(Vec364 a, double b);
@@ -403,6 +403,7 @@ Vec3 vec3Cross(Vec3 a, Vec3 b);
 Vec3 vec3UnitFromPoints(Vec3 a, Vec3 b);
 Vec3 vec3MultiplyMat3x3(Vec3 a, Mat3x3 *pB);
 Vec3 vec3Normalize(Vec3 a);
+float vec3Dot(Vec3 a, Vec3 b);
 
 Vec2 vec2Abs(Vec2 a);
 Vec2 vec2Multiply(Vec2 a, Vec2 b);
@@ -449,6 +450,8 @@ void mat2x2MultiplyEqualScalar(Mat2x2 *pA, float b);
 Mat2x2 mat2x2Invert(Mat2x2 a);
 
 Mat2x3 mat2x2MultiplyMat2x3(Mat2x2 a, Mat2x3 b);
+
+Mat3x3 mat3x3Invert(Mat3x3 *pA);
 
 uint32_t ruvmFnvHash(uint8_t *value, int32_t valueSize, uint32_t size);
 
@@ -1122,6 +1125,7 @@ void blendAttribs(RuvmAttrib *pDest, int32_t iDest, RuvmAttrib *pA, int32_t iA,
 #define V3LESS ,3LessThan,
 #define V3CROSS ,3Cross,
 #define V3APROXEQL ,3AproxEqual,
+#define V3DOT ,3Dot,
 #define V3MULM3X3 ,3MultiplyMat3x3,
 
 #define V2MUL ,2Multiply,
