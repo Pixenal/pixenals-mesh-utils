@@ -451,6 +451,8 @@ Mat2x2 mat2x2Invert(Mat2x2 a);
 
 Mat2x3 mat2x2MultiplyMat2x3(Mat2x2 a, Mat2x3 b);
 
+Mat3x3 mat3x3FromVec3(Vec3 a, Vec3 b, Vec3 c);
+
 Mat3x3 mat3x3Invert(Mat3x3 *pA);
 
 uint32_t ruvmFnvHash(uint8_t *value, int32_t valueSize, uint32_t size);

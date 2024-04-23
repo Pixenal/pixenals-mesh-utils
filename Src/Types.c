@@ -602,6 +602,20 @@ void mat3x3MultiplyEqualScalar(Mat3x3 *pA, float b) {
 	}
 }
 
+Mat3x3 mat3x3FromVec3(Vec3 a, Vec3 b, Vec3 c) {
+	Mat3x3 mat;
+	mat.d[0][0] = a.x;
+	mat.d[0][1] = a.y;
+	mat.d[0][2] = a.z;
+	mat.d[1][0] = b.x;
+	mat.d[1][1] = b.y;
+	mat.d[1][2] = b.z;
+	mat.d[2][0] = c.x;
+	mat.d[2][1] = c.y;
+	mat.d[2][2] = c.z;
+	return mat;
+}
+
 Mat3x3 mat3x3Invert(Mat3x3 *pA) {
 	float determinate = mat3x3Determinate(pA);
 	Mat3x3 inverse = mat3x3Adjugate(pA);
