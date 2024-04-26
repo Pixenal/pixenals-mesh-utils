@@ -110,22 +110,22 @@ typedef struct {
 
 typedef struct BoundaryVert{
 	struct BoundaryVert *pNext;
+	int64_t baseLoop : 22;
+	int64_t isRuvm : 11;
+	int64_t seam : 1;
+	int64_t sort : 18;
+	int64_t onLine : 11;
+	int64_t hasPreservedEdge : 1;
+
 	int32_t faceIndex;
-	int32_t tile;
-	int8_t firstVert;
-	int8_t lastVert;
+	//int32_t type;
 	int32_t face;
-	int8_t type;
-	int32_t job;
-	int8_t hasPreservedEdge;
 	int32_t baseFace;
-	int8_t baseLoops[8];
-	int8_t onLine;
-	int8_t isRuvm;
-	int8_t temp;
-	int8_t seam;
-	int8_t seams;
-	int16_t fSorts[8];
+
+	int32_t tile : 24;
+	int32_t job : 8;
+	//int8_t seams;
+	//int16_t fSorts[11];
 } BoundaryVert;
 
 typedef struct EdgeTable {
@@ -238,7 +238,7 @@ typedef struct OnLineTable {
 } OnLineTable;
 
 typedef struct {
-	LoopBuffer buf[12];
+	LoopBuffer buf[11];
 	int32_t size;
 } LoopBufferWrap;
 
