@@ -110,22 +110,19 @@ typedef struct {
 
 typedef struct BoundaryVert{
 	struct BoundaryVert *pNext;
-	int64_t baseLoop : 22;
-	int64_t isRuvm : 11;
-	int64_t seam : 1;
-	int64_t sort : 18;
-	int64_t onLine : 11;
-	int64_t hasPreservedEdge : 1;
+	uint64_t baseLoop : 22;
+	uint64_t ruvmLoop : 33;
+	uint64_t job : 8;
+	uint64_t seam : 1;
+
+	uint64_t tile : 24;
+	uint64_t isRuvm : 11;
+	uint64_t onLine : 11;
+	uint64_t hasPreservedEdge : 1;
 
 	int32_t faceIndex;
-	//int32_t type;
 	int32_t face;
 	int32_t baseFace;
-
-	int32_t tile : 24;
-	int32_t job : 8;
-	//int8_t seams;
-	//int16_t fSorts[11];
 } BoundaryVert;
 
 typedef struct EdgeTable {
@@ -213,20 +210,16 @@ typedef struct {
 
 typedef struct {
 	Vec3 loop;
-	int32_t index;
-	int32_t sort;
-	int32_t fSort;
-	int32_t baseLoop;
-	int32_t refEdge;
-	Vec2 uv;
-	int8_t onLine;
-	int32_t onLineBase;
-	int8_t isBaseLoop;
-	int8_t seam;
-	int8_t preserve;
 	Vec3 normal;
-	Vec3 bc; //bearycentric coords
-	int32_t triLoops[3];
+	Vec3 bc; //barycentric coords
+	Vec2 uv;
+	int8_t baseLoop;
+	uint8_t ruvmLoop : 4;
+	uint8_t onLine : 1;
+	uint8_t isBaseLoop : 1;
+	uint8_t preserve : 1;
+	uint8_t isRuvm : 1;
+	int8_t triLoops[3];
 } LoopBuffer;
 
 typedef struct OnLineTable {
