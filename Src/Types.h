@@ -433,7 +433,7 @@ Vec3 cartesianToBarycentric(Vec2 *pTri, Vec3 *pPoint);
 Vec3 barycentricToCartesian(Vec3 *pTri, Vec3 *pPoint);
 
 int32_t checkFaceIsInBounds(Vec2 min, Vec2 max, FaceInfo face, Mesh *pMesh);
-void getFaceBounds(FaceBounds *pBounds, RuvmAttrib *pUvs, FaceInfo faceInfo);
+void getFaceBounds(FaceBounds *pBounds, RuvmVec2 *pUvs, FaceInfo faceInfo);
 int32_t checkIfEdgeIsSeam(int32_t edgeIndex, FaceInfo face, int32_t loop,
                           Mesh *pMesh, EdgeVerts *pEdgeVerts);
 

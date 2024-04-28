@@ -6,9 +6,13 @@
 
 typedef struct {
 	RuvmMesh mesh;
-	RuvmAttrib *pVerts;
-	RuvmAttrib *pUvs;
-	RuvmAttrib *pNormals;
+	RuvmAttrib *pVertAttrib;
+	RuvmAttrib *pUvAttrib;
+	RuvmAttrib *pNormalAttrib;
+	RuvmAttrib *pEdgePreserveAttrib;
+	RuvmVec3 *pVerts;
+	RuvmVec3 *pNormals;
+	RuvmVec2 *pUvs;
 	int32_t boundaryVertSize;
 	int32_t boundaryLoopSize;
 	int32_t boundaryEdgeSize;
@@ -17,8 +21,12 @@ typedef struct {
 
 typedef struct {
 	RuvmMesh mesh;
-	RuvmAttrib *pVerts;
-	RuvmAttrib *pUvs;
-	RuvmAttrib *pNormals;
-	RuvmAttrib *pEdgePreserve;
+	RuvmAttrib *pVertAttrib;
+	RuvmAttrib *pUvAttrib;
+	RuvmAttrib *pNormalAttrib;
+	RuvmAttrib *pEdgePreserveAttrib;
+	RuvmVec3 *pVerts;
+	RuvmVec3 *pNormals;
+	RuvmVec2 *pUvs;
+	int8_t *pEdgePreserve;
 } Mesh;

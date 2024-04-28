@@ -704,7 +704,7 @@ int32_t checkFaceIsInBounds(Vec2 min, Vec2 max, FaceInfo face, Mesh *pMesh) {
 	faceMax.x = faceMax.y = 0;
 	for (int32_t i = 0; i < face.size; ++i) {
 		int32_t vertIndex = pMesh->mesh.pLoops[face.start + i];
-		Vec3 *pVert = attribAsV3(pMesh->pVerts, vertIndex);
+		Vec3 *pVert = pMesh->pVerts + vertIndex;
 		if (pVert->x < faceMin.x) {
 			faceMin.x = pVert->x;
 		}
@@ -738,11 +738,11 @@ uint32_t ruvmFnvHash(uint8_t *value, int32_t valueSize, uint32_t size) {
 	return hash;
 }
 
-void getFaceBounds(FaceBounds *pBounds, RuvmAttrib *pUvs, FaceInfo faceInfo) {
+void getFaceBounds(FaceBounds *pBounds, RuvmVec2 *pUvs, FaceInfo faceInfo) {
 	pBounds->fMin.x = pBounds->fMin.y = FLT_MAX;
 	pBounds->fMax.x = pBounds->fMax.y = .0f;
 	for (int32_t i = 0; i < faceInfo.size; ++i) {
-		Vec2 *uv = attribAsV2(pUvs, faceInfo.start + i);
+		Vec2 *uv = pUvs + faceInfo.start + i;
 		pBounds->fMin.x = uv->x < pBounds->fMin.x ? uv->x : pBounds->fMin.x;
 		pBounds->fMin.y = uv->y < pBounds->fMin.y ? uv->y : pBounds->fMin.y;
 		pBounds->fMax.x = uv->x > pBounds->fMax.x ? uv->x : pBounds->fMax.x;
@@ -761,8 +761,8 @@ int32_t checkIfEdgeIsSeam(int32_t edgeIndex, FaceInfo face, int32_t loop,
 		int32_t otherLoop = pVerts[whichLoop];
 		int32_t iNext = (loop + 1) % face.size;
 		int32_t nextBaseLoop = face.start + iNext;
-		Vec2 uv = *attribAsV2(pMesh->pUvs, nextBaseLoop);
-		Vec2 uvOther = *attribAsV2(pMesh->pUvs, otherLoop);
+		Vec2 uv = pMesh->pUvs[nextBaseLoop];
+		Vec2 uvOther = pMesh->pUvs[otherLoop];
 		int32_t isSeam = _(uv V2NOTEQL uvOther);
 		if (isSeam) {
 			return 1;
@@ -772,7 +772,7 @@ int32_t checkIfEdgeIsSeam(int32_t edgeIndex, FaceInfo face, int32_t loop,
 }
 
 int32_t checkIfEdgeIsPreserve(Mesh* pMesh, int32_t edge) {
-	return pMesh->pEdgePreserve ? *attribAsI32(pMesh->pEdgePreserve, edge) : 0;
+	return pMesh->pEdgePreserve ? pMesh->pEdgePreserve[edge] : 0;
 }
 
 static int32_t getOtherVert(int32_t i, int32_t faceSize, int8_t *pVertsRemoved) {
@@ -812,9 +812,9 @@ FaceTriangulated triangulateFace(RuvmAllocator alloc, FaceInfo baseFace, Mesh *p
 			}
 			int32_t ib = getOtherVert(i, baseFace.size, pVertsRemoved);
 			int32_t ic = getOtherVert(ib, baseFace.size, pVertsRemoved);
-			Vec2 uva = *attribAsV2(pMesh->pUvs, baseFace.start + i);
-			Vec2 uvb = *attribAsV2(pMesh->pUvs, baseFace.start + ib);
-			Vec2 uvc = *attribAsV2(pMesh->pUvs, baseFace.start + ic);
+			Vec2 uva = pMesh->pUvs[baseFace.start + i];
+			Vec2 uvb = pMesh->pUvs[baseFace.start + ib];
+			Vec2 uvc = pMesh->pUvs[baseFace.start + ic];
 			int32_t windingDir = vec2WindingCompare(uva, uvb, uvc, 0);
 			if (!windingDir) {
 				continue;
