@@ -13,10 +13,10 @@ typedef struct {
 	Ruvm_V3_F32 *pVerts;
 	Ruvm_V3_F32 *pNormals;
 	Ruvm_V2_F32 *pUvs;
-	int32_t boundaryVertSize;
-	int32_t boundaryLoopSize;
-	int32_t boundaryEdgeSize;
-	int32_t boundaryFaceSize;
+	int32_t borderVertCount;
+	int32_t borderLoopCount;
+	int32_t borderEdgeCount;
+	int32_t borderFaceCount;
 } BufMesh;
 
 typedef struct {

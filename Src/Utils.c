@@ -61,10 +61,14 @@ void getFaceBounds(FaceBounds *pBounds, V2_F32 *pUvs, FaceInfo faceInfo) {
 	pBounds->fMax.d[0] = pBounds->fMax.d[1] = .0f;
 	for (int32_t i = 0; i < faceInfo.size; ++i) {
 		V2_F32 *uv = pUvs + faceInfo.start + i;
-		pBounds->fMin.d[0] = uv->d[0] < pBounds->fMin.d[0] ? uv->d[0] : pBounds->fMin.d[0];
-		pBounds->fMin.d[1] = uv->d[1] < pBounds->fMin.d[1] ? uv->d[1] : pBounds->fMin.d[1];
-		pBounds->fMax.d[0] = uv->d[0] > pBounds->fMax.d[0] ? uv->d[0] : pBounds->fMax.d[0];
-		pBounds->fMax.d[1] = uv->d[1] > pBounds->fMax.d[1] ? uv->d[1] : pBounds->fMax.d[1];
+		pBounds->fMin.d[0] = uv->d[0] < pBounds->fMin.d[0] ?
+			uv->d[0] : pBounds->fMin.d[0];
+		pBounds->fMin.d[1] = uv->d[1] < pBounds->fMin.d[1] ?
+			uv->d[1] : pBounds->fMin.d[1];
+		pBounds->fMax.d[0] = uv->d[0] > pBounds->fMax.d[0] ?
+			uv->d[0] : pBounds->fMax.d[0];
+		pBounds->fMax.d[1] = uv->d[1] > pBounds->fMax.d[1] ?
+			uv->d[1] : pBounds->fMax.d[1];
 	}
 }
 
@@ -93,7 +97,8 @@ int32_t checkIfEdgeIsPreserve(Mesh* pMesh, int32_t edge) {
 	return pMesh->pEdgePreserve ? pMesh->pEdgePreserve[edge] : 0;
 }
 
-static int32_t getOtherVert(int32_t i, int32_t faceSize, int8_t *pVertsRemoved) {
+static
+int32_t getOtherVert(int32_t i, int32_t faceSize, int8_t *pVertsRemoved) {
 	int32_t ib = (i + 1) % faceSize;
 	//search from i + 1 to facesize, and if non found,
 	//then run again from 0 to facesize. If non found then,
@@ -111,7 +116,7 @@ static int32_t getOtherVert(int32_t i, int32_t faceSize, int8_t *pVertsRemoved) 
 	return -1;
 }
 
-FaceTriangulated triangulateFace(RuvmAllocator alloc, FaceInfo baseFace, Mesh *pMesh) {
+FaceTriangulated triangulateFace(RuvmAlloc alloc, FaceInfo baseFace, Mesh *pMesh) {
 	FaceTriangulated outMesh = {0};
 	int32_t triCount = baseFace.size - 2;
 	outMesh.pTris = alloc.pMalloc(sizeof(int32_t) * triCount);
@@ -138,7 +143,8 @@ FaceTriangulated triangulateFace(RuvmAllocator alloc, FaceInfo baseFace, Mesh *p
 				continue;
 			}
 			V2_F32 vDist = v2Abs(_(uvc V2SUB uva));
-			float dist = sqrt(vDist.d[0] * vDist.d[0] + vDist.d[1] * vDist.d[1]); //distance
+			float dist =
+				sqrt(vDist.d[0] * vDist.d[0] + vDist.d[1] * vDist.d[1]);
 			if (dist < minDist) {
 				minDist = dist;
 				nextEar[0] = i;
