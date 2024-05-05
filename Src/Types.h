@@ -150,58 +150,56 @@ typedef struct BoundaryDir {
 } BoundaryDir;
 
 typedef struct {
-	int32_t maxLoopSize;
-	RuvmAllocator alloc;
-	RuvmMap pMap;
-	int32_t id;
-	int32_t averageVertAdjDepth;
-	int32_t *pBoundaryFaceStart;
-	BoundaryDir *pBoundaryBuffer;
-	int32_t boundaryBufferSize;
-	int32_t totalBoundaryFaces;
-	int32_t totalBoundaryEdges;
-	BufMesh bufMesh;
-	int32_t bufferSize;
-	int32_t totalVerts;
-	int32_t totalLoops;
-	int32_t totalEdges;
-	int32_t totalFaces;
-	int32_t loopBufferSize;
-	int32_t *pBoundaryVerts;
-	int32_t boundaryVertSize;
-	Mesh mesh;
-	int32_t vertBase;
-	int64_t averageRuvmFacesPerFace;
-	EdgeVerts *pEdgeVerts;
-	RuvmCommonAttribList *pCommonAttribList;
-} ThreadArg;
+	BoundaryDir *pTable;
+	int32_t size;
+} BoundaryTable;
 
 typedef struct {
-	RuvmContext pContext;
+	VertAdj *pRuvmVertAdj;
+	MeshBufEdgeTable *pEdgeTable;
+	uint32_t vertAdjSize;
+	int32_t edgeTableSize;
+} MappingTables;
+
+typedef struct {
 	RuvmMap pMap;
+	BufMesh bufMesh;
+	Mesh mesh;
+	RuvmAllocator alloc;
+	MappingTables mTables;
+	Mat3x3 tbn;
+	RuvmCommonAttribList *pCommonAttribList;
+	BoundaryTable boundsTable;
+	EdgeVerts *pEdgeVerts;
+	int8_t *pInVertTable;
+	int32_t id;
 	int32_t bufferSize;
 	int32_t loopBufferSize;
-	void *pMutex;
-	int32_t id;
-	int32_t *pJobsCompleted;
-	BoundaryDir *pBoundaryBuffer;
-	int32_t boundaryBufferSize;
-	int32_t averageVertAdjDepth;
-	Mesh mesh;
-	int64_t averageRuvmFacesPerFace;
-	BufMesh bufMesh;
+} MappingJobVars;
+
+typedef struct {
 	int32_t vertBase;
 	int32_t edgeBase;
+} JobBases;
+
+typedef struct {
+	RuvmMap pMap;
+	Mesh mesh;
+	BufMesh bufMesh;
+	RuvmContext pContext;
+	BoundaryTable boundsTable;
+	EdgeVerts *pEdgeVerts;
+	RuvmCommonAttribList *pCommonAttribList;
+	int32_t *pJobsCompleted;
+	void *pMutex;
+	int8_t *pInVertTable;
+	int32_t id;
 	int32_t totalBoundaryFaces;
 	int32_t totalBoundaryEdges;
 	int32_t totalVerts;
 	int32_t totalLoops;
 	int32_t totalEdges;
 	int32_t totalFaces;
-	int8_t *pInVertTable;
-	int8_t *pVertSeamTable;
-	EdgeVerts *pEdgeVerts;
-	RuvmCommonAttribList *pCommonAttribList;
 } SendOffArgs;
 
 typedef struct {
@@ -238,4 +236,3 @@ typedef struct {
 	V2_F32 uv[4];
 	V3_F32 xyz[4];
 } BaseTriVerts;
-
