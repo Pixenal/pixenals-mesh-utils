@@ -1,6 +1,27 @@
 #pragma once
 
-#include <Types.h>
+#include <RuvmInternal.h>
+#include <MathUtils.h>
+
+typedef struct {
+	int32_t triCount;
+	int32_t *pTris;
+	int32_t loopCount;
+	int32_t *pLoops;
+} FaceTriangulated;
+
+typedef struct {
+	int32_t start;
+	int32_t end;
+	int32_t size;
+	int32_t index;
+} FaceInfo;
+
+typedef struct {
+	V2_I32 min, max;
+	V2_F32 fMin, fMax;
+	V2_F32 fMinSmall, fMaxSmall;
+} FaceBounds;
 
 int32_t checkFaceIsInBounds(V2_F32 min, V2_F32 max, FaceInfo face, Mesh *pMesh);
 void getFaceBounds(FaceBounds *pBounds, V2_F32 *pUvs, FaceInfo faceInfo);
