@@ -3,6 +3,7 @@
 
 #include <Utils.h>
 #include <MathUtils.h>
+#include <Context.h>
 
 int32_t checkFaceIsInBounds(V2_F32 min, V2_F32 max, FaceInfo face, Mesh *pMesh) {
 		/*
@@ -164,4 +165,50 @@ FaceTriangulated triangulateFace(RuvmAlloc alloc, FaceInfo baseFace, Mesh *pMesh
 	} while (loopsLeft >= 3);
 	alloc.pFree(pVertsRemoved);
 	return outMesh;
+}
+
+V3_F32 getBarycentricInFace(V2_F32 *pTriUvs, int8_t *pTriLoops,
+                          int32_t loopCount, V2_F32 vert) {
+	V3_F32 vertBc = cartesianToBarycentric(pTriUvs, &vert);
+	if (loopCount == 4 && vertBc.d[1] < 0) {
+		//base face is a quad, and vert is outside first tri,
+		//so use the second tri
+		
+		//regarding the above condition,
+		//because triangulation uses ear clipping,
+		//and ngons never hit this block of code,
+		//we only need to compare y. As it will always
+		//be the point opposite the dividing edge in the quad.
+		//This avoids us needing to worry about cases where verts
+		//are slightly outside of the quad, by a margin of error.
+		//A vert will always end up in one or the other tri.
+		V2_F32 triBuf[3] =
+			{pTriUvs[2], pTriUvs[3], pTriUvs[0]};
+		vertBc = cartesianToBarycentric(triBuf, &vert);
+		pTriLoops[0] = 2;
+		pTriLoops[1] = 3;
+	}
+	else {
+		for (int32_t k = 0; k < 3; ++k) {
+			pTriLoops[k] = k;
+		}
+	}
+	return vertBc;
+}
+
+void waitForJobs(RuvmContext pContext, int32_t *pJobsCompleted, void *pMutex) {
+	int32_t waiting;
+	do  {
+		void (*pJob)(void *) = NULL;
+		void *pArgs = NULL;
+		pContext->threadPool.pJobStackGetJob(pContext->pThreadPoolHandle,
+		                                     &pJob, &pArgs);
+		if (pJob) {
+			pJob(pArgs);
+		}
+		pContext->threadPool.pMutexLock(pContext->pThreadPoolHandle, pMutex);
+		waiting = *pJobsCompleted < pContext->threadCount;
+		pContext->threadPool.pMutexUnlock(pContext->pThreadPoolHandle, pMutex);
+	} while(waiting);
+	pContext->threadPool.pMutexDestroy(pContext->pThreadPoolHandle, pMutex);
 }

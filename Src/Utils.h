@@ -32,3 +32,6 @@ uint32_t ruvmFnvHash(uint8_t *value, int32_t valueSize, uint32_t size);
 
 int32_t checkIfEdgeIsPreserve(Mesh* pMesh, int32_t edge);
 FaceTriangulated triangulateFace(RuvmAlloc alloc, FaceInfo baseFace, Mesh *pMesh);
+V3_F32 getBarycentricInFace(V2_F32 *pTriUvs, int8_t *pTriLoops,
+                            int32_t loopCount, V2_F32 vert);
+void waitForJobs(RuvmContext pContext, int32_t *pJobsCompleted, void *pMutex);
