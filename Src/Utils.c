@@ -73,6 +73,22 @@ void getFaceBounds(FaceBounds *pBounds, V2_F32 *pUvs, FaceInfo faceInfo) {
 	}
 }
 
+void getFaceBoundsVert(FaceBounds* pBounds, V3_F32* pVerts, FaceInfo faceInfo) {
+	pBounds->fMin.d[0] = pBounds->fMin.d[1] = FLT_MAX;
+	pBounds->fMax.d[0] = pBounds->fMax.d[1] = .0f;
+	for (int32_t i = 0; i < faceInfo.size; ++i) {
+		V3_F32* vert = pVerts + faceInfo.start + i;
+		pBounds->fMin.d[0] = vert->d[0] < pBounds->fMin.d[0] ?
+			vert->d[0] : pBounds->fMin.d[0];
+		pBounds->fMin.d[1] = vert->d[1] < pBounds->fMin.d[1] ?
+			vert->d[1] : pBounds->fMin.d[1];
+		pBounds->fMax.d[0] = vert->d[0] > pBounds->fMax.d[0] ?
+			vert->d[0] : pBounds->fMax.d[0];
+		pBounds->fMax.d[1] = vert->d[1] > pBounds->fMax.d[1] ?
+			vert->d[1] : pBounds->fMax.d[1];
+	}
+}
+
 int32_t checkIfEdgeIsSeam(int32_t edgeIndex, FaceInfo face, int32_t loop,
                           Mesh *pMesh, EdgeVerts *pEdgeVerts) {
 	int32_t *pVerts = pEdgeVerts[edgeIndex].verts;
@@ -117,7 +133,7 @@ int32_t getOtherVert(int32_t i, int32_t faceSize, int8_t *pVertsRemoved) {
 	return -1;
 }
 
-FaceTriangulated triangulateFace(RuvmAlloc alloc, FaceInfo baseFace, Mesh *pMesh) {
+FaceTriangulated triangulateFace(RuvmAlloc alloc, FaceInfo baseFace, Mesh *pMesh, int32_t useUvs) {
 	FaceTriangulated outMesh = {0};
 	int32_t triCount = baseFace.size - 2;
 	outMesh.pTris = alloc.pMalloc(sizeof(int32_t) * triCount);
@@ -129,21 +145,31 @@ FaceTriangulated triangulateFace(RuvmAlloc alloc, FaceInfo baseFace, Mesh *pMesh
 	do {
 		//loop through ears, and find one with shortest edge
 		float minDist = FLT_MAX; //min distance
-		int32_t nextEar[3];
+		int32_t nextEar[3] = {0};
 		for (int32_t i = 0; i < baseFace.size; ++i) {
 			if (pVertsRemoved[i]) {
 				continue;
 			}
 			int32_t ib = getOtherVert(i, baseFace.size, pVertsRemoved);
 			int32_t ic = getOtherVert(ib, baseFace.size, pVertsRemoved);
-			V2_F32 uva = pMesh->pUvs[baseFace.start + i];
-			V2_F32 uvb = pMesh->pUvs[baseFace.start + ib];
-			V2_F32 uvc = pMesh->pUvs[baseFace.start + ic];
-			int32_t windingDir = v2WindingCompare(uva, uvb, uvc, 0);
+			V2_F32 verta;
+			V2_F32 vertb;
+			V2_F32 vertc;
+			if (useUvs) {
+				verta = pMesh->pUvs[baseFace.start + i];
+				vertb = pMesh->pUvs[baseFace.start + ib];
+				vertc = pMesh->pUvs[baseFace.start + ic];
+			}
+			else {
+				verta = *(V2_F32 *)(pMesh->pVerts + pMesh->mesh.pLoops[baseFace.start + i]);
+				vertb = *(V2_F32 *)(pMesh->pVerts + pMesh->mesh.pLoops[baseFace.start + ib]);
+				vertc = *(V2_F32 *)(pMesh->pVerts + pMesh->mesh.pLoops[baseFace.start + ic]);
+			}
+			int32_t windingDir = v2WindingCompare(verta, vertb, vertc, 0);
 			if (!windingDir) {
 				continue;
 			}
-			V2_F32 vDist = v2Abs(_(uvc V2SUB uva));
+			V2_F32 vDist = v2Abs(_(vertc V2SUB verta));
 			float dist =
 				sqrt(vDist.d[0] * vDist.d[0] + vDist.d[1] * vDist.d[1]);
 			if (dist < minDist) {
