@@ -25,8 +25,10 @@ typedef struct {
 	RuvmAttrib *pUvAttrib;
 	RuvmAttrib *pNormalAttrib;
 	RuvmAttrib *pEdgePreserveAttrib;
+	RuvmAttrib *pEdgeReceiveAttrib;
 	Ruvm_V3_F32 *pVerts;
 	Ruvm_V3_F32 *pNormals;
 	Ruvm_V2_F32 *pUvs;
 	int8_t *pEdgePreserve;
+	int8_t *pEdgeReceive;
 } Mesh;

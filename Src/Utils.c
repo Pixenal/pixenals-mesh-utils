@@ -114,6 +114,10 @@ int32_t checkIfEdgeIsPreserve(Mesh* pMesh, int32_t edge) {
 	return pMesh->pEdgePreserve ? pMesh->pEdgePreserve[edge] : 0;
 }
 
+int32_t checkIfEdgeIsReceive(Mesh* pMesh, int32_t edge) {
+	return pMesh->pEdgeReceive ? pMesh->pEdgeReceive[edge] : 0;
+}
+
 static
 int32_t getOtherVert(int32_t i, int32_t faceSize, int8_t *pVertsRemoved) {
 	int32_t ib = (i + 1) % faceSize;
