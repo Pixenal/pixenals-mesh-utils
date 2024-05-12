@@ -137,7 +137,8 @@ int32_t getOtherVert(int32_t i, int32_t faceSize, int8_t *pVertsRemoved) {
 	return -1;
 }
 
-FaceTriangulated triangulateFace(RuvmAlloc alloc, FaceInfo baseFace, Mesh *pMesh, int32_t useUvs) {
+FaceTriangulated triangulateFace(RuvmAlloc alloc, FaceInfo baseFace, void *pVerts,
+                                 int32_t *pLoops, int32_t useUvs) {
 	FaceTriangulated outMesh = {0};
 	int32_t triCount = baseFace.size - 2;
 	outMesh.pTris = alloc.pMalloc(sizeof(int32_t) * triCount);
@@ -160,14 +161,16 @@ FaceTriangulated triangulateFace(RuvmAlloc alloc, FaceInfo baseFace, Mesh *pMesh
 			V2_F32 vertb;
 			V2_F32 vertc;
 			if (useUvs) {
-				verta = pMesh->pUvs[baseFace.start + i];
-				vertb = pMesh->pUvs[baseFace.start + ib];
-				vertc = pMesh->pUvs[baseFace.start + ic];
+				V2_F32 *pUvs = pVerts;
+				verta = pUvs[baseFace.start + i];
+				vertb = pUvs[baseFace.start + ib];
+				vertc = pUvs[baseFace.start + ic];
 			}
 			else {
-				verta = *(V2_F32 *)(pMesh->pVerts + pMesh->mesh.pLoops[baseFace.start + i]);
-				vertb = *(V2_F32 *)(pMesh->pVerts + pMesh->mesh.pLoops[baseFace.start + ib]);
-				vertc = *(V2_F32 *)(pMesh->pVerts + pMesh->mesh.pLoops[baseFace.start + ic]);
+				V3_F32 *pVertsCast = pVerts;
+				verta = *(V2_F32 *)(pVertsCast + pLoops[baseFace.start + i]);
+				vertb = *(V2_F32 *)(pVertsCast + pLoops[baseFace.start + ib]);
+				vertc = *(V2_F32 *)(pVertsCast + pLoops[baseFace.start + ic]);
 			}
 			int32_t windingDir = v2WindingCompare(verta, vertb, vertc, 0);
 			if (!windingDir) {
