@@ -172,8 +172,7 @@ FaceTriangulated triangulateFace(RuvmAlloc alloc, FaceInfo baseFace, void *pVert
 				vertb = *(V2_F32 *)(pVertsCast + pLoops[baseFace.start + ib]);
 				vertc = *(V2_F32 *)(pVertsCast + pLoops[baseFace.start + ic]);
 			}
-			int32_t windingDir = v2WindingCompare(verta, vertb, vertc, 0);
-			if (!windingDir) {
+			if (v2DegenerateTri(verta, vertb, vertc, .00001f)) {
 				continue;
 			}
 			V2_F32 vDist = v2Abs(_(vertc V2SUB verta));
