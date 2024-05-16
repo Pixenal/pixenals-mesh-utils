@@ -1,29 +1,22 @@
 #include <float.h>
 #include <math.h>
+#include <assert.h>
 
 #include <Utils.h>
 #include <MathUtils.h>
 #include <Context.h>
 
 int32_t checkFaceIsInBounds(V2_F32 min, V2_F32 max, FaceInfo face, Mesh *pMesh) {
-		/*
-		int32_t isInside = 0;
-		for (int32_t j = 0; j < face.size; ++j) {
-			int32_t vertIndex = pMesh->pLoops[face.start + j];
-			V2_F32 *vert = (V2_F32 *)(pMesh->pVerts + vertIndex);
-			if (_(*vert V2GREATEQL min) && _(*vert V2LESSEQL max)) {
-				isInside = 1;
-				break;
-			}
-		}
-		return isInside;
-		*/
+	assert(pMesh && pMesh->pVerts && pMesh->mesh.pLoops);
+	assert(face.size >= 3 && face.start >= 0 && face.end >= 0 && face.index >= 0);
+	assert(v2IsFinite(min) && v2IsFinite(max));
 	V2_F32 faceMin, faceMax;
 	faceMin.d[0] = faceMin.d[1] = FLT_MAX;
 	faceMax.d[0] = faceMax.d[1] = 0;
 	for (int32_t i = 0; i < face.size; ++i) {
 		int32_t vertIndex = pMesh->mesh.pLoops[face.start + i];
 		V3_F32 *pVert = pMesh->pVerts + vertIndex;
+		assert(pVert && v3IsFinite(*pVert));
 		if (pVert->d[0] < faceMin.d[0]) {
 			faceMin.d[0] = pVert->d[0];
 		}
@@ -37,6 +30,8 @@ int32_t checkFaceIsInBounds(V2_F32 min, V2_F32 max, FaceInfo face, Mesh *pMesh) 
 			faceMax.d[1] = pVert->d[1];
 		}
 	}
+	//Faces can be flat (they may be facing sideways in a map for instance)
+	assert(_(faceMax V2GREATEQL faceMin));
 	V2_I32 inside;
 	inside.d[0] = (faceMin.d[0] > min.d[0] && faceMin.d[0] < max.d[0]) ||
 	           (faceMax.d[0] > min.d[0] && faceMax.d[0] < max.d[0]) ||
@@ -48,20 +43,26 @@ int32_t checkFaceIsInBounds(V2_F32 min, V2_F32 max, FaceInfo face, Mesh *pMesh) 
 }
 
 uint32_t ruvmFnvHash(uint8_t *value, int32_t valueSize, uint32_t size) {
+	assert(value && valueSize > 0 && size > 0);
 	uint32_t hash = 2166136261;
 	for (int32_t i = 0; i < valueSize; ++i) {
 		hash ^= value[i];
 		hash *= 16777619;
 	}
 	hash %= size;
+	assert(hash >= 0);
 	return hash;
 }
 
 void getFaceBounds(FaceBounds *pBounds, V2_F32 *pUvs, FaceInfo faceInfo) {
+	assert(pBounds && pUvs && v2IsFinite(*pUvs));
+	assert(faceInfo.size >= 3 && faceInfo.start >= 0);
+	assert(faceInfo.end >= 0 && faceInfo.index >= 0);
 	pBounds->fMin.d[0] = pBounds->fMin.d[1] = FLT_MAX;
 	pBounds->fMax.d[0] = pBounds->fMax.d[1] = .0f;
 	for (int32_t i = 0; i < faceInfo.size; ++i) {
 		V2_F32 *uv = pUvs + faceInfo.start + i;
+		assert(uv && v2IsFinite(*uv));
 		pBounds->fMin.d[0] = uv->d[0] < pBounds->fMin.d[0] ?
 			uv->d[0] : pBounds->fMin.d[0];
 		pBounds->fMin.d[1] = uv->d[1] < pBounds->fMin.d[1] ?
@@ -71,13 +72,20 @@ void getFaceBounds(FaceBounds *pBounds, V2_F32 *pUvs, FaceInfo faceInfo) {
 		pBounds->fMax.d[1] = uv->d[1] > pBounds->fMax.d[1] ?
 			uv->d[1] : pBounds->fMax.d[1];
 	}
+	//Faces can be flat (they may be facing sideways in a map for instance)
+	assert(_(pBounds->fMax V2GREATEQL pBounds->fMin));
 }
 
 void getFaceBoundsVert(FaceBounds* pBounds, V3_F32* pVerts, FaceInfo faceInfo) {
+	assert(pBounds && v2IsFinite(pBounds->fMin) && v2IsFinite(pBounds->fMax));
+	assert(pVerts && v3IsFinite(*pVerts));
+	assert(faceInfo.size >= 3 && faceInfo.start >= 0);
+	assert(faceInfo.end >= 0 && faceInfo.index >= 0);
 	pBounds->fMin.d[0] = pBounds->fMin.d[1] = FLT_MAX;
 	pBounds->fMax.d[0] = pBounds->fMax.d[1] = .0f;
 	for (int32_t i = 0; i < faceInfo.size; ++i) {
 		V3_F32* vert = pVerts + faceInfo.start + i;
+		assert(vert && v3IsFinite(*vert));
 		pBounds->fMin.d[0] = vert->d[0] < pBounds->fMin.d[0] ?
 			vert->d[0] : pBounds->fMin.d[0];
 		pBounds->fMin.d[1] = vert->d[1] < pBounds->fMin.d[1] ?
@@ -87,21 +95,29 @@ void getFaceBoundsVert(FaceBounds* pBounds, V3_F32* pVerts, FaceInfo faceInfo) {
 		pBounds->fMax.d[1] = vert->d[1] > pBounds->fMax.d[1] ?
 			vert->d[1] : pBounds->fMax.d[1];
 	}
+	//Faces can be flat (they may be facing sideways in a map for instance)
+	assert(_(pBounds->fMax V2GREATEQL pBounds->fMin));
 }
 
 int32_t checkIfEdgeIsSeam(int32_t edgeIndex, FaceInfo face, int32_t loop,
                           Mesh *pMesh, EdgeVerts *pEdgeVerts) {
+	assert(pMesh && pEdgeVerts);
+	assert(face.size >= 3 && face.start >= 0 && face.end >= 0 && face.size >= 0);
+	assert(edgeIndex >= 0 && loop >= 0 && loop < face.size);
 	int32_t *pVerts = pEdgeVerts[edgeIndex].verts;
+	assert(pVerts);
 	if (pVerts[1] < 0) {
 		return 2;
 	}
 	else {
+		assert(pVerts[0] == face.start + loop || pVerts[1] == face.start + loop);
 		int32_t whichLoop = pVerts[0] == face.start + loop;
 		int32_t otherLoop = pVerts[whichLoop];
 		int32_t iNext = (loop + 1) % face.size;
 		int32_t nextBaseLoop = face.start + iNext;
 		V2_F32 uv = pMesh->pUvs[nextBaseLoop];
 		V2_F32 uvOther = pMesh->pUvs[otherLoop];
+		assert(v2IsFinite(uv) && v2IsFinite(uvOther));
 		int32_t isSeam = _(uv V2NOTEQL uvOther);
 		if (isSeam) {
 			return 1;
@@ -111,15 +127,20 @@ int32_t checkIfEdgeIsSeam(int32_t edgeIndex, FaceInfo face, int32_t loop,
 }
 
 int32_t checkIfEdgeIsPreserve(Mesh* pMesh, int32_t edge) {
+	assert(pMesh && pMesh->pEdgePreserve && edge >= 0);
+	assert(pMesh->pEdgePreserve[edge] == 0 || pMesh->pEdgePreserve[edge] == 1);
 	return pMesh->pEdgePreserve ? pMesh->pEdgePreserve[edge] : 0;
 }
 
 int32_t checkIfEdgeIsReceive(Mesh* pMesh, int32_t edge) {
+	assert(pMesh && pMesh->pEdgeReceive && edge >= 0);
+	assert(pMesh->pEdgeReceive[edge] == 0 || pMesh->pEdgeReceive[edge] == 1);
 	return pMesh->pEdgeReceive ? pMesh->pEdgeReceive[edge] : 0;
 }
 
 static
 int32_t getOtherVert(int32_t i, int32_t faceSize, int8_t *pVertsRemoved) {
+	assert(i >= 0 && faceSize >= 3 && i < faceSize && pVertsRemoved);
 	int32_t ib = (i + 1) % faceSize;
 	//search from i + 1 to facesize, and if non found,
 	//then run again from 0 to facesize. If non found then,
@@ -128,6 +149,7 @@ int32_t getOtherVert(int32_t i, int32_t faceSize, int8_t *pVertsRemoved) {
 	do {
 		attempts++;
 		for (; ib < faceSize; ++ib) {
+			assert(pVertsRemoved[ib] >= 0);
 			if (!pVertsRemoved[ib]) {
 				return ib;
 			}
@@ -199,10 +221,13 @@ FaceTriangulated triangulateFace(RuvmAlloc alloc, FaceInfo baseFace, void *pVert
 	return outMesh;
 }
 
+//Caller must check for nan in return value
 V3_F32 getBarycentricInFace(V2_F32 *pTriUvs, int8_t *pTriLoops,
                           int32_t loopCount, V2_F32 vert) {
+	assert(pTriUvs && v2IsFinite(*pTriUvs) && v2IsFinite(vert));
+	assert(loopCount >= 3 && pTriLoops);
 	V3_F32 vertBc = cartesianToBarycentric(pTriUvs, &vert);
-	if (loopCount == 4 && vertBc.d[1] < 0) {
+	if (loopCount == 4 && v3IsFinite(vertBc) && vertBc.d[1] < 0) {
 		//base face is a quad, and vert is outside first tri,
 		//so use the second tri
 		
@@ -229,6 +254,8 @@ V3_F32 getBarycentricInFace(V2_F32 *pTriUvs, int8_t *pTriLoops,
 }
 
 void waitForJobs(RuvmContext pContext, int32_t *pJobsCompleted, void *pMutex) {
+	assert(pContext && pJobsCompleted && *pJobsCompleted >= 0);
+	assert(pContext->pThreadPoolHandle && pMutex);
 	int32_t waiting;
 	do  {
 		void (*pJob)(void *) = NULL;
@@ -236,11 +263,43 @@ void waitForJobs(RuvmContext pContext, int32_t *pJobsCompleted, void *pMutex) {
 		pContext->threadPool.pJobStackGetJob(pContext->pThreadPoolHandle,
 		                                     &pJob, &pArgs);
 		if (pJob) {
+			assert(pArgs);
 			pJob(pArgs);
 		}
 		pContext->threadPool.pMutexLock(pContext->pThreadPoolHandle, pMutex);
+		assert(pContext->threadCount >= 0);
 		waiting = *pJobsCompleted < pContext->threadCount;
 		pContext->threadPool.pMutexUnlock(pContext->pThreadPoolHandle, pMutex);
 	} while(waiting);
 	pContext->threadPool.pMutexDestroy(pContext->pThreadPoolHandle, pMutex);
+}
+
+FaceInfo getFaceRange(const RuvmMesh *pMesh,
+                      const int32_t index, const int32_t direction) {
+	assert(direction == 1 || direction == -1);
+	assert(index >= 0);
+	if (direction > 0) {
+		assert(index < pMesh->faceCount);
+	}
+	else {
+		assert(index > ((BufMesh*)pMesh)->borderFaceCount);
+	}
+	FaceInfo face = {
+		.index = index,
+		.start = pMesh->pFaces[index],
+		.end = pMesh->pFaces[index + direction]
+	};
+	assert(face.start >= 0);
+	if (direction > 0) {
+		assert(face.end <= pMesh->loopCount);
+		assert(face.start < face.end);
+		face.size = face.end - face.start;
+	}
+	else {
+		assert(face.end >= ((BufMesh *)pMesh)->borderLoopCount);
+		assert(face.end < face.start);
+		face.size = face.start - face.end;
+	}
+	assert(face.size >= 3);
+	return face;
 }

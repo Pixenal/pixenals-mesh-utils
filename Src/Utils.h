@@ -37,3 +37,4 @@ FaceTriangulated triangulateFace(RuvmAlloc alloc, FaceInfo baseFace, void *pVert
 V3_F32 getBarycentricInFace(V2_F32 *pTriUvs, int8_t *pTriLoops,
                             int32_t loopCount, V2_F32 vert);
 void waitForJobs(RuvmContext pContext, int32_t *pJobsCompleted, void *pMutex);
+FaceInfo getFaceRange(const RuvmMesh *pMesh, int32_t index, int32_t direction);
