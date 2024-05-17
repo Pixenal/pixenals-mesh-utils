@@ -6,7 +6,7 @@
 #include <MathUtils.h>
 #include <Context.h>
 
-int32_t checkFaceIsInBounds(V2_F32 min, V2_F32 max, FaceInfo face, Mesh *pMesh) {
+int32_t checkFaceIsInBounds(V2_F32 min, V2_F32 max, FaceRange face, Mesh *pMesh) {
 	assert(pMesh && pMesh->pVerts && pMesh->mesh.pLoops);
 	assert(face.size >= 3 && face.start >= 0 && face.end >= 0 && face.index >= 0);
 	assert(v2IsFinite(min) && v2IsFinite(max));
@@ -54,14 +54,14 @@ uint32_t ruvmFnvHash(uint8_t *value, int32_t valueSize, uint32_t size) {
 	return hash;
 }
 
-void getFaceBounds(FaceBounds *pBounds, V2_F32 *pUvs, FaceInfo faceInfo) {
+void getFaceBounds(FaceBounds *pBounds, V2_F32 *pUvs, FaceRange face) {
 	assert(pBounds && pUvs && v2IsFinite(*pUvs));
-	assert(faceInfo.size >= 3 && faceInfo.start >= 0);
-	assert(faceInfo.end >= 0 && faceInfo.index >= 0);
+	assert(face.size >= 3 && face.start >= 0);
+	assert(face.end >= 0 && face.index >= 0);
 	pBounds->fMin.d[0] = pBounds->fMin.d[1] = FLT_MAX;
 	pBounds->fMax.d[0] = pBounds->fMax.d[1] = .0f;
-	for (int32_t i = 0; i < faceInfo.size; ++i) {
-		V2_F32 *uv = pUvs + faceInfo.start + i;
+	for (int32_t i = 0; i < face.size; ++i) {
+		V2_F32 *uv = pUvs + face.start + i;
 		assert(uv && v2IsFinite(*uv));
 		pBounds->fMin.d[0] = uv->d[0] < pBounds->fMin.d[0] ?
 			uv->d[0] : pBounds->fMin.d[0];
@@ -76,15 +76,15 @@ void getFaceBounds(FaceBounds *pBounds, V2_F32 *pUvs, FaceInfo faceInfo) {
 	assert(_(pBounds->fMax V2GREATEQL pBounds->fMin));
 }
 
-void getFaceBoundsVert(FaceBounds* pBounds, V3_F32* pVerts, FaceInfo faceInfo) {
+void getFaceBoundsVert(FaceBounds* pBounds, V3_F32* pVerts, FaceRange face) {
 	assert(pBounds && v2IsFinite(pBounds->fMin) && v2IsFinite(pBounds->fMax));
 	assert(pVerts && v3IsFinite(*pVerts));
-	assert(faceInfo.size >= 3 && faceInfo.start >= 0);
-	assert(faceInfo.end >= 0 && faceInfo.index >= 0);
+	assert(face.size >= 3 && face.start >= 0);
+	assert(face.end >= 0 && face.index >= 0);
 	pBounds->fMin.d[0] = pBounds->fMin.d[1] = FLT_MAX;
 	pBounds->fMax.d[0] = pBounds->fMax.d[1] = .0f;
-	for (int32_t i = 0; i < faceInfo.size; ++i) {
-		V3_F32* vert = pVerts + faceInfo.start + i;
+	for (int32_t i = 0; i < face.size; ++i) {
+		V3_F32* vert = pVerts + face.start + i;
 		assert(vert && v3IsFinite(*vert));
 		pBounds->fMin.d[0] = vert->d[0] < pBounds->fMin.d[0] ?
 			vert->d[0] : pBounds->fMin.d[0];
@@ -99,7 +99,7 @@ void getFaceBoundsVert(FaceBounds* pBounds, V3_F32* pVerts, FaceInfo faceInfo) {
 	assert(_(pBounds->fMax V2GREATEQL pBounds->fMin));
 }
 
-int32_t checkIfEdgeIsSeam(int32_t edgeIndex, FaceInfo face, int32_t loop,
+int32_t checkIfEdgeIsSeam(int32_t edgeIndex, FaceRange face, int32_t loop,
                           Mesh *pMesh, EdgeVerts *pEdgeVerts) {
 	assert(pMesh && pEdgeVerts);
 	assert(face.size >= 3 && face.start >= 0 && face.end >= 0 && face.size >= 0);
@@ -159,7 +159,7 @@ int32_t getOtherVert(int32_t i, int32_t faceSize, int8_t *pVertsRemoved) {
 	return -1;
 }
 
-FaceTriangulated triangulateFace(RuvmAlloc alloc, FaceInfo baseFace, void *pVerts,
+FaceTriangulated triangulateFace(RuvmAlloc alloc, FaceRange baseFace, void *pVerts,
                                  int32_t *pLoops, int32_t useUvs) {
 	FaceTriangulated outMesh = {0};
 	int32_t triCount = baseFace.size - 2;
@@ -274,30 +274,29 @@ void waitForJobs(RuvmContext pContext, int32_t *pJobsCompleted, void *pMutex) {
 	pContext->threadPool.pMutexDestroy(pContext->pThreadPoolHandle, pMutex);
 }
 
-FaceInfo getFaceRange(const RuvmMesh *pMesh,
+FaceRange getFaceRange(const RuvmMesh *pMesh,
                       const int32_t index, const int32_t direction) {
 	assert(direction == 1 || direction == -1);
-	assert(index >= 0);
 	if (direction > 0) {
-		assert(index < pMesh->faceCount);
+		assert(index >= 0 && index < pMesh->faceCount);
 	}
 	else {
 		assert(index > ((BufMesh*)pMesh)->borderFaceCount);
 	}
-	FaceInfo face = {
+	FaceRange face = {
 		.index = index,
 		.start = pMesh->pFaces[index],
 		.end = pMesh->pFaces[index + direction]
 	};
-	assert(face.start >= 0);
 	if (direction > 0) {
-		assert(face.end <= pMesh->loopCount);
+		assert(face.start >= 0 && face.end <= pMesh->loopCount);
 		assert(face.start < face.end);
 		face.size = face.end - face.start;
 	}
 	else {
 		assert(face.end >= ((BufMesh *)pMesh)->borderLoopCount);
 		assert(face.end < face.start);
+		assert(face.start < 100000000); //Probably invalid if greater
 		face.size = face.start - face.end;
 	}
 	assert(face.size >= 3);

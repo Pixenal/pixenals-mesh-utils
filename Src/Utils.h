@@ -15,7 +15,7 @@ typedef struct {
 	int32_t end;
 	int32_t size;
 	int32_t index;
-} FaceInfo;
+} FaceRange;
 
 typedef struct {
 	V2_I32 min, max;
@@ -23,18 +23,18 @@ typedef struct {
 	V2_F32 fMinSmall, fMaxSmall;
 } FaceBounds;
 
-int32_t checkFaceIsInBounds(V2_F32 min, V2_F32 max, FaceInfo face, Mesh *pMesh);
-void getFaceBounds(FaceBounds *pBounds, V2_F32 *pUvs, FaceInfo faceInfo);
-int32_t checkIfEdgeIsSeam(int32_t edgeIndex, FaceInfo face, int32_t loop,
+int32_t checkFaceIsInBounds(V2_F32 min, V2_F32 max, FaceRange face, Mesh *pMesh);
+void getFaceBounds(FaceBounds *pBounds, V2_F32 *pUvs, FaceRange face);
+int32_t checkIfEdgeIsSeam(int32_t edgeIndex, FaceRange face, int32_t loop,
                           Mesh *pMesh, EdgeVerts *pEdgeVerts);
 
 uint32_t ruvmFnvHash(uint8_t *value, int32_t valueSize, uint32_t size);
 
 int32_t checkIfEdgeIsPreserve(Mesh* pMesh, int32_t edge);
 int32_t checkIfEdgeIsReceive(Mesh* pMesh, int32_t edge);
-FaceTriangulated triangulateFace(RuvmAlloc alloc, FaceInfo baseFace, void *pVerts,
+FaceTriangulated triangulateFace(RuvmAlloc alloc, FaceRange baseFace, void *pVerts,
                                  int32_t *pLoops, int32_t useUvs);
 V3_F32 getBarycentricInFace(V2_F32 *pTriUvs, int8_t *pTriLoops,
                             int32_t loopCount, V2_F32 vert);
 void waitForJobs(RuvmContext pContext, int32_t *pJobsCompleted, void *pMutex);
-FaceInfo getFaceRange(const RuvmMesh *pMesh, int32_t index, int32_t direction);
+FaceRange getFaceRange(const RuvmMesh *pMesh, int32_t index, int32_t direction);
