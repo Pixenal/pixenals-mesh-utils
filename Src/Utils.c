@@ -1,10 +1,13 @@
 #include <float.h>
 #include <math.h>
 #include <assert.h>
+#include <string.h>
 
 #include <Utils.h>
 #include <MathUtils.h>
 #include <Context.h>
+#include <AttribUtils.h>
+#include <Clock.h>
 
 int32_t checkFaceIsInBounds(V2_F32 min, V2_F32 max, FaceRange face, Mesh *pMesh) {
 	assert(pMesh && pMesh->pVerts && pMesh->mesh.pLoops);
@@ -127,14 +130,18 @@ int32_t checkIfEdgeIsSeam(int32_t edgeIndex, FaceRange face, int32_t loop,
 }
 
 int32_t checkIfEdgeIsPreserve(Mesh* pMesh, int32_t edge) {
-	assert(pMesh && pMesh->pEdgePreserve && edge >= 0);
-	assert(pMesh->pEdgePreserve[edge] == 0 || pMesh->pEdgePreserve[edge] == 1);
+	assert(pMesh && edge >= 0);
+	if (pMesh->pEdgePreserve) {
+		assert(pMesh->pEdgePreserve[edge] % 2 == pMesh->pEdgePreserve[edge]);
+	}
 	return pMesh->pEdgePreserve ? pMesh->pEdgePreserve[edge] : 0;
 }
 
 int32_t checkIfEdgeIsReceive(Mesh* pMesh, int32_t edge) {
-	assert(pMesh && pMesh->pEdgeReceive && edge >= 0);
-	assert(pMesh->pEdgeReceive[edge] == 0 || pMesh->pEdgeReceive[edge] == 1);
+	assert(pMesh && edge >= 0);
+	if (pMesh->pEdgeReceive) {
+		assert(pMesh->pEdgeReceive[edge] == 0 || pMesh->pEdgeReceive[edge] == 1);
+	}
 	return pMesh->pEdgeReceive ? pMesh->pEdgeReceive[edge] : 0;
 }
 
@@ -275,30 +282,198 @@ void waitForJobs(RuvmContext pContext, int32_t *pJobsCompleted, void *pMutex) {
 }
 
 FaceRange getFaceRange(const RuvmMesh *pMesh,
-                      const int32_t index, const int32_t direction) {
-	assert(direction == 1 || direction == -1);
-	if (direction > 0) {
+                      const int32_t index, const _Bool border) {
+	assert(border % 2 == border);
+	int32_t realIndex;
+	int32_t direction;
+	if (!border) {
+		realIndex = index;
+		direction = 1;
 		assert(index >= 0 && index < pMesh->faceCount);
 	}
 	else {
-		assert(index > ((BufMesh*)pMesh)->borderFaceCount);
+		BufMeshIndex bufMeshIndex
+			= convertBorderFaceIndex(((BufMesh*)pMesh), index);
+		realIndex = bufMeshIndex.realIndex;
+		direction = -1;
 	}
 	FaceRange face = {
-		.index = index,
-		.start = pMesh->pFaces[index],
-		.end = pMesh->pFaces[index + direction]
+		.index = realIndex,
+		.start = pMesh->pFaces[realIndex],
+		.end = pMesh->pFaces[realIndex + direction]
 	};
-	if (direction > 0) {
+	if (!border) {
 		assert(face.start >= 0 && face.end <= pMesh->loopCount);
 		assert(face.start < face.end);
 		face.size = face.end - face.start;
 	}
 	else {
-		assert(face.end >= ((BufMesh *)pMesh)->borderLoopCount);
+		BufMeshIndex start =
+			convertBorderLoopIndex(((BufMesh *)pMesh), face.start);
+		BufMeshIndex end =
+			convertBorderLoopIndex(((BufMesh *)pMesh), face.end);
+		face.start = start.realIndex;
+		face.end = end.realIndex;
+		assert(face.end >=
+		       ((BufMesh *)pMesh)->loopBufSize - 1 -
+			   ((BufMesh *)pMesh)->borderLoopCount);
 		assert(face.end < face.start);
-		assert(face.start < 100000000); //Probably invalid if greater
+		assert(face.start < ((BufMesh *)pMesh)->loopBufSize);
 		face.size = face.start - face.end;
 	}
 	assert(face.size >= 3);
 	return face;
+}
+
+typedef struct {
+	int32_t *pBufSize;
+	int32_t **ppList[2];
+	int32_t *pCount;
+	int32_t *pBorderCount;
+	AttribArray *pAttribArr;
+} BufMeshDomain;
+
+static
+void reallocBufMesh(const RuvmAlloc *pAlloc,
+                    BufMesh *pMesh, BufMeshDomain *pDomain) {
+	int32_t realBorderEnd = *pDomain->pBufSize - 1 - *pDomain->pBorderCount;
+	int32_t oldSize = *pDomain->pBufSize;
+	*pDomain->pBufSize *= 2;
+	int32_t diff = *pDomain->pBufSize - oldSize;
+	assert(*pDomain->pBufSize > oldSize);
+	for (int32_t i = 0; i < 2; ++i) {
+		if (!pDomain->ppList[i]) {
+			continue;
+		}
+		int32_t oldFirstElement = (*pDomain->ppList[i])[realBorderEnd + 1];
+		int32_t oldLastElement = (*pDomain->ppList[i])[oldSize - 1];
+		*pDomain->ppList[i] =
+			pAlloc->pRealloc(*pDomain->ppList[i],
+									 sizeof(int32_t) * *pDomain->pBufSize);
+		int32_t *pStart = *pDomain->ppList[i] + realBorderEnd + 1;
+		memmove(pStart + diff, pStart, sizeof(int32_t) * *pDomain->pBorderCount);
+		int32_t newFirstElement = (*pDomain->ppList[i])[realBorderEnd + 1 + diff];
+		int32_t newLastElement = (*pDomain->ppList[i])[*pDomain->pBufSize - 1];
+		assert(newFirstElement == oldFirstElement);
+		assert(newLastElement == oldLastElement);
+	}
+	reallocAndMoveAttribs(pAlloc, pMesh, pDomain->pAttribArr, realBorderEnd + 1,
+	                      diff, *pDomain->pBorderCount, *pDomain->pBufSize);
+}
+
+static
+BufMeshIndex getNewBufMeshIndex(const RuvmAlloc *pAlloc, BufMesh *pMesh,
+                                BufMeshDomain *pDomain, const _Bool border,
+								DebugAndPerfVars *pDbVars) {
+	//TODO assertions like these need to be converted to release exceptions
+	int32_t realBorderEnd = *pDomain->pBufSize - 1 - *pDomain->pBorderCount;
+	assert(*pDomain->pCount <= realBorderEnd);
+	if (*pDomain->pCount == realBorderEnd) {
+		CLOCK_INIT;
+		CLOCK_START;
+		reallocBufMesh(pAlloc, pMesh, pDomain);
+		CLOCK_STOP_NO_PRINT;
+		pDbVars->reallocTime += CLOCK_TIME_DIFF(start, stop);
+	}
+	BufMeshIndex index = {0};
+	if (border){
+		index.index = *pDomain->pBorderCount;
+		index.realIndex = *pDomain->pBufSize - 1 - index.index;
+		++*pDomain->pBorderCount;
+	}
+	else {
+		index.index = *pDomain->pCount;
+		index.realIndex = index.index;
+		++*pDomain->pCount;
+	}
+	return index;
+}
+
+BufMeshIndex bufMeshAddFace(const RuvmAlloc *pAlloc, BufMesh *pMesh,
+                            _Bool border, DebugAndPerfVars *pDpVars) {
+	BufMeshDomain domain = {
+		.pBufSize = &pMesh->faceBufSize,
+		.ppList = {&pMesh->mesh.pFaces, NULL},
+		.pCount = &pMesh->mesh.faceCount,
+		.pBorderCount = &pMesh->borderFaceCount,
+		.pAttribArr = &pMesh->mesh.faceAttribs
+	};
+	BufMeshIndex index = getNewBufMeshIndex(pAlloc, pMesh, &domain, border,
+	                                        pDpVars);
+	return index;
+}
+
+BufMeshIndex bufMeshAddLoop(const RuvmAlloc *pAlloc, BufMesh *pMesh,
+                            _Bool border, DebugAndPerfVars *pDpVars) {
+	BufMeshDomain domain = {
+		.pBufSize = &pMesh->loopBufSize,
+		.ppList = {&pMesh->mesh.pLoops, &pMesh->mesh.pEdges},
+		.pCount = &pMesh->mesh.loopCount,
+		.pBorderCount = &pMesh->borderLoopCount,
+		.pAttribArr = &pMesh->mesh.loopAttribs
+	};
+	BufMeshIndex index = getNewBufMeshIndex(pAlloc, pMesh, &domain, border,
+	                                        pDpVars);
+	return index;
+}
+
+BufMeshIndex bufMeshAddEdge(const RuvmAlloc *pAlloc, BufMesh *pMesh,
+                            _Bool border, DebugAndPerfVars *pDpVars) {
+	BufMeshDomain domain = {
+		.pBufSize = &pMesh->edgeBufSize,
+		.ppList = {NULL, NULL},
+		.pCount = &pMesh->mesh.edgeCount,
+		.pBorderCount = &pMesh->borderEdgeCount,
+		.pAttribArr = &pMesh->mesh.edgeAttribs
+	};
+	BufMeshIndex index = getNewBufMeshIndex(pAlloc, pMesh, &domain, border,
+	                                        pDpVars);
+	return index;
+}
+
+BufMeshIndex bufMeshAddVert(const RuvmAlloc *pAlloc, BufMesh *pMesh,
+                            _Bool border, DebugAndPerfVars *pDpVars) {
+	BufMeshDomain domain = {
+		.pBufSize = &pMesh->vertBufSize,
+		.ppList = {NULL, NULL},
+		.pCount = &pMesh->mesh.vertCount,
+		.pBorderCount = &pMesh->borderVertCount,
+		.pAttribArr = &pMesh->mesh.vertAttribs
+	};
+	BufMeshIndex index = getNewBufMeshIndex(pAlloc, pMesh, &domain, border,
+	                                        pDpVars);
+	return index;
+}
+
+BufMeshIndex convertBorderFaceIndex(const BufMesh *pMesh, int32_t face) {
+	assert(face >= 0 && face <= pMesh->borderFaceCount);
+	BufMeshIndex index = {
+		.index = face,
+		.realIndex = pMesh->faceBufSize - 1 - face
+	};
+	return index;
+}
+BufMeshIndex convertBorderLoopIndex(const BufMesh *pMesh, int32_t loop) {
+	assert(loop >= 0 && loop <= pMesh->borderLoopCount);
+	BufMeshIndex index = {
+		.index = loop,
+		.realIndex = pMesh->loopBufSize - 1 - loop
+	};
+	return index;
+}
+BufMeshIndex convertBorderEdgeIndex(const BufMesh *pMesh, int32_t edge) {
+	assert(edge >= 0 && edge <= pMesh->borderEdgeCount);
+	BufMeshIndex index = {
+		.index = edge,
+		.realIndex = pMesh->edgeBufSize - 1 - edge
+	};
+	return index;
+}
+BufMeshIndex convertBorderVertIndex(const BufMesh *pMesh, int32_t vert) {
+	assert(vert >= 0 && vert <= pMesh->borderVertCount);
+	BufMeshIndex index = {
+		.index = vert,
+		.realIndex = pMesh->vertBufSize - 1 - vert
+	};
+	return index;
 }

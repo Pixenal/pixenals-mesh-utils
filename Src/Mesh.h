@@ -17,6 +17,10 @@ typedef struct {
 	int32_t borderLoopCount;
 	int32_t borderEdgeCount;
 	int32_t borderFaceCount;
+	int32_t faceBufSize;
+	int32_t loopBufSize;
+	int32_t edgeBufSize;
+	int32_t vertBufSize;
 } BufMesh;
 
 typedef struct {
