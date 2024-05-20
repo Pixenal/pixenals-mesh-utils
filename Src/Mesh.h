@@ -3,25 +3,12 @@
 #include <stdint.h>
 
 #include <RUVM.h>
+#include <DebugAndPerf.h>
 
 typedef struct {
-	RuvmMesh mesh;
-	RuvmAttrib *pVertAttrib;
-	RuvmAttrib *pUvAttrib;
-	RuvmAttrib *pNormalAttrib;
-	RuvmAttrib *pEdgePreserveAttrib;
-	Ruvm_V3_F32 *pVerts;
-	Ruvm_V3_F32 *pNormals;
-	Ruvm_V2_F32 *pUvs;
-	int32_t borderVertCount;
-	int32_t borderLoopCount;
-	int32_t borderEdgeCount;
-	int32_t borderFaceCount;
-	int32_t faceBufSize;
-	int32_t loopBufSize;
-	int32_t edgeBufSize;
-	int32_t vertBufSize;
-} BufMesh;
+	int32_t index;
+	int32_t realIndex;
+} BufMeshIndex;
 
 typedef struct {
 	RuvmMesh mesh;
@@ -35,4 +22,41 @@ typedef struct {
 	Ruvm_V2_F32 *pUvs;
 	int8_t *pEdgePreserve;
 	int8_t *pEdgeReceive;
+	int32_t faceBufSize;
+	int32_t loopBufSize;
+	int32_t edgeBufSize;
+	int32_t vertBufSize;
 } Mesh;
+
+typedef struct {
+	Mesh mesh;
+	int32_t borderVertCount;
+	int32_t borderLoopCount;
+	int32_t borderEdgeCount;
+	int32_t borderFaceCount;
+} BufMesh;
+
+BufMeshIndex bufMeshAddFace(const RuvmAlloc *pAlloc, BufMesh *pMesh, _Bool border,
+                            DebugAndPerfVars *pDpVars);
+BufMeshIndex bufMeshAddLoop(const RuvmAlloc *pAlloc, BufMesh *pMesh, _Bool border,
+                            DebugAndPerfVars *pDpVars);
+BufMeshIndex bufMeshAddEdge(const RuvmAlloc *pAlloc, BufMesh *pMesh, _Bool border,
+                            DebugAndPerfVars *pDpVars);
+BufMeshIndex bufMeshAddVert(const RuvmAlloc *pAlloc, BufMesh *pMesh, _Bool border,
+                            DebugAndPerfVars *pDpVars);
+BufMeshIndex convertBorderFaceIndex(const BufMesh *pMesh, int32_t face);
+BufMeshIndex convertBorderLoopIndex(const BufMesh *pMesh, int32_t loop);
+BufMeshIndex convertBorderEdgeIndex(const BufMesh *pMesh, int32_t edge);
+BufMeshIndex convertBorderVertIndex(const BufMesh *pMesh, int32_t vert);
+int32_t meshAddFace(const RuvmAlloc *pAlloc, Mesh *pMesh);
+int32_t meshAddLoop(const RuvmAlloc *pAlloc, Mesh *pMesh);
+int32_t meshAddEdge(const RuvmAlloc *pAlloc, Mesh *pMesh);
+int32_t meshAddVert(const RuvmAlloc *pAlloc, Mesh *pMesh);
+void reallocMeshToFit(const RuvmAlloc *pAlloc, Mesh *pMesh);
+void meshSetLastFace(const RuvmAlloc *pAlloc, Mesh *pMesh);
+void bufMeshSetLastFaces(const RuvmAlloc *pAlloc, BufMesh *pBufMesh,
+                         DebugAndPerfVars *pDpVars);
+static inline
+Mesh *asMesh(BufMesh *pMesh) {
+	return (Mesh *)pMesh;
+}

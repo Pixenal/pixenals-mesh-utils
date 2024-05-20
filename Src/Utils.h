@@ -2,6 +2,7 @@
 
 #include <RuvmInternal.h>
 #include <MathUtils.h>
+#include <Mesh.h>
 
 typedef struct {
 	int32_t triCount;
@@ -38,15 +39,3 @@ V3_F32 getBarycentricInFace(V2_F32 *pTriUvs, int8_t *pTriLoops,
                             int32_t loopCount, V2_F32 vert);
 void waitForJobs(RuvmContext pContext, int32_t *pJobsCompleted, void *pMutex);
 FaceRange getFaceRange(const RuvmMesh *pMesh, int32_t index, _Bool border);
-BufMeshIndex bufMeshAddFace(const RuvmAlloc *pAlloc, BufMesh *pMesh, _Bool border,
-                            DebugAndPerfVars *pDpVars);
-BufMeshIndex bufMeshAddLoop(const RuvmAlloc *pAlloc, BufMesh *pMesh, _Bool border,
-                            DebugAndPerfVars *pDpVars);
-BufMeshIndex bufMeshAddEdge(const RuvmAlloc *pAlloc, BufMesh *pMesh, _Bool border,
-                            DebugAndPerfVars *pDpVars);
-BufMeshIndex bufMeshAddVert(const RuvmAlloc *pAlloc, BufMesh *pMesh, _Bool border,
-                            DebugAndPerfVars *pDpVars);
-BufMeshIndex convertBorderFaceIndex(const BufMesh *pMesh, int32_t face);
-BufMeshIndex convertBorderLoopIndex(const BufMesh *pMesh, int32_t loop);
-BufMeshIndex convertBorderEdgeIndex(const BufMesh *pMesh, int32_t edge);
-BufMeshIndex convertBorderVertIndex(const BufMesh *pMesh, int32_t vert);
