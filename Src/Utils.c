@@ -278,7 +278,6 @@ void waitForJobs(RuvmContext pContext, int32_t *pJobsCompleted, void *pMutex) {
 		waiting = *pJobsCompleted < pContext->threadCount;
 		pContext->threadPool.pMutexUnlock(pContext->pThreadPoolHandle, pMutex);
 	} while(waiting);
-	pContext->threadPool.pMutexDestroy(pContext->pThreadPoolHandle, pMutex);
 }
 
 FaceRange getFaceRange(const RuvmMesh *pMesh,
