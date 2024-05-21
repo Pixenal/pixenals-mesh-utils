@@ -56,6 +56,9 @@ void reallocMeshToFit(const RuvmAlloc *pAlloc, Mesh *pMesh);
 void meshSetLastFace(const RuvmAlloc *pAlloc, Mesh *pMesh);
 void bufMeshSetLastFaces(const RuvmAlloc *pAlloc, BufMesh *pBufMesh,
                          DebugAndPerfVars *pDpVars);
+//TODO remove this, it's unecessary, just do &pBufMesh->mesh instead.
+//     Obviously also rename mesh in Mesh to core, so it would be
+//     pBufMesh->mesh.core.faceCount, for instance.
 static inline
 Mesh *asMesh(BufMesh *pMesh) {
 	return (Mesh *)pMesh;
