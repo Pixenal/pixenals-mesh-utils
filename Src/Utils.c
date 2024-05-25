@@ -420,3 +420,13 @@ void buildEdgeList(RuvmContext pContext, Mesh* pMesh) {
 	}
 	pAlloc->pFree(pAdjTable);
 }
+
+_Bool isMeshInvalid(Mesh* pMesh) {
+	for (int32_t i = 0; i < pMesh->mesh.faceCount; ++i) {
+		FaceRange face = getFaceRange(&pMesh->mesh, i, false);
+		if (face.size < 3) {
+			return true;
+		}
+	}
+	return false;
+}

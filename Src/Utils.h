@@ -40,3 +40,4 @@ V3_F32 getBarycentricInFace(V2_F32 *pTriUvs, int8_t *pTriLoops,
 void waitForJobs(RuvmContext pContext, int32_t *pJobsCompleted, void *pMutex);
 FaceRange getFaceRange(const RuvmMesh *pMesh, int32_t index, _Bool border);
 void buildEdgeList(RuvmContext pContext, Mesh* pMesh);
+_Bool isMeshInvalid(Mesh* pMesh);
