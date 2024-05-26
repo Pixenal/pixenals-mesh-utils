@@ -383,15 +383,15 @@ void findEdges(Mesh* pMesh, AdjBucket* pAdjTable) {
 					continue;
 				}
 				FaceRange otherFace = getFaceRange(&pMesh->mesh, pEntry->face, false);
-				if (pMesh->mesh.pEdges[otherFace.start + pEntry->loop] >= 0) {
-					continue; //Already set
-				}
 				int32_t nextLoop = (j + 1) % face.size;
 				int32_t otherPrevLoop = pEntry->loop ?
 					pEntry->loop - 1 : otherFace.size - 1;
+				if (pMesh->mesh.pEdges[otherFace.start + otherPrevLoop] >= 0) {
+					continue; //Already set
+				}
 				if (pMesh->mesh.pLoops[face.start + nextLoop] !=
 					pMesh->mesh.pLoops[otherFace.start + otherPrevLoop]) {
-					continue;
+					continue; //Not connected
 				}
 				pMesh->mesh.pEdges[otherFace.start + otherPrevLoop] = edge;
 				break;
