@@ -430,3 +430,63 @@ _Bool isMeshInvalid(Mesh* pMesh) {
 	}
 	return false;
 }
+
+void progressBarClear() {
+	printf("\n");
+	printf("\x1b[1F");
+	printf("\x1b[2K");
+}
+
+void progressBarPrint(RuvmContext pContext, int32_t progress) {
+	printf("	");
+	for (int32_t i = 0u; i < pContext->stageReport.outOf; ++i) {
+		char character;
+		if (i < progress) {
+			character = '#';
+		}
+		else {
+			character = '-';
+		}
+		printf("%c", character);
+	}
+}
+
+void stageBegin(void *pContext, RuvmStageReport *pReport, const char* pName) {
+	setStageName(pContext, pName);
+}
+void stageProgress(void *pContext, RuvmStageReport *pReport, int32_t progress) {
+	if (progress) {
+		progressBarClear();
+	}
+	printf("%s", pReport->stage);
+	progressBarPrint(pContext, progress);
+}
+void stageEnd(void *pContext, RuvmStageReport *pReport) {
+	memset(pReport->stage, 0, RUVM_STAGE_NAME_LEN);
+	progressBarClear();
+}
+
+void stageBeginWrap(RuvmContext pContext, const char* pName, int32_t max) {
+	pContext->stageReport.pBegin(pContext, &pContext->stageReport, pName);
+	//Only needed if using default stage report functions,
+	//it's just used for the progress bar
+	pContext->stageInterval = max <= pContext->stageReport.outOf ?
+		1 : max / pContext->stageReport.outOf;
+}
+
+void stageProgressWrap(RuvmContext pContext, int32_t progress) {
+	if (pContext->stageInterval != 1 && progress % pContext->stageInterval) {
+		return;
+	}
+	//Normalize progress within stageReport.outOf
+	int32_t normProgress = progress / pContext->stageInterval;
+	pContext->stageReport.pProgress(pContext, &pContext->stageReport, normProgress);
+}
+
+void stageEndWrap(RuvmContext pContext) {
+	pContext->stageReport.pEnd(pContext, &pContext->stageReport);
+}
+
+void setStageName(RuvmContext pContext, const char* pName) {
+	strncpy(pContext->stageReport.stage, pName, RUVM_STAGE_NAME_LEN);
+}

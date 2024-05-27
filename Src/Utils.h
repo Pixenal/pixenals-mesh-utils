@@ -4,6 +4,8 @@
 #include <MathUtils.h>
 #include <Mesh.h>
 
+#define PROGRESS_BAR_CHAR_LEN 100
+
 typedef struct {
 	int32_t triCount;
 	int32_t *pTris;
@@ -41,3 +43,12 @@ void waitForJobs(RuvmContext pContext, int32_t *pJobsCompleted, void *pMutex);
 FaceRange getFaceRange(const RuvmMesh *pMesh, int32_t index, _Bool border);
 void buildEdgeList(RuvmContext pContext, Mesh* pMesh);
 _Bool isMeshInvalid(Mesh* pMesh);
+void progressBarClear();
+void progressBarPrint(RuvmContext pContext, int32_t progress);
+void stageBegin(void *pContext, RuvmStageReport* pReport, const char * pName);
+void stageProgress(void *pContext, RuvmStageReport* pReport, int32_t progress);
+void stageEnd(void *pContext, RuvmStageReport* pReport);
+void stageBeginWrap(RuvmContext pContext, const char* pName, int32_t max);
+void stageProgressWrap(RuvmContext pContext, int32_t progress);
+void stageEndWrap(RuvmContext pContext);
+void setStageName(RuvmContext pContext, const char* pName);
