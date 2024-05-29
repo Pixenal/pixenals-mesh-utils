@@ -4,13 +4,10 @@
 #include <MathUtils.h>
 #include <Mesh.h>
 
-#define PROGRESS_BAR_CHAR_LEN 100
-
 typedef struct {
+	int32_t* pLoops;
 	int32_t triCount;
-	int32_t *pTris;
 	int32_t loopCount;
-	int32_t *pLoops;
 } FaceTriangulated;
 
 typedef struct {

@@ -167,62 +167,66 @@ int32_t getOtherVert(int32_t i, int32_t faceSize, int8_t *pVertsRemoved) {
 	return -1;
 }
 
+//This gives really long tris, where short tris are possible.
+//Re-add search to find short tris, and prefer those.
 FaceTriangulated triangulateFace(RuvmAlloc alloc, FaceRange baseFace, void *pVerts,
                                  int32_t *pLoops, int32_t useUvs) {
 	FaceTriangulated outMesh = {0};
-	int32_t triCount = baseFace.size - 2;
-	outMesh.pTris = alloc.pMalloc(sizeof(int32_t) * triCount);
-	int32_t loopCount = triCount * 3;
+	outMesh.triCount = baseFace.size - 2;
+	int32_t loopCount = outMesh.triCount * 3;
 	outMesh.pLoops = alloc.pMalloc(sizeof(int32_t) * loopCount);
 	
 	int8_t *pVertsRemoved = alloc.pCalloc(baseFace.size, 1);
 	int32_t loopsLeft = baseFace.size;
+	int32_t start = 0;
+	int32_t end = baseFace.size;
 	do {
-		//loop through ears, and find one with shortest edge
-		float minDist = FLT_MAX; //min distance
-		int32_t nextEar[3] = {0};
-		for (int32_t i = 0; i < baseFace.size; ++i) {
+		int32_t ear[3] = {0};
+		int32_t skipped = -1;
+		for (int32_t i = start; ; ++i) {
+			i %= baseFace.size;
 			if (pVertsRemoved[i]) {
 				continue;
 			}
 			int32_t ib = getOtherVert(i, baseFace.size, pVertsRemoved);
 			int32_t ic = getOtherVert(ib, baseFace.size, pVertsRemoved);
-			V2_F32 verta;
-			V2_F32 vertb;
-			V2_F32 vertc;
+			float height;
 			if (useUvs) {
 				V2_F32 *pUvs = pVerts;
-				verta = pUvs[baseFace.start + i];
-				vertb = pUvs[baseFace.start + ib];
-				vertc = pUvs[baseFace.start + ic];
+				V2_F32 verta = pUvs[baseFace.start + i];
+				V2_F32 vertb = pUvs[baseFace.start + ib];
+				V2_F32 vertc = pUvs[baseFace.start + ic];
+				height = v2TriHeight(verta, vertb, vertc);
 			}
 			else {
 				V3_F32 *pVertsCast = pVerts;
-				verta = *(V2_F32 *)(pVertsCast + pLoops[baseFace.start + i]);
-				vertb = *(V2_F32 *)(pVertsCast + pLoops[baseFace.start + ib]);
-				vertc = *(V2_F32 *)(pVertsCast + pLoops[baseFace.start + ic]);
+				V3_F32 verta = pVertsCast[pLoops[baseFace.start + i]];
+				V3_F32 vertb = pVertsCast[pLoops[baseFace.start + ib]];
+				V3_F32 vertc = pVertsCast[pLoops[baseFace.start + ic]];
+				height = v3TriHeight(verta, vertb, vertc);
 			}
-			if (v2DegenerateTri(verta, vertb, vertc, .00001f)) {
-				continue;
+			//If ear is not degenerate, then add.
+			//Or, if skipped == i, the loop has wrapped back around,
+			//without finding a non degenerate ear.
+			//In this case, add the ear to avoid an infinite loop
+			if (height > .000001f || skipped == i) {
+				ear[0] = i;
+				ear[1] = ib;
+				ear[2] = ic;
+				break;
 			}
-			V2_F32 vDist = v2Abs(_(vertc V2SUB verta));
-			float dist =
-				sqrt(vDist.d[0] * vDist.d[0] + vDist.d[1] * vDist.d[1]);
-			if (dist < minDist) {
-				minDist = dist;
-				nextEar[0] = i;
-				nextEar[1] = ib;
-				nextEar[2] = ic;
+			else if (skipped == -1) {
+				//Ear is degenerate. Set skipped to equal i,
+				//and continue searching.
+				skipped = i;
 			}
 		}
-		outMesh.pTris[outMesh.triCount] = outMesh.loopCount;
 		for (int32_t i = 0; i < 3; ++i) {
-			//set to equal loop index, rather than vert index
-			outMesh.pLoops[outMesh.loopCount] = nextEar[i];
+			outMesh.pLoops[outMesh.loopCount] = ear[i];
 			outMesh.loopCount++;
 		}
-		outMesh.triCount++;
-		pVertsRemoved[nextEar[1]] = 1;
+		start = ear[2];
+		pVertsRemoved[ear[1]] = 1;
 		loopsLeft--;
 	} while (loopsLeft >= 3);
 	alloc.pFree(pVertsRemoved);
