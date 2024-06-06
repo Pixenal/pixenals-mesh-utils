@@ -122,7 +122,7 @@ int32_t checkIfEdgeIsSeam(int32_t edgeIndex, FaceRange face, int32_t loop,
 		V2_F32 uv = pMesh->pUvs[nextBaseLoop];
 		V2_F32 uvOther = pMesh->pUvs[otherLoop];
 		RUVM_ASSERT("", v2IsFinite(uv) && v2IsFinite(uvOther));
-		int32_t isSeam = _(uv V2NOTEQL uvOther);
+		int32_t isSeam = !_(uv V2APROXEQL uvOther);
 		if (isSeam) {
 			return 1;
 		}
