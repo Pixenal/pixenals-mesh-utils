@@ -37,12 +37,12 @@ int32_t checkFaceIsInBounds(V2_F32 min, V2_F32 max, FaceRange face, Mesh *pMesh)
 	//Faces can be flat (they may be facing sideways in a map for instance)
 	RUVM_ASSERT("", _(faceMax V2GREATEQL faceMin));
 	V2_I32 inside;
-	inside.d[0] = (faceMin.d[0] > min.d[0] && faceMin.d[0] < max.d[0]) ||
-	           (faceMax.d[0] > min.d[0] && faceMax.d[0] < max.d[0]) ||
-			   (faceMin.d[0] < min.d[0] && faceMax.d[0] > max.d[0]);
-	inside.d[1] = (faceMin.d[1] > min.d[1] && faceMin.d[1] < max.d[1]) ||
-	           (faceMax.d[1] > min.d[1] && faceMax.d[1] < max.d[1]) ||
-			   (faceMin.d[1] < min.d[1] && faceMax.d[1] > max.d[1]);
+	inside.d[0] = (faceMin.d[0] >= min.d[0] && faceMin.d[0] < max.d[0]) ||
+	           (faceMax.d[0] >= min.d[0] && faceMax.d[0] < max.d[0]) ||
+			   (faceMin.d[0] < min.d[0] && faceMax.d[0] >= max.d[0]);
+	inside.d[1] = (faceMin.d[1] >= min.d[1] && faceMin.d[1] < max.d[1]) ||
+	           (faceMax.d[1] >= min.d[1] && faceMax.d[1] < max.d[1]) ||
+			   (faceMin.d[1] < min.d[1] && faceMax.d[1] >= max.d[1]);
 	return inside.d[0] && inside.d[1];
 }
 
@@ -167,6 +167,47 @@ int32_t getOtherVert(int32_t i, int32_t faceSize, int8_t *pVertsRemoved) {
 	return -1;
 }
 
+typedef struct TriEdge {
+	struct TriEdge* pNext;
+	int32_t tris[2];
+	int32_t verts[2];
+	bool valid;
+} TriEdge;
+
+static
+void initTriEdgeEntry(TriEdge* pEntry, int32_t verta, int32_t vertb, int32_t tri) {
+	pEntry->tris[0] = tri;
+	pEntry->verts[0] = verta;
+	pEntry->verts[1] = vertb;
+	pEntry->valid = true;
+}
+
+static
+void addTriEdgeToTable(RuvmAlloc *pAlloc, int32_t tableSize, TriEdge *pEdgeTable, int32_t verta, int32_t vertb, int32_t tri) {
+	uint32_t sum = verta + vertb;
+	int32_t hash = ruvmFnvHash((uint8_t *)&sum, 4, tableSize);
+	TriEdge *pEntry = pEdgeTable + hash;
+	if (!pEntry->valid) {
+		initTriEdgeEntry(pEntry, verta, vertb, tri);
+	}
+	else {
+		do {
+			if ((pEntry->verts[0] == verta || pEntry->verts[0] == vertb) &&
+				(pEntry->verts[1] == verta || pEntry->verts[1] == vertb)) {
+
+				pEntry->tris[1] = tri;
+				break;
+			}
+			if (!pEntry->pNext) {
+				pEntry = pEntry->pNext = pAlloc->pCalloc(1, sizeof(TriEdge));
+				initTriEdgeEntry(pEntry, verta, vertb, tri);
+				break;
+			}
+			pEntry = pEntry->pNext;
+		} while(pEntry);
+	}
+}
+
 //This gives really long tris, where short tris are possible.
 //Re-add search to find short tris, and prefer those.
 FaceTriangulated triangulateFace(RuvmAlloc alloc, FaceRange baseFace, void *pVerts,
@@ -175,6 +216,7 @@ FaceTriangulated triangulateFace(RuvmAlloc alloc, FaceRange baseFace, void *pVer
 	outMesh.triCount = baseFace.size - 2;
 	int32_t loopCount = outMesh.triCount * 3;
 	outMesh.pLoops = alloc.pMalloc(sizeof(int32_t) * loopCount);
+	TriEdge *pEdgeTable = alloc.pCalloc(baseFace.size, sizeof(TriEdge));
 	
 	int8_t *pVertsRemoved = alloc.pCalloc(baseFace.size, 1);
 	int32_t loopsLeft = baseFace.size;
@@ -182,21 +224,27 @@ FaceTriangulated triangulateFace(RuvmAlloc alloc, FaceRange baseFace, void *pVer
 	int32_t end = baseFace.size;
 	do {
 		int32_t ear[3] = {0};
-		int32_t skipped = -1;
-		for (int32_t i = start; ; ++i) {
-			i %= baseFace.size;
+		bool earIsValid = false;
+		int32_t earFallback[3] = {0};
+		bool fallback = false;
+		float shortestLen = FLT_MAX;
+		for (int32_t i = 0; i < baseFace.size; ++i) {
+			//i %= baseFace.size;
 			if (pVertsRemoved[i]) {
 				continue;
 			}
 			int32_t ib = getOtherVert(i, baseFace.size, pVertsRemoved);
 			int32_t ic = getOtherVert(ib, baseFace.size, pVertsRemoved);
 			float height;
+			float len;
 			if (useUvs) {
 				V2_F32 *pUvs = pVerts;
 				V2_F32 verta = pUvs[baseFace.start + i];
 				V2_F32 vertb = pUvs[baseFace.start + ib];
 				V2_F32 vertc = pUvs[baseFace.start + ic];
 				height = v2TriHeight(verta, vertb, vertc);
+				V2_F32 ac = _(vertc V2SUB verta);
+				len = v2Len(ac);
 			}
 			else {
 				V3_F32 *pVertsCast = pVerts;
@@ -204,23 +252,39 @@ FaceTriangulated triangulateFace(RuvmAlloc alloc, FaceRange baseFace, void *pVer
 				V3_F32 vertb = pVertsCast[pLoops[baseFace.start + ib]];
 				V3_F32 vertc = pVertsCast[pLoops[baseFace.start + ic]];
 				height = v3TriHeight(verta, vertb, vertc);
+				V3_F32 ac = _(vertc V3SUB verta);
+				len = v3Len(ac);
 			}
 			//If ear is not degenerate, then add.
 			//Or, if skipped == i, the loop has wrapped back around,
 			//without finding a non degenerate ear.
 			//In this case, add the ear to avoid an infinite loop
-			if (height > .000001f || skipped == i) {
+			if (height > .000001f && len < shortestLen) {
 				ear[0] = i;
 				ear[1] = ib;
 				ear[2] = ic;
-				break;
+				earIsValid = true;
+				shortestLen = len;
 			}
-			else if (skipped == -1) {
-				//Ear is degenerate. Set skipped to equal i,
-				//and continue searching.
-				skipped = i;
+			else if (!fallback) {
+				earFallback[0] = i;
+				earFallback[1] = ib;
+				earFallback[2] = ic;
+				fallback = true;
 			}
 		}
+		if (!earIsValid) {
+			RUVM_ASSERT("", fallback);
+			ear[0] = earFallback[0];
+			ear[1] = earFallback[1];
+			ear[2] = earFallback[2];
+		}
+		addTriEdgeToTable(&alloc, baseFace.size, pEdgeTable, ear[0], ear[1],
+		                  outMesh.loopCount);
+		addTriEdgeToTable(&alloc, baseFace.size, pEdgeTable, ear[1], ear[2],
+		                  outMesh.loopCount);
+		addTriEdgeToTable(&alloc, baseFace.size, pEdgeTable, ear[2], ear[0],
+		                  outMesh.loopCount);
 		for (int32_t i = 0; i < 3; ++i) {
 			outMesh.pLoops[outMesh.loopCount] = ear[i];
 			outMesh.loopCount++;
@@ -230,8 +294,23 @@ FaceTriangulated triangulateFace(RuvmAlloc alloc, FaceRange baseFace, void *pVer
 		loopsLeft--;
 	} while (loopsLeft >= 3);
 	alloc.pFree(pVertsRemoved);
+
+	//spin
+
+	//free tri edge table
+	for (int32_t i = 0; i < baseFace.size; ++i) {
+		TriEdge* pEntry = pEdgeTable[i].pNext;
+		while (pEntry) {
+			TriEdge *pNext = pEntry->pNext;
+			alloc.pFree(pEntry);
+			pEntry = pNext;
+		}
+	}
+	alloc.pFree(pEdgeTable);
 	return outMesh;
 }
+
+
 
 //Caller must check for nan in return value
 V3_F32 getBarycentricInFace(V2_F32 *pTriUvs, int8_t *pTriLoops,
