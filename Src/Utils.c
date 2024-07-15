@@ -130,12 +130,20 @@ int32_t checkIfEdgeIsSeam(int32_t edgeIndex, FaceRange face, int32_t loop,
 	return 0;
 }
 
-int32_t checkIfEdgeIsPreserve(Mesh* pMesh, int32_t edge) {
+bool checkIfEdgeIsPreserve(Mesh* pMesh, int32_t edge) {
 	RUVM_ASSERT("", pMesh && edge >= 0);
 	if (pMesh->pEdgePreserve) {
 		RUVM_ASSERT("", pMesh->pEdgePreserve[edge] % 2 == pMesh->pEdgePreserve[edge]);
 	}
-	return pMesh->pEdgePreserve ? pMesh->pEdgePreserve[edge] : 0;
+	return pMesh->pEdgePreserve ? pMesh->pEdgePreserve[edge] : false;
+}
+
+bool checkIfVertIsPreserve(Mesh* pMesh, int32_t vert) {
+	RUVM_ASSERT("", pMesh && vert >= 0);
+	if (pMesh->pVertPreserve) {
+		RUVM_ASSERT("", pMesh->pVertPreserve[vert] % 2 == pMesh->pVertPreserve[vert]);
+	}
+	return pMesh->pVertPreserve ? pMesh->pVertPreserve[vert] : false;
 }
 
 int32_t checkIfEdgeIsReceive(Mesh* pMesh, int32_t edge) {
@@ -217,7 +225,6 @@ FaceTriangulated triangulateFace(RuvmAlloc alloc, FaceRange baseFace, void *pVer
 	int32_t loopCount = outMesh.triCount * 3;
 	outMesh.pLoops = alloc.pMalloc(sizeof(int32_t) * loopCount);
 	TriEdge *pEdgeTable = alloc.pCalloc(baseFace.size, sizeof(TriEdge));
-	
 	int8_t *pVertsRemoved = alloc.pCalloc(baseFace.size, 1);
 	int32_t loopsLeft = baseFace.size;
 	int32_t start = 0;

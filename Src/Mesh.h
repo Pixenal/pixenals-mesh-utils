@@ -16,11 +16,13 @@ typedef struct {
 	RuvmAttrib *pUvAttrib;
 	RuvmAttrib *pNormalAttrib;
 	RuvmAttrib *pEdgePreserveAttrib;
+	RuvmAttrib* pVertPreserveAttrib;
 	RuvmAttrib *pEdgeReceiveAttrib;
 	Ruvm_V3_F32 *pVerts;
 	Ruvm_V3_F32 *pNormals;
 	Ruvm_V2_F32 *pUvs;
 	int8_t *pEdgePreserve;
+	int8_t *pVertPreserve;
 	int8_t *pEdgeReceive;
 	int32_t faceBufSize;
 	int32_t loopBufSize;

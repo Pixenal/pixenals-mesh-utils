@@ -30,7 +30,8 @@ int32_t checkIfEdgeIsSeam(int32_t edgeIndex, FaceRange face, int32_t loop,
 
 uint32_t ruvmFnvHash(uint8_t *value, int32_t valueSize, uint32_t size);
 
-int32_t checkIfEdgeIsPreserve(Mesh* pMesh, int32_t edge);
+bool checkIfEdgeIsPreserve(Mesh* pMesh, int32_t edge);
+bool checkIfVertIsPreserve(Mesh* pMesh, int32_t vert);
 int32_t checkIfEdgeIsReceive(Mesh* pMesh, int32_t edge);
 FaceTriangulated triangulateFace(RuvmAlloc alloc, FaceRange baseFace, void *pVerts,
                                  int32_t *pLoops, int32_t useUvs);
