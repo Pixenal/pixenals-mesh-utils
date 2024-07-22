@@ -5,7 +5,7 @@
 #include <Clock.h>
 #include <AttribUtils.h>
 #include <Mesh.h>
-#include <Error.h>
+#include <Context.h>
 
 typedef struct {
 	int32_t *pBufSize;
@@ -18,6 +18,26 @@ typedef struct {
 	MeshDomain domain;
 	int32_t *pBorderCount;
 } BufMeshDomain;
+
+void createMesh(RuvmContext pContext, RuvmObject *pObj, RuvmObjectType type) {
+	int32_t size = 0;
+	switch (type) {
+		case RUVM_OBJECT_DATA_MESH:
+			size = sizeof(RuvmMesh);
+			break;
+		case RUVM_OBJECT_DATA_MESH_INTERN:
+			size = sizeof(Mesh);
+			break;
+		case RUVM_OBJECT_DATA_MESH_BUF:
+			size = sizeof(BufMesh);
+			break;
+		default:
+			RUVM_ASSERT("Invalid object data type", false);
+			return;
+	}
+	pObj->pData = pContext->alloc.pCalloc(1, size);
+	((RuvmMesh *)pObj->pData)->type.type = type;
+}
 
 static
 void reallocBufMesh(const RuvmAlloc *pAlloc,
@@ -269,4 +289,131 @@ void bufMeshSetLastFaces(const RuvmAlloc *pAlloc, BufMesh *pBufMesh,
 	lastFace = bufMeshAddFace(pAlloc, pBufMesh, true, pDpVars);
 	pMesh->mesh.pFaces[lastFace.realIndex] = pBufMesh->borderLoopCount;
 	pBufMesh->borderFaceCount--;
+}
+
+bool checkIfMesh(RuvmMesh *pMesh) {
+	switch (pMesh->type.type) {
+		case RUVM_OBJECT_DATA_MESH:
+			return true;
+		case RUVM_OBJECT_DATA_MESH_INTERN:
+			return true;
+		case RUVM_OBJECT_DATA_MESH_BUF:
+			return true;
+		default:
+			return false;
+	}
+}
+
+static
+void bulkCopyAttribs(AttribArray *pSrc, int32_t SrcOffset,
+                     AttribArray *pDest, int32_t dataLen) {
+	for (int32_t i = 0; i < pSrc->count; ++i) {
+		void *attribDestStart = attribAsVoid(pDest->pArr + i, SrcOffset);
+		int32_t attribTypeSize = getAttribSize(pSrc->pArr[i].type);
+		memcpy(attribDestStart, pSrc->pArr[i].pData, attribTypeSize * dataLen);
+	}
+}
+
+void addToMeshCounts(RuvmContext pContext, MeshCounts *pCounts,
+                     MeshCounts *pBoundsCounts, Mesh *pMeshSrc) {
+	//TODO maybe replace *Counts vars in Mesh to use MeshCounts,
+	//     so we can just do:
+	//     meshCountsAdd(totalCount, pBufMesh->mesh.meshCounts);
+	//     or something.
+	pCounts->faces += pMeshSrc->mesh.faceCount;
+	pCounts->loops += pMeshSrc->mesh.loopCount;
+	pCounts->edges += pMeshSrc->mesh.edgeCount;
+	pCounts->verts += pMeshSrc->mesh.vertCount;
+	if (((RuvmObjectType *)pMeshSrc) == RUVM_OBJECT_DATA_MESH_BUF) {
+		BufMesh *pBufMesh = (BufMesh *)pMeshSrc;
+		pBoundsCounts->faces += pBufMesh->borderFaceCount;
+		pBoundsCounts->loops += pBufMesh->borderLoopCount;
+		pBoundsCounts->edges += pBufMesh->borderEdgeCount;
+		pBoundsCounts->verts += pBufMesh->borderVertCount;
+	}
+}
+
+void copyMesh(RuvmMesh *pDestMesh, RuvmMesh *pSrcMesh) {
+	RUVM_ASSERT("", checkIfMesh(pDestMesh));
+	RUVM_ASSERT("", checkIfMesh(pSrcMesh));
+	int32_t faceBase = pDestMesh->faceCount;
+	int32_t loopBase = pDestMesh->loopCount;
+	int32_t edgeBase = pDestMesh->edgeCount;
+	int32_t vertBase = pDestMesh->vertCount;
+	int32_t *facesStart = pDestMesh->pFaces + faceBase;
+	int32_t *loopsStart = pDestMesh->pLoops + loopBase;
+	int32_t *edgesStart = pDestMesh->pEdges + loopBase;
+	memcpy(facesStart, pSrcMesh->pFaces,
+		sizeof(int32_t) * pSrcMesh->faceCount);
+	bulkCopyAttribs(&pSrcMesh->faceAttribs, pDestMesh->faceCount,
+		&pDestMesh->faceAttribs, pSrcMesh->faceCount);
+	pDestMesh->faceCount += pSrcMesh->faceCount;
+	pDestMesh->pFaces[pDestMesh->faceCount] = pSrcMesh->pFaces[pSrcMesh->faceCount];
+	memcpy(loopsStart, pSrcMesh->pLoops,
+		sizeof(int32_t) * pSrcMesh->loopCount);
+	bulkCopyAttribs(&pSrcMesh->loopAttribs, pDestMesh->loopCount,
+		&pDestMesh->loopAttribs, pSrcMesh->loopCount);
+	pDestMesh->loopCount += pSrcMesh->loopCount;
+	memcpy(edgesStart, pSrcMesh->pEdges,
+		sizeof(int32_t) * pSrcMesh->loopCount);
+	bulkCopyAttribs(&pSrcMesh->edgeAttribs, pDestMesh->edgeCount,
+		&pDestMesh->edgeAttribs, pSrcMesh->edgeCount);
+	pDestMesh->edgeCount += pSrcMesh->edgeCount;
+	bulkCopyAttribs(&pSrcMesh->vertAttribs, pDestMesh->vertCount,
+		&pDestMesh->vertAttribs, pSrcMesh->vertCount);
+	pDestMesh->vertCount += pSrcMesh->vertCount;
+	for (int32_t i = faceBase; i < pDestMesh->faceCount; ++i) {
+		pDestMesh->pFaces[i] += loopBase;
+	}
+	pDestMesh->pFaces[pDestMesh->faceCount] += loopBase;
+	for (int32_t i = loopBase; i < pDestMesh->loopCount; ++i) {
+		pDestMesh->pLoops[i] += vertBase;
+		pDestMesh->pEdges[i] += edgeBase;
+	}
+}
+
+//move these to a separate Obj.c if more functions are made?
+
+void applyObjTransform(RuvmObject *pObj) {
+	Mesh *pMesh = pObj->pData;
+	for (int32_t i = 0; i < pMesh->mesh.vertCount; ++i) {
+		V3_F32 *pV3 = pMesh->pVerts + i;
+		V4_F32 v4 = {pV3->d[0], pV3->d[1], pV3->d[2], 1.0f};
+		_(&v4 V4MULEQLM4X4 &pObj->transform);
+		*pV3 = *(V3_F32 *)&v4;
+	}
+	pObj->transform = identM4x4;
+}
+
+void mergeObjArr(RuvmContext pContext, Mesh *pMesh,
+                 int32_t objCount, RuvmObject *pObjArr, bool setCommon) {
+	//TODO allocate map mesh based on all meshes in obj arr
+	Mesh **ppSrcs = pContext->alloc.pCalloc(objCount, sizeof(void *));
+	MeshCounts totalCount = {0};
+	for (int32_t i = 0; i < objCount; ++i) {
+		ppSrcs[i] = pObjArr[i].pData;
+		addToMeshCounts(pContext, &totalCount, NULL, (Mesh *)pObjArr[i].pData);
+	}
+	pMesh->faceBufSize = totalCount.faces + 1; //+1 for last face index
+	pMesh->loopBufSize = totalCount.loops;
+	pMesh->edgeBufSize = totalCount.edges;
+	pMesh->vertBufSize = totalCount.verts;
+	pMesh->mesh.pFaces =
+		pContext->alloc.pMalloc(sizeof(int32_t) * pMesh->faceBufSize);
+	pMesh->mesh.pLoops =
+		pContext->alloc.pMalloc(sizeof(int32_t) * pMesh->loopBufSize);
+	pMesh->mesh.pEdges =
+		pContext->alloc.pMalloc(sizeof(int32_t) * pMesh->loopBufSize);
+	allocAttribsFromMeshArr(&pContext->alloc, pMesh, objCount, ppSrcs, setCommon);
+	for (int32_t i = 0; i < objCount; ++i) {
+		copyMesh(pMesh, pObjArr[i].pData);
+	}
+}
+
+void destroyObjArr(RuvmContext pContext, int32_t objCount, RuvmObject *pObjArr) {
+	for (int32_t i = 0; i < objCount; ++i) {
+		ruvmMeshDestroy(pContext, pObjArr[i].pData);
+		pContext->alloc.pFree(pObjArr[i].pData);
+	}
+	pContext->alloc.pFree(pObjArr);
 }

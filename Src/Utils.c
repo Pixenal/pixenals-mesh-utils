@@ -542,9 +542,11 @@ void progressBarPrint(RuvmContext pContext, int32_t progress) {
 }
 
 void stageBegin(void *pContext, RuvmStageReport *pReport, const char* pName) {
+	return;
 	setStageName(pContext, pName);
 }
 void stageProgress(void *pContext, RuvmStageReport *pReport, int32_t progress) {
+	return;
 	if (progress) {
 		progressBarClear();
 	}
@@ -552,6 +554,7 @@ void stageProgress(void *pContext, RuvmStageReport *pReport, int32_t progress) {
 	progressBarPrint(pContext, progress);
 }
 void stageEnd(void *pContext, RuvmStageReport *pReport) {
+	return;
 	memset(pReport->stage, 0, RUVM_STAGE_NAME_LEN);
 	progressBarClear();
 }

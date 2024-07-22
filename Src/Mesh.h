@@ -38,6 +38,14 @@ typedef struct {
 	int32_t borderFaceCount;
 } BufMesh;
 
+typedef struct {
+	int32_t faces;
+	int32_t loops;
+	int32_t edges;
+	int32_t verts;
+} MeshCounts;
+
+void createMesh(RuvmContext pContext, RuvmObject *pObj, RuvmObjectType type);
 BufMeshIndex bufMeshAddFace(const RuvmAlloc *pAlloc, BufMesh *pMesh, _Bool border,
                             DebugAndPerfVars *pDpVars);
 BufMeshIndex bufMeshAddLoop(const RuvmAlloc *pAlloc, BufMesh *pMesh, _Bool border,
@@ -58,6 +66,14 @@ void reallocMeshToFit(const RuvmAlloc *pAlloc, Mesh *pMesh);
 void meshSetLastFace(const RuvmAlloc *pAlloc, Mesh *pMesh);
 void bufMeshSetLastFaces(const RuvmAlloc *pAlloc, BufMesh *pBufMesh,
                          DebugAndPerfVars *pDpVars);
+bool checkIfMesh(RuvmMesh *pMesh);
+void addToMeshCounts(RuvmContext pContext, MeshCounts *pCounts,
+                     MeshCounts *pBoundsCounts, Mesh *pMeshSrc);
+void copyMesh(RuvmMesh *pDestMesh, RuvmMesh *pSrcMesh);
+void applyObjTransform(RuvmObject *pObj);
+void mergeObjArr(RuvmContext pContext, Mesh *pMesh,
+                 int32_t objCount, RuvmObject *pObjArr, bool setCommon);
+void destroyObjArr(RuvmContext pContext, int32_t objCount, RuvmObject *pObjArr);
 //TODO remove this, it's unecessary, just do &pBufMesh->mesh instead.
 //     Obviously also rename mesh in Mesh to core, so it would be
 //     pBufMesh->mesh.core.faceCount, for instance.
