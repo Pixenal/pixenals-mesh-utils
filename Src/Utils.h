@@ -11,13 +11,6 @@ typedef struct {
 } FaceTriangulated;
 
 typedef struct {
-	int32_t start;
-	int32_t end;
-	int32_t size;
-	int32_t index;
-} FaceRange;
-
-typedef struct {
 	V2_I32 min, max;
 	V2_F32 fMin, fMax;
 	V2_F32 fMinSmall, fMaxSmall;
@@ -38,7 +31,6 @@ FaceTriangulated triangulateFace(RuvmAlloc alloc, FaceRange baseFace, void *pVer
 V3_F32 getBarycentricInFace(V2_F32 *pTriUvs, int8_t *pTriLoops,
                             int32_t loopCount, V2_F32 vert);
 void waitForJobs(RuvmContext pContext, int32_t *pJobsCompleted, void *pMutex);
-FaceRange getFaceRange(const RuvmMesh *pMesh, int32_t index, _Bool border);
 void buildEdgeList(RuvmContext pContext, Mesh* pMesh);
 _Bool isMeshInvalid(Mesh* pMesh);
 void progressBarClear();

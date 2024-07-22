@@ -16,14 +16,16 @@ typedef struct {
 	RuvmAttrib *pUvAttrib;
 	RuvmAttrib *pNormalAttrib;
 	RuvmAttrib *pEdgePreserveAttrib;
-	RuvmAttrib* pVertPreserveAttrib;
+	RuvmAttrib *pVertPreserveAttrib;
 	RuvmAttrib *pEdgeReceiveAttrib;
+	RuvmAttrib *pUsgAttrib;
 	Ruvm_V3_F32 *pVerts;
 	Ruvm_V3_F32 *pNormals;
 	Ruvm_V2_F32 *pUvs;
 	int8_t *pEdgePreserve;
 	int8_t *pVertPreserve;
 	int8_t *pEdgeReceive;
+	int32_t *pUsg;
 	int32_t faceBufSize;
 	int32_t loopBufSize;
 	int32_t edgeBufSize;
@@ -44,6 +46,13 @@ typedef struct {
 	int32_t edges;
 	int32_t verts;
 } MeshCounts;
+
+typedef struct {
+	int32_t start;
+	int32_t end;
+	int32_t size;
+	int32_t index;
+} FaceRange;
 
 void createMesh(RuvmContext pContext, RuvmObject *pObj, RuvmObjectType type);
 BufMeshIndex bufMeshAddFace(const RuvmAlloc *pAlloc, BufMesh *pMesh, _Bool border,
@@ -74,6 +83,7 @@ void applyObjTransform(RuvmObject *pObj);
 void mergeObjArr(RuvmContext pContext, Mesh *pMesh,
                  int32_t objCount, RuvmObject *pObjArr, bool setCommon);
 void destroyObjArr(RuvmContext pContext, int32_t objCount, RuvmObject *pObjArr);
+FaceRange getFaceRange(const RuvmMesh *pMesh, int32_t index, bool border);
 //TODO remove this, it's unecessary, just do &pBufMesh->mesh instead.
 //     Obviously also rename mesh in Mesh to core, so it would be
 //     pBufMesh->mesh.core.faceCount, for instance.

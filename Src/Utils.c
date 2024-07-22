@@ -371,50 +371,6 @@ void waitForJobs(RuvmContext pContext, int32_t *pJobsCompleted, void *pMutex) {
 	} while(waiting);
 }
 
-FaceRange getFaceRange(const RuvmMesh *pMesh,
-                      const int32_t index, const _Bool border) {
-	RUVM_ASSERT("", border % 2 == border);
-	int32_t realIndex;
-	int32_t direction;
-	if (!border) {
-		realIndex = index;
-		direction = 1;
-		RUVM_ASSERT("", index >= 0 && index < pMesh->faceCount);
-	}
-	else {
-		BufMeshIndex bufMeshIndex
-			= convertBorderFaceIndex(((BufMesh*)pMesh), index);
-		realIndex = bufMeshIndex.realIndex;
-		direction = -1;
-	}
-	FaceRange face = {
-		.index = realIndex,
-		.start = pMesh->pFaces[realIndex],
-		.end = pMesh->pFaces[realIndex + direction]
-	};
-	if (!border) {
-		RUVM_ASSERT("", face.start >= 0 && face.end <= pMesh->loopCount);
-		RUVM_ASSERT("", face.start < face.end);
-		face.size = face.end - face.start;
-	}
-	else {
-		BufMeshIndex start =
-			convertBorderLoopIndex(((BufMesh *)pMesh), face.start);
-		BufMeshIndex end =
-			convertBorderLoopIndex(((BufMesh *)pMesh), face.end);
-		face.start = start.realIndex;
-		face.end = end.realIndex;
-		RUVM_ASSERT("", face.end >=
-		       ((Mesh *)pMesh)->loopBufSize - 1 -
-			   ((BufMesh *)pMesh)->borderLoopCount);
-		RUVM_ASSERT("", face.end < face.start);
-		RUVM_ASSERT("", face.start < ((Mesh *)pMesh)->loopBufSize);
-		face.size = face.start - face.end;
-	}
-	RUVM_ASSERT("", face.size >= 3);
-	return face;
-}
-
 typedef struct {
 	int32_t face;
 	int32_t loop;
