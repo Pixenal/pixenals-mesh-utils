@@ -146,11 +146,15 @@ void reallocMesh(const RuvmAlloc *pAlloc, Mesh *pMesh, MeshDomain *pDomain) {
 
 static
 int32_t getNewMeshIndex(const RuvmAlloc *pAlloc,
-                        Mesh *pMesh, MeshDomain *pDomain) {
+                        Mesh *pMesh, MeshDomain *pDomain, bool *pRealloced) {
 	RUVM_ASSERT("", *pDomain->pCount >= 0 && *pDomain->pBufSize > 0);
 	RUVM_ASSERT("", *pDomain->pCount <= *pDomain->pBufSize);
 	if (*pDomain->pCount == *pDomain->pBufSize) {
 		reallocMesh(pAlloc, pMesh, pDomain);
+		*pRealloced = true;
+	}
+	else {
+		*pRealloced = false;
 	}
 	int32_t index = *pDomain->pCount;
 	++*pDomain->pCount;
@@ -230,28 +234,28 @@ BufMeshIndex convertBorderVertIndex(const BufMesh *pMesh, int32_t vert) {
 	return index;
 }
 
-int32_t meshAddFace(const RuvmAlloc *pAlloc, Mesh *pMesh) {
+int32_t meshAddFace(const RuvmAlloc *pAlloc, Mesh *pMesh, bool *pRealloced) {
 	MeshDomain domain = {0};
 	getFaceDomain(pMesh, &domain);
-	return getNewMeshIndex(pAlloc, pMesh, &domain);
+	return getNewMeshIndex(pAlloc, pMesh, &domain, pRealloced);
 }
 
-int32_t meshAddLoop(const RuvmAlloc *pAlloc, Mesh *pMesh) {
+int32_t meshAddLoop(const RuvmAlloc *pAlloc, Mesh *pMesh, bool *pRealloced) {
 	MeshDomain domain = {0};
 	getLoopDomain(pMesh, &domain);
-	return getNewMeshIndex(pAlloc, pMesh, &domain);
+	return getNewMeshIndex(pAlloc, pMesh, &domain, pRealloced);
 }
 
-int32_t meshAddEdge(const RuvmAlloc *pAlloc, Mesh *pMesh) {
+int32_t meshAddEdge(const RuvmAlloc *pAlloc, Mesh *pMesh, bool *pRealloced) {
 	MeshDomain domain = {0};
 	getEdgeDomain(pMesh, &domain);
-	return getNewMeshIndex(pAlloc, pMesh, &domain);
+	return getNewMeshIndex(pAlloc, pMesh, &domain, pRealloced);
 }
 
-int32_t meshAddVert(const RuvmAlloc *pAlloc, Mesh *pMesh) {
+int32_t meshAddVert(const RuvmAlloc *pAlloc, Mesh *pMesh, bool *pRealloced) {
 	MeshDomain domain = {0};
 	getVertDomain(pMesh, &domain);
-	return getNewMeshIndex(pAlloc, pMesh, &domain);
+	return getNewMeshIndex(pAlloc, pMesh, &domain, pRealloced);
 }
 
 void reallocMeshToFit(const RuvmAlloc *pAlloc, Mesh *pMesh) {
@@ -272,7 +276,8 @@ void reallocMeshToFit(const RuvmAlloc *pAlloc, Mesh *pMesh) {
 }
 
 void meshSetLastFace(const RuvmAlloc *pAlloc, Mesh *pMesh) {
-	int32_t lastFace = meshAddFace(pAlloc, pMesh);
+	bool realloced = false;
+	int32_t lastFace = meshAddFace(pAlloc, pMesh, &realloced);
 	pMesh->mesh.pFaces[lastFace] = pMesh->mesh.loopCount;
 	//meshAddFace() increments this, so we need to undo that
 	pMesh->mesh.faceCount--; 

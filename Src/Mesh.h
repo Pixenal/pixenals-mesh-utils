@@ -67,10 +67,10 @@ BufMeshIndex convertBorderFaceIndex(const BufMesh *pMesh, int32_t face);
 BufMeshIndex convertBorderLoopIndex(const BufMesh *pMesh, int32_t loop);
 BufMeshIndex convertBorderEdgeIndex(const BufMesh *pMesh, int32_t edge);
 BufMeshIndex convertBorderVertIndex(const BufMesh *pMesh, int32_t vert);
-int32_t meshAddFace(const RuvmAlloc *pAlloc, Mesh *pMesh);
-int32_t meshAddLoop(const RuvmAlloc *pAlloc, Mesh *pMesh);
-int32_t meshAddEdge(const RuvmAlloc *pAlloc, Mesh *pMesh);
-int32_t meshAddVert(const RuvmAlloc *pAlloc, Mesh *pMesh);
+int32_t meshAddFace(const RuvmAlloc *pAlloc, Mesh *pMesh, bool *pRealloced);
+int32_t meshAddLoop(const RuvmAlloc *pAlloc, Mesh *pMesh, bool *pRealloced);
+int32_t meshAddEdge(const RuvmAlloc *pAlloc, Mesh *pMesh, bool *pRealloced);
+int32_t meshAddVert(const RuvmAlloc *pAlloc, Mesh *pMesh, bool *pRealloced);
 void reallocMeshToFit(const RuvmAlloc *pAlloc, Mesh *pMesh);
 void meshSetLastFace(const RuvmAlloc *pAlloc, Mesh *pMesh);
 void bufMeshSetLastFaces(const RuvmAlloc *pAlloc, BufMesh *pBufMesh,

@@ -539,3 +539,36 @@ void stageEndWrap(RuvmContext pContext) {
 void setStageName(RuvmContext pContext, const char* pName) {
 	strncpy(pContext->stageReport.stage, pName, RUVM_STAGE_NAME_LEN);
 }
+
+Mat3x3 buildFaceTbn(FaceRange face, Mesh *pMesh) {
+	int32_t loop = face.start;
+	int32_t vertIndex = pMesh->mesh.pLoops[loop];
+	V2_F32 uv = pMesh->pUvs[loop];
+	V3_F32 vert = pMesh->pVerts[vertIndex];
+	int32_t vertIndexNext = pMesh->mesh.pLoops[face.start + 1];
+	V2_F32 uvNext = pMesh->pUvs[face.start + 1];
+	V3_F32 vertNext = pMesh->pVerts[vertIndexNext];
+	int32_t vertIndexPrev = pMesh->mesh.pLoops[face.end - 1];
+	V2_F32 uvPrev = pMesh->pUvs[face.end - 1];
+	V3_F32 vertPrev = pMesh->pVerts[vertIndexPrev];
+	//uv space direction vectors,
+	//forming the coefficient matrix
+	Mat2x2 coeffMat;
+	*(V2_F32 *)&coeffMat.d[0] = _(uvNext V2SUB uv);
+	*(V2_F32 *)&coeffMat.d[1] = _(uvPrev V2SUB uv);
+	//object space direction vectors,
+	//forming the variable matrix
+	Mat2x3 varMat;
+	V3_F32 osDirA = _(vertNext V3SUB vert);
+	V3_F32 osDirB = _(vertPrev V3SUB vert);
+	*(V3_F32 *)&varMat.d[0] = osDirA;
+	*(V3_F32 *)&varMat.d[1] = osDirB;
+	Mat2x2 coeffMatInv = mat2x2Invert(coeffMat);
+	Mat2x3 tb = mat2x2MultiplyMat2x3(coeffMatInv, varMat);
+	Mat3x3 tbn;
+	*(V3_F32 *)&tbn.d[0] = v3Normalize(*(V3_F32 *)&tb.d[0]);
+	*(V3_F32 *)&tbn.d[1] = v3Normalize(*(V3_F32 *)&tb.d[1]);
+	V3_F32 normal = _(osDirA V3CROSS osDirB);
+	*(V3_F32 *)&tbn.d[2] = v3Normalize(normal);
+	return tbn;
+}

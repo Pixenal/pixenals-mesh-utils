@@ -42,3 +42,4 @@ void stageBeginWrap(RuvmContext pContext, const char* pName, int32_t max);
 void stageProgressWrap(RuvmContext pContext, int32_t progress);
 void stageEndWrap(RuvmContext pContext);
 void setStageName(RuvmContext pContext, const char* pName);
+Mat3x3 buildFaceTbn(FaceRange face, Mesh *pMesh);
