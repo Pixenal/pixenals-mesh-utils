@@ -71,7 +71,7 @@ void reallocBufMesh(const RuvmAlloc *pAlloc,
 static
 BufMeshIndex getNewBufMeshIndex(const RuvmAlloc *pAlloc, BufMesh *pMesh,
                                 BufMeshDomain *pBufDomain, const _Bool border,
-								DebugAndPerfVars *pDbVars) {
+								DebugAndPerfVars *pDbVars, bool *pRealloced) {
 	MeshDomain *pDomain = (MeshDomain *)pBufDomain;
 	int32_t realBorderEnd = *pDomain->pBufSize - 1 - *pBufDomain->pBorderCount;
 	//TODO assertions like these need to be converted to release exceptions
@@ -82,6 +82,10 @@ BufMeshIndex getNewBufMeshIndex(const RuvmAlloc *pAlloc, BufMesh *pMesh,
 		reallocBufMesh(pAlloc, pMesh, pBufDomain);
 		CLOCK_STOP_NO_PRINT;
 		pDbVars->reallocTime += CLOCK_TIME_DIFF(start, stop);
+		*pRealloced = true;
+	}
+	else {
+		*pRealloced = false;
 	}
 	BufMeshIndex index = {0};
 	if (border){
@@ -162,42 +166,46 @@ int32_t getNewMeshIndex(const RuvmAlloc *pAlloc,
 }
 
 BufMeshIndex bufMeshAddFace(const RuvmAlloc *pAlloc, BufMesh *pMesh,
-                            _Bool border, DebugAndPerfVars *pDpVars) {
+                            _Bool border, DebugAndPerfVars *pDpVars,
+                            bool *pRealloced) {
 	BufMeshDomain domain = {0};
 	getFaceDomain((Mesh *)pMesh, (MeshDomain *)&domain);
 	domain.pBorderCount = &pMesh->borderFaceCount;
 	BufMeshIndex index = getNewBufMeshIndex(pAlloc, pMesh, &domain, border,
-	                                        pDpVars);
+	                                        pDpVars, pRealloced);
 	return index;
 }
 
 BufMeshIndex bufMeshAddLoop(const RuvmAlloc *pAlloc, BufMesh *pMesh,
-                            _Bool border, DebugAndPerfVars *pDpVars) {
+                            _Bool border, DebugAndPerfVars *pDpVars,
+	                        bool *pRealloced) {
 	BufMeshDomain domain = {0};
 	getLoopDomain((Mesh *)pMesh, (MeshDomain *)&domain);
 	domain.pBorderCount = &pMesh->borderLoopCount;
 	BufMeshIndex index = getNewBufMeshIndex(pAlloc, pMesh, &domain, border,
-	                                        pDpVars);
+	                                        pDpVars, pRealloced);
 	return index;
 }
 
 BufMeshIndex bufMeshAddEdge(const RuvmAlloc *pAlloc, BufMesh *pMesh,
-                            _Bool border, DebugAndPerfVars *pDpVars) {
+                            _Bool border, DebugAndPerfVars *pDpVars,
+	                        bool *pRealloced) {
 	BufMeshDomain domain = {0};
 	getEdgeDomain((Mesh *)pMesh, (MeshDomain *)&domain);
 	domain.pBorderCount = &pMesh->borderEdgeCount;
 	BufMeshIndex index = getNewBufMeshIndex(pAlloc, pMesh, &domain, border,
-	                                        pDpVars);
+	                                        pDpVars, pRealloced);
 	return index;
 }
 
 BufMeshIndex bufMeshAddVert(const RuvmAlloc *pAlloc, BufMesh *pMesh,
-                            _Bool border, DebugAndPerfVars *pDpVars) {
+                            _Bool border, DebugAndPerfVars *pDpVars,
+	                        bool *pRealloced) {
 	BufMeshDomain domain = {0};
 	getVertDomain((Mesh *)pMesh, (MeshDomain *)&domain);
 	domain.pBorderCount = &pMesh->borderVertCount;
 	BufMeshIndex index = getNewBufMeshIndex(pAlloc, pMesh, &domain, border,
-	                                        pDpVars);
+	                                        pDpVars, pRealloced);
 	return index;
 }
 
@@ -286,12 +294,13 @@ void meshSetLastFace(const RuvmAlloc *pAlloc, Mesh *pMesh) {
 void bufMeshSetLastFaces(const RuvmAlloc *pAlloc, BufMesh *pBufMesh,
                          DebugAndPerfVars *pDpVars) {
 	Mesh *pMesh = asMesh(pBufMesh);
-	BufMeshIndex lastFace = bufMeshAddFace(pAlloc, pBufMesh, false, pDpVars);
+	bool realloced = false;
+	BufMeshIndex lastFace = bufMeshAddFace(pAlloc, pBufMesh, false, pDpVars, &realloced);
 	pMesh->mesh.pFaces[lastFace.realIndex] = pMesh->mesh.loopCount;
 	//bufMeshAddFace() increments this, so we need to undo that
 	pMesh->mesh.faceCount--; 
 
-	lastFace = bufMeshAddFace(pAlloc, pBufMesh, true, pDpVars);
+	lastFace = bufMeshAddFace(pAlloc, pBufMesh, true, pDpVars, &realloced);
 	pMesh->mesh.pFaces[lastFace.realIndex] = pBufMesh->borderLoopCount;
 	pBufMesh->borderFaceCount--;
 }

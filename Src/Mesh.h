@@ -56,13 +56,13 @@ typedef struct {
 
 void createMesh(RuvmContext pContext, RuvmObject *pObj, RuvmObjectType type);
 BufMeshIndex bufMeshAddFace(const RuvmAlloc *pAlloc, BufMesh *pMesh, _Bool border,
-                            DebugAndPerfVars *pDpVars);
+                            DebugAndPerfVars *pDpVars, bool *pRealloced);
 BufMeshIndex bufMeshAddLoop(const RuvmAlloc *pAlloc, BufMesh *pMesh, _Bool border,
-                            DebugAndPerfVars *pDpVars);
+                            DebugAndPerfVars *pDpVars, bool *pRealloced);
 BufMeshIndex bufMeshAddEdge(const RuvmAlloc *pAlloc, BufMesh *pMesh, _Bool border,
-                            DebugAndPerfVars *pDpVars);
+                            DebugAndPerfVars *pDpVars, bool *pRealloced);
 BufMeshIndex bufMeshAddVert(const RuvmAlloc *pAlloc, BufMesh *pMesh, _Bool border,
-                            DebugAndPerfVars *pDpVars);
+                            DebugAndPerfVars *pDpVars, bool *pRealloced);
 BufMeshIndex convertBorderFaceIndex(const BufMesh *pMesh, int32_t face);
 BufMeshIndex convertBorderLoopIndex(const BufMesh *pMesh, int32_t loop);
 BufMeshIndex convertBorderEdgeIndex(const BufMesh *pMesh, int32_t edge);

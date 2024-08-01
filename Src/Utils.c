@@ -540,16 +540,18 @@ void setStageName(RuvmContext pContext, const char* pName) {
 	strncpy(pContext->stageReport.stage, pName, RUVM_STAGE_NAME_LEN);
 }
 
-Mat3x3 buildFaceTbn(FaceRange face, Mesh *pMesh) {
-	int32_t loop = face.start;
+Mat3x3 buildFaceTbn(FaceRange face, Mesh *pMesh, int32_t *pLoopOveride) {
+	int32_t loop = pLoopOveride ? face.start + pLoopOveride[1] : face.start;
 	int32_t vertIndex = pMesh->mesh.pLoops[loop];
 	V2_F32 uv = pMesh->pUvs[loop];
 	V3_F32 vert = pMesh->pVerts[vertIndex];
-	int32_t vertIndexNext = pMesh->mesh.pLoops[face.start + 1];
-	V2_F32 uvNext = pMesh->pUvs[face.start + 1];
+	int32_t next = pLoopOveride ? face.start + pLoopOveride[2] : face.start + 1;
+	int32_t vertIndexNext = pMesh->mesh.pLoops[next];
+	V2_F32 uvNext = pMesh->pUvs[next];
 	V3_F32 vertNext = pMesh->pVerts[vertIndexNext];
-	int32_t vertIndexPrev = pMesh->mesh.pLoops[face.end - 1];
-	V2_F32 uvPrev = pMesh->pUvs[face.end - 1];
+	int32_t prev = pLoopOveride ? face.start + pLoopOveride[0] : face.end - 1;
+	int32_t vertIndexPrev = pMesh->mesh.pLoops[prev];
+	V2_F32 uvPrev = pMesh->pUvs[prev];
 	V3_F32 vertPrev = pMesh->pVerts[vertIndexPrev];
 	//uv space direction vectors,
 	//forming the coefficient matrix
