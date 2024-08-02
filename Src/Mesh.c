@@ -80,6 +80,11 @@ BufMeshIndex getNewBufMeshIndex(const RuvmAlloc *pAlloc, BufMesh *pMesh,
 		CLOCK_INIT;
 		CLOCK_START;
 		reallocBufMesh(pAlloc, pMesh, pBufDomain);
+		if (pBufDomain->domain.pAttribArr == &pMesh->mesh.mesh.loopAttribs) {
+			pMesh->pW = pMesh->pWAttrib->pData;
+			pMesh->pInNormal = pMesh->pInNormalAttrib->pData;
+			pMesh->pAlpha = pMesh->pAlphaAttrib->pData;
+		}
 		CLOCK_STOP_NO_PRINT;
 		pDbVars->reallocTime += CLOCK_TIME_DIFF(start, stop);
 		*pRealloced = true;
@@ -322,6 +327,9 @@ static
 void bulkCopyAttribs(AttribArray *pSrc, int32_t SrcOffset,
                      AttribArray *pDest, int32_t dataLen) {
 	for (int32_t i = 0; i < pSrc->count; ++i) {
+		if (pSrc->pArr[i].origin == RUVM_ATTRIB_ORIGIN_IGNORE) {
+			continue;
+		}
 		void *attribDestStart = attribAsVoid(pDest->pArr + i, SrcOffset);
 		int32_t attribTypeSize = getAttribSize(pSrc->pArr[i].type);
 		memcpy(attribDestStart, pSrc->pArr[i].pData, attribTypeSize * dataLen);

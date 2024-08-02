@@ -38,6 +38,12 @@ typedef struct {
 	int32_t borderLoopCount;
 	int32_t borderEdgeCount;
 	int32_t borderFaceCount;
+	RuvmAttrib *pWAttrib;
+	RuvmAttrib *pInNormalAttrib;
+	RuvmAttrib *pAlphaAttrib;
+	float *pW;
+	Ruvm_V3_F32 *pInNormal;
+	float *pAlpha;
 } BufMesh;
 
 typedef struct {

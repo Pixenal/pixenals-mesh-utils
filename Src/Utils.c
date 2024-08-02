@@ -574,3 +574,13 @@ Mat3x3 buildFaceTbn(FaceRange face, Mesh *pMesh, int32_t *pLoopOveride) {
 	*(V3_F32 *)&tbn.d[2] = v3Normalize(normal);
 	return tbn;
 }
+
+void getTriScale(int32_t size, BaseTriVerts *pTri) {
+	for (int32_t i = 0; i < size; ++i) {
+		int32_t iLast = i == 0 ? size - 1 : i - 1;
+		int32_t iNext = (i + 1) % size;
+		float uvArea = v2TriArea(pTri->uv[iLast], pTri->uv[i], pTri->uv[iNext]);
+		float xyzArea = v3TriArea(pTri->xyz[iLast], pTri->xyz[i], pTri->xyz[iNext]);
+		pTri->scale[i] = xyzArea / uvArea;
+	}
+}

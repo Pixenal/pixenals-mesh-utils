@@ -16,6 +16,12 @@ typedef struct {
 	V2_F32 fMinSmall, fMaxSmall;
 } FaceBounds;
 
+typedef struct {
+	V2_F32 uv[4];
+	V3_F32 xyz[4];
+	float scale[4];
+} BaseTriVerts;
+
 int32_t checkFaceIsInBounds(V2_F32 min, V2_F32 max, FaceRange face, Mesh *pMesh);
 void getFaceBounds(FaceBounds *pBounds, V2_F32 *pUvs, FaceRange face);
 int32_t checkIfEdgeIsSeam(int32_t edgeIndex, FaceRange face, int32_t loop,
@@ -43,3 +49,4 @@ void stageProgressWrap(RuvmContext pContext, int32_t progress);
 void stageEndWrap(RuvmContext pContext);
 void setStageName(RuvmContext pContext, const char* pName);
 Mat3x3 buildFaceTbn(FaceRange face, Mesh *pMesh, int32_t *pLoopOveride);
+void getTriScale(int32_t size, BaseTriVerts *pTri);
