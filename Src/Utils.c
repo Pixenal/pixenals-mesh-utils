@@ -63,7 +63,7 @@ void getFaceBounds(FaceBounds *pBounds, V2_F32 *pUvs, FaceRange face) {
 	RUVM_ASSERT("", face.size >= 3 && face.start >= 0);
 	RUVM_ASSERT("", face.end >= 0 && face.index >= 0);
 	pBounds->fMin.d[0] = pBounds->fMin.d[1] = FLT_MAX;
-	pBounds->fMax.d[0] = pBounds->fMax.d[1] = .0f;
+	pBounds->fMax.d[0] = pBounds->fMax.d[1] = -FLT_MAX;
 	for (int32_t i = 0; i < face.size; ++i) {
 		V2_F32 *uv = pUvs + face.start + i;
 		RUVM_ASSERT("", uv && v2IsFinite(*uv));
