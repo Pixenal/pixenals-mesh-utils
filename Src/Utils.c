@@ -584,3 +584,20 @@ void getTriScale(int32_t size, BaseTriVerts *pTri) {
 		pTri->scale[i] = xyzArea / uvArea;
 	}
 }
+
+//kind of specific to this lib,
+//a and b are v3, while and d are v2.
+//cd is also taken as a param, while ab is calced
+void calcIntersection(V3_F32 a, V3_F32 b, V2_F32 c, V2_F32 cd,
+                      V3_F32 *pPoint, float *pt) {
+	V3_F32 ab = _(a V3SUB b);
+	V2_F32 ac = _(*(V2_F32 *)&a V2SUB c);
+	float t = _(ac V2DET cd) / _(*(V2_F32 *)&ab V2DET cd);
+	if (pPoint) {
+		*pPoint = _(a V3ADD _(ab V3MULS - t));
+	}
+	if (pt) {
+		float distance = sqrt(ab.d[0] * ab.d[0] + ab.d[1] * ab.d[1]);
+		*pt = fabs(t / distance);
+	}
+}

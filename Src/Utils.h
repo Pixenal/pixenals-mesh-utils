@@ -50,3 +50,5 @@ void stageEndWrap(RuvmContext pContext);
 void setStageName(RuvmContext pContext, const char* pName);
 Mat3x3 buildFaceTbn(FaceRange face, Mesh *pMesh, int32_t *pLoopOveride);
 void getTriScale(int32_t size, BaseTriVerts *pTri);
+void calcIntersection(V3_F32 a, V3_F32 b, V2_F32 c, V2_F32 cd,
+                      V3_F32 *pPoint, float *pt);
