@@ -38,7 +38,7 @@ V3_F32 getBarycentricInFace(V2_F32 *pTriUvs, int8_t *pTriLoops,
                             int32_t loopCount, V2_F32 vert);
 void waitForJobs(RuvmContext pContext, int32_t *pJobsCompleted, void *pMutex);
 void buildEdgeList(RuvmContext pContext, Mesh* pMesh);
-_Bool isMeshInvalid(Mesh* pMesh);
+bool isMeshInvalid(Mesh* pMesh);
 void progressBarClear();
 void progressBarPrint(RuvmContext pContext, int32_t progress);
 void stageBegin(void *pContext, RuvmStageReport* pReport, const char * pName);
@@ -50,5 +50,8 @@ void stageEndWrap(RuvmContext pContext);
 void setStageName(RuvmContext pContext, const char* pName);
 Mat3x3 buildFaceTbn(FaceRange face, Mesh *pMesh, int32_t *pLoopOveride);
 void getTriScale(int32_t size, BaseTriVerts *pTri);
-void calcIntersection(V3_F32 a, V3_F32 b, V2_F32 c, V2_F32 cd,
-                      V3_F32 *pPoint, float *pt);
+bool calcIntersection(V3_F32 a, V3_F32 b, V2_F32 c, V2_F32 cd,
+                      V3_F32 *pPoint, float *pt, float *pt2);
+bool indexBitArray(UBitField8 *pArr, int32_t index);
+void setBitArr(UBitField8 *pArr, int32_t index, bool value);
+void fInsertionSort(int32_t *pIndexTable, int32_t count, float *pSort);

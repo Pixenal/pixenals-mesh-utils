@@ -351,6 +351,7 @@ V3_F32 getBarycentricInFace(V2_F32 *pTriUvs, int8_t *pTriLoops,
 	return vertBc;
 }
 
+//TODO replace custom barrier with system barrier?
 void waitForJobs(RuvmContext pContext, int32_t *pJobsCompleted, void *pMutex) {
 	RUVM_ASSERT("", pContext && pJobsCompleted && *pJobsCompleted >= 0);
 	RUVM_ASSERT("", pContext->pThreadPoolHandle && pMutex);
@@ -467,7 +468,7 @@ void buildEdgeList(RuvmContext pContext, Mesh* pMesh) {
 	pAlloc->pFree(pAdjTable);
 }
 
-_Bool isMeshInvalid(Mesh* pMesh) {
+bool isMeshInvalid(Mesh* pMesh) {
 	for (int32_t i = 0; i < pMesh->mesh.faceCount; ++i) {
 		FaceRange face = getFaceRange(&pMesh->mesh, i, false);
 		if (face.size < 3) {
@@ -588,16 +589,81 @@ void getTriScale(int32_t size, BaseTriVerts *pTri) {
 //kind of specific to this lib,
 //a and b are v3, while and d are v2.
 //cd is also taken as a param, while ab is calced
-void calcIntersection(V3_F32 a, V3_F32 b, V2_F32 c, V2_F32 cd,
-                      V3_F32 *pPoint, float *pt) {
-	V3_F32 ab = _(a V3SUB b);
-	V2_F32 ac = _(*(V2_F32 *)&a V2SUB c);
-	float t = _(ac V2DET cd) / _(*(V2_F32 *)&ab V2DET cd);
+bool calcIntersection(V3_F32 a, V3_F32 b, V2_F32 c, V2_F32 cd,
+                      V3_F32 *pPoint, float *pt, float *pt2) {
+	V3_F32 ab = _(b V3SUB a);
+	V2_F32 ac = _(c V2SUB *(V2_F32 *)&a);
+	float det2 = _(*(V2_F32 *)&ab V2DET cd);
+	if (det2 == .0f) {
+		return false;
+	}
+	RUVM_ASSERT("", det2 != .0f);
+	float t = _(ac V2DET cd) / det2;
 	if (pPoint) {
-		*pPoint = _(a V3ADD _(ab V3MULS - t));
+		*pPoint = _(a V3ADD _(ab V3MULS t));
 	}
 	if (pt) {
-		float distance = sqrt(ab.d[0] * ab.d[0] + ab.d[1] * ab.d[1]);
-		*pt = fabs(t / distance);
+		*pt = fabs(t);
+	}
+	if (pt2) {
+		det2 = _(cd V2DET *(V2_F32 *)&ab);
+		if (det2 == .0f) {
+			return false;
+		}
+		RUVM_ASSERT("", det2 != .0f);
+		*pt2 = fabs(_(ac V2DET *(V2_F32 *)&ab) / det2);
+	}
+	return true;
+}
+
+bool indexBitArray(UBitField8 *pArr, int32_t index) {
+	int32_t byte = index / 8;
+	int32_t bit = index % 8;
+	return pArr[byte] >> bit & 0x1;
+}
+
+void setBitArr(UBitField8 *pArr, int32_t index, bool value) {
+	int32_t byte = index / 8;
+	int32_t bit = index % 8;
+	if (value) {
+		pArr[byte] |= 0x1 << bit;
+	}
+	else {
+		UBitField8 mask = -0x1 ^ (0x1 << bit);
+		pArr[byte] &= mask;
+	}
+}
+
+void fInsertionSort(int32_t *pIndexTable, int32_t count, float *pSort) {
+	//insertion sort
+	float a = pSort[0];
+	float b = pSort[1];
+	int32_t order = a < b;
+	pIndexTable[0] = !order;
+	pIndexTable[1] = order;
+	int32_t bufSize = 2;
+	for (int32_t i = bufSize; i < count; ++i) {
+		bool insert;
+		int32_t j;
+		for (j = bufSize - 1; j >= 0; --j) {
+			insert = pSort[i] < pSort[pIndexTable[j]] &&
+			         pSort[i] > pSort[pIndexTable[j - 1]];
+			if (insert) {
+				break;
+			}
+			RUVM_ASSERT("", j < bufSize && j >= 0);
+		}
+		if (!insert) {
+			pIndexTable[bufSize] = i;
+		}
+		else {
+			for (int32_t m = bufSize; m > j; --m) {
+				pIndexTable[m] = pIndexTable[m - 1];
+				RUVM_ASSERT("", m <= bufSize && m > j);
+			}
+			pIndexTable[j] = i;
+		}
+		RUVM_ASSERT("", i >= bufSize && i < count);
+		bufSize++;
 	}
 }

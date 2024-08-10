@@ -70,7 +70,7 @@ void reallocBufMesh(const RuvmAlloc *pAlloc,
 
 static
 BufMeshIndex getNewBufMeshIndex(const RuvmAlloc *pAlloc, BufMesh *pMesh,
-                                BufMeshDomain *pBufDomain, const _Bool border,
+                                BufMeshDomain *pBufDomain, const bool border,
 								DebugAndPerfVars *pDbVars, bool *pRealloced) {
 	MeshDomain *pDomain = (MeshDomain *)pBufDomain;
 	int32_t realBorderEnd = *pDomain->pBufSize - 1 - *pBufDomain->pBorderCount;
@@ -171,7 +171,7 @@ int32_t getNewMeshIndex(const RuvmAlloc *pAlloc,
 }
 
 BufMeshIndex bufMeshAddFace(const RuvmAlloc *pAlloc, BufMesh *pMesh,
-                            _Bool border, DebugAndPerfVars *pDpVars,
+                            bool border, DebugAndPerfVars *pDpVars,
                             bool *pRealloced) {
 	BufMeshDomain domain = {0};
 	getFaceDomain((Mesh *)pMesh, (MeshDomain *)&domain);
@@ -182,7 +182,7 @@ BufMeshIndex bufMeshAddFace(const RuvmAlloc *pAlloc, BufMesh *pMesh,
 }
 
 BufMeshIndex bufMeshAddLoop(const RuvmAlloc *pAlloc, BufMesh *pMesh,
-                            _Bool border, DebugAndPerfVars *pDpVars,
+                            bool border, DebugAndPerfVars *pDpVars,
 	                        bool *pRealloced) {
 	BufMeshDomain domain = {0};
 	getLoopDomain((Mesh *)pMesh, (MeshDomain *)&domain);
@@ -193,7 +193,7 @@ BufMeshIndex bufMeshAddLoop(const RuvmAlloc *pAlloc, BufMesh *pMesh,
 }
 
 BufMeshIndex bufMeshAddEdge(const RuvmAlloc *pAlloc, BufMesh *pMesh,
-                            _Bool border, DebugAndPerfVars *pDpVars,
+                            bool border, DebugAndPerfVars *pDpVars,
 	                        bool *pRealloced) {
 	BufMeshDomain domain = {0};
 	getEdgeDomain((Mesh *)pMesh, (MeshDomain *)&domain);
@@ -204,7 +204,7 @@ BufMeshIndex bufMeshAddEdge(const RuvmAlloc *pAlloc, BufMesh *pMesh,
 }
 
 BufMeshIndex bufMeshAddVert(const RuvmAlloc *pAlloc, BufMesh *pMesh,
-                            _Bool border, DebugAndPerfVars *pDpVars,
+                            bool border, DebugAndPerfVars *pDpVars,
 	                        bool *pRealloced) {
 	BufMeshDomain domain = {0};
 	getVertDomain((Mesh *)pMesh, (MeshDomain *)&domain);

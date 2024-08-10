@@ -61,13 +61,13 @@ typedef struct {
 } FaceRange;
 
 void createMesh(RuvmContext pContext, RuvmObject *pObj, RuvmObjectType type);
-BufMeshIndex bufMeshAddFace(const RuvmAlloc *pAlloc, BufMesh *pMesh, _Bool border,
+BufMeshIndex bufMeshAddFace(const RuvmAlloc *pAlloc, BufMesh *pMesh, bool border,
                             DebugAndPerfVars *pDpVars, bool *pRealloced);
-BufMeshIndex bufMeshAddLoop(const RuvmAlloc *pAlloc, BufMesh *pMesh, _Bool border,
+BufMeshIndex bufMeshAddLoop(const RuvmAlloc *pAlloc, BufMesh *pMesh, bool border,
                             DebugAndPerfVars *pDpVars, bool *pRealloced);
-BufMeshIndex bufMeshAddEdge(const RuvmAlloc *pAlloc, BufMesh *pMesh, _Bool border,
+BufMeshIndex bufMeshAddEdge(const RuvmAlloc *pAlloc, BufMesh *pMesh, bool border,
                             DebugAndPerfVars *pDpVars, bool *pRealloced);
-BufMeshIndex bufMeshAddVert(const RuvmAlloc *pAlloc, BufMesh *pMesh, _Bool border,
+BufMeshIndex bufMeshAddVert(const RuvmAlloc *pAlloc, BufMesh *pMesh, bool border,
                             DebugAndPerfVars *pDpVars, bool *pRealloced);
 BufMeshIndex convertBorderFaceIndex(const BufMesh *pMesh, int32_t face);
 BufMeshIndex convertBorderLoopIndex(const BufMesh *pMesh, int32_t loop);
