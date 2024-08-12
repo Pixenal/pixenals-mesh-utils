@@ -15,12 +15,16 @@ typedef struct {
 	RuvmAttrib *pVertAttrib;
 	RuvmAttrib *pUvAttrib;
 	RuvmAttrib *pNormalAttrib;
+	RuvmAttrib *pTangentAttrib;
+	RuvmAttrib *pTSignAttrib;
 	RuvmAttrib *pEdgePreserveAttrib;
 	RuvmAttrib *pVertPreserveAttrib;
 	RuvmAttrib *pEdgeReceiveAttrib;
 	RuvmAttrib *pUsgAttrib;
 	Ruvm_V3_F32 *pVerts;
 	Ruvm_V3_F32 *pNormals;
+	Ruvm_V3_F32 *pTangents;
+	float *pTSigns;
 	Ruvm_V2_F32 *pUvs;
 	int8_t *pEdgePreserve;
 	int8_t *pVertPreserve;
@@ -40,10 +44,14 @@ typedef struct {
 	int32_t borderFaceCount;
 	RuvmAttrib *pWAttrib;
 	RuvmAttrib *pInNormalAttrib;
+	RuvmAttrib *pInTangentAttrib;
 	RuvmAttrib *pAlphaAttrib;
+	RuvmAttrib *pInTSignAttrib;
 	float *pW;
 	Ruvm_V3_F32 *pInNormal;
+	Ruvm_V3_F32 *pInTangent;
 	float *pAlpha;
+	float *pInTSign;
 } BufMesh;
 
 typedef struct {
@@ -90,6 +98,7 @@ void mergeObjArr(RuvmContext pContext, Mesh *pMesh,
                  int32_t objCount, RuvmObject *pObjArr, bool setCommon);
 void destroyObjArr(RuvmContext pContext, int32_t objCount, RuvmObject *pObjArr);
 FaceRange getFaceRange(const RuvmMesh *pMesh, int32_t index, bool border);
+void buildTangents(Mesh *pMesh);
 //TODO remove this, it's unecessary, just do &pBufMesh->mesh instead.
 //     Obviously also rename mesh in Mesh to core, so it would be
 //     pBufMesh->mesh.core.faceCount, for instance.

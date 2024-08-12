@@ -667,3 +667,27 @@ void fInsertionSort(int32_t *pIndexTable, int32_t count, float *pSort) {
 		bufSize++;
 	}
 }
+
+Mat3x3 getInterpolatedTbn(Mesh *pMesh, FaceRange *pFace,
+                          int8_t *pTriLoops, V3_F32 bc) {
+	//TODO replace interpolation in this func with the attrib
+	//     interpolation funcions or macros
+	V3_F32 *pNormals = pMesh->pNormals;
+	V3_F32 normal = _(pNormals[pFace->start + pTriLoops[0]] V3MULS bc.d[0]);
+	_(&normal V3ADDEQL _(pNormals[pFace->start + pTriLoops[1]] V3MULS bc.d[1]));
+	_(&normal V3ADDEQL _(pNormals[pFace->start + pTriLoops[2]] V3MULS bc.d[2]));
+	_(&normal V3DIVEQLS bc.d[0] + bc.d[1] + bc.d[2]);
+	V3_F32 *pTangents = pMesh->pTangents;
+	V3_F32 tangent = _(pTangents[pFace->start + pTriLoops[0]] V3MULS bc.d[0]);
+	_(&tangent V3ADDEQL _(pTangents[pFace->start + pTriLoops[1]] V3MULS bc.d[1]));
+	_(&tangent V3ADDEQL _(pTangents[pFace->start + pTriLoops[2]] V3MULS bc.d[2]));
+	_(&tangent V3DIVEQLS bc.d[0] + bc.d[1] + bc.d[2]);
+	//TODO should this be interpolated? Or are such edge cases invalid?
+	float tSign = pMesh->pTSigns[pFace->start + pTriLoops[0]];
+	V3_F32 bitangent = _(_(normal V3CROSS tangent) V3MULS tSign);
+	Mat3x3 tbn;
+	*(V3_F32 *)&tbn.d[0] = tangent;
+	*(V3_F32 *)&tbn.d[1] = bitangent;
+	*(V3_F32 *)&tbn.d[2] = normal;
+	return tbn;
+}

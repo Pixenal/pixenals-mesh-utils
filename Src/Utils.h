@@ -55,3 +55,5 @@ bool calcIntersection(V3_F32 a, V3_F32 b, V2_F32 c, V2_F32 cd,
 bool indexBitArray(UBitField8 *pArr, int32_t index);
 void setBitArr(UBitField8 *pArr, int32_t index, bool value);
 void fInsertionSort(int32_t *pIndexTable, int32_t count, float *pSort);
+Mat3x3 getInterpolatedTbn(Mesh *pMesh, FaceRange *pFace,
+                          int8_t *pTriLoops, V3_F32 bc);

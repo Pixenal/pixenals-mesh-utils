@@ -1,6 +1,8 @@
 #include <stdint.h>
 #include <string.h>
 
+#include <mikktspace.h>
+
 #include <Error.h>
 #include <Clock.h>
 #include <AttribUtils.h>
@@ -83,7 +85,9 @@ BufMeshIndex getNewBufMeshIndex(const RuvmAlloc *pAlloc, BufMesh *pMesh,
 		if (pBufDomain->domain.pAttribArr == &pMesh->mesh.mesh.loopAttribs) {
 			pMesh->pW = pMesh->pWAttrib->pData;
 			pMesh->pInNormal = pMesh->pInNormalAttrib->pData;
+			pMesh->pInTangent = pMesh->pInTangentAttrib->pData;
 			pMesh->pAlpha = pMesh->pAlphaAttrib->pData;
+			pMesh->pInTSign = pMesh->pInTSignAttrib->pData;
 		}
 		CLOCK_STOP_NO_PRINT;
 		pDbVars->reallocTime += CLOCK_TIME_DIFF(start, stop);
@@ -482,4 +486,68 @@ FaceRange getFaceRange(const RuvmMesh *pMesh,
 	}
 	RUVM_ASSERT("", face.size >= 3);
 	return face;
+}
+
+static
+int mikktGetNumFaces(const SMikkTSpaceContext *pContext) {
+	Mesh *pMesh = pContext->m_pUserData;
+	return pMesh->mesh.faceCount;
+}
+
+static
+int mikktGetNumVertsOfFace(const SMikkTSpaceContext *pContext, const int iFace) {
+	Mesh *pMesh = pContext->m_pUserData;
+	FaceRange face = getFaceRange(&pMesh->mesh, iFace, false);
+	return face.size;
+}
+
+static
+void mikktGetPos(const SMikkTSpaceContext *pContext, float *pFvPosOut,
+                 const int iFace, const int iVert) {
+	Mesh *pMesh = pContext->m_pUserData;
+	FaceRange face = getFaceRange(&pMesh->mesh, iFace, false);
+	int32_t vertIndex = pMesh->mesh.pLoops[face.start + iVert];
+	*(V3_F32 *)pFvPosOut = pMesh->pVerts[vertIndex];
+}
+
+static
+void mikktGetNormal(const SMikkTSpaceContext *pContext, float *pFvNormOut,
+                    const int iFace, const int iVert) {
+	Mesh *pMesh = pContext->m_pUserData;
+	FaceRange face = getFaceRange(&pMesh->mesh, iFace, false);
+	*(V3_F32 *)pFvNormOut = pMesh->pNormals[face.start + iVert];;
+}
+
+static
+void mikktGetTexCoord(const SMikkTSpaceContext *pContext, float *pFvTexcOut,
+                      const int iFace, const int iVert) {
+	Mesh *pMesh = pContext->m_pUserData;
+	FaceRange face = getFaceRange(&pMesh->mesh, iFace, false);
+	*(V2_F32 *)pFvTexcOut = pMesh->pUvs[face.start + iVert];
+}
+
+static
+void mikktSetTSpaceBasic(const SMikkTSpaceContext *pContext, const float *pFvTangent,
+                         const float fSign, const int iFace, const int iVert) {
+	Mesh *pMesh = pContext->m_pUserData;
+	FaceRange face = getFaceRange(&pMesh->mesh, iFace, false);
+	int32_t loop = face.start + iVert;
+	pMesh->pTangents[loop] = *(V3_F32 *)pFvTangent;
+	pMesh->pTSigns[loop] = fSign;
+}
+
+void buildTangents(Mesh *pMesh) {
+	SMikkTSpaceInterface mikktInterface = {
+		.m_getNumFaces = mikktGetNumFaces,
+		.m_getNumVerticesOfFace = mikktGetNumVertsOfFace,
+		.m_getPosition = mikktGetPos,
+		.m_getNormal = mikktGetNormal,
+		.m_getTexCoord = mikktGetTexCoord,
+		.m_setTSpaceBasic = mikktSetTSpaceBasic
+	};
+	SMikkTSpaceContext mikktContext = {
+		.m_pInterface = &mikktInterface,
+		.m_pUserData = pMesh
+	};
+	genTangSpaceDefault(&mikktContext);
 }
