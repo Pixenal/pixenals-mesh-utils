@@ -691,3 +691,74 @@ Mat3x3 getInterpolatedTbn(Mesh *pMesh, FaceRange *pFace,
 	*(V3_F32 *)&tbn.d[2] = normal;
 	return tbn;
 }
+
+static
+bool isMarkedSkip(int32_t *pSkip, int32_t skipCount, int32_t index) {
+	for (int32_t i = 0; i < skipCount; ++i) {
+		if (index == pSkip[i]) {
+			return true;
+		}
+	}
+	return false;
+}
+
+//0 for clockwise, returns 1 for counterclockwise, & 2 if degenerate
+int32_t calcFaceOrientation(Mesh *pMesh, FaceRange *pFace, bool useUvs) {
+	RUVM_ASSERT("", pFace->start >= 0 && pFace->size >= 3);
+	int32_t skip[16] = {0};
+	int32_t skipCount = 0;
+	do {
+		int32_t lowestLoop = 0;
+		V2_F32 lowestCoord = { FLT_MAX, FLT_MAX };
+		for (int32_t i = 0; i < pFace->size; ++i) {
+			if (isMarkedSkip(skip, skipCount, i)) {
+				continue;
+			}
+			int32_t loop = pFace->start + i;
+			V2_F32 pos;
+			if (useUvs) {
+				pos = pMesh->pUvs[loop];
+			}
+			else {
+				int32_t vert = pMesh->mesh.pLoops[loop];
+				pos = *(V2_F32 *)&pMesh->pVerts[vert];
+			}
+			if (pos.d[0] < lowestCoord.d[0] ||
+				pos.d[1] < lowestCoord.d[1]) {
+
+				lowestLoop = i;
+				lowestCoord = pos;
+			}
+		}
+		int32_t prev = lowestLoop == 0 ? pFace->size - 1 : lowestLoop - 1;
+		int32_t next = (lowestLoop + 1) % pFace->size;
+		V2_F32 a;
+		V2_F32 b;
+		V2_F32 c;
+		if (useUvs) {
+			a = pMesh->pUvs[prev];
+			b = pMesh->pUvs[lowestLoop];
+			c = pMesh->pUvs[next];
+		}
+		else {
+			int32_t vertPrev = pMesh->mesh.pLoops[pFace->start + prev];
+			int32_t vert = pMesh->mesh.pLoops[pFace->start + lowestLoop];
+			int32_t vertNext = pMesh->mesh.pLoops[pFace->start + next];
+			a = *(V2_F32 *)&pMesh->pVerts[vertPrev];
+			b = *(V2_F32 *)&pMesh->pVerts[vert];
+			c = *(V2_F32 *)&pMesh->pVerts[vertNext];
+		}
+		//alt formula for determinate,
+		//shorter and less likely to cause numerical error
+		float det = (b.d[0] - a.d[0]) * (c.d[1] - a.d[1]) -
+		            (c.d[0] - a.d[0]) * (b.d[1] - a.d[1]);
+		if (det) {
+			return det > .0f;
+		}
+		//abc is degenerate, find another corner
+		skip[skipCount] = lowestLoop;
+		skipCount++;
+	} while(skipCount < pFace->size);
+	RUVM_ASSERT("face is degenerate", skipCount == pFace->size);
+	return 2;
+}
