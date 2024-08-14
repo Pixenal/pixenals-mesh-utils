@@ -736,9 +736,9 @@ int32_t calcFaceOrientation(Mesh *pMesh, FaceRange *pFace, bool useUvs) {
 		V2_F32 b;
 		V2_F32 c;
 		if (useUvs) {
-			a = pMesh->pUvs[prev];
-			b = pMesh->pUvs[lowestLoop];
-			c = pMesh->pUvs[next];
+			a = pMesh->pUvs[pFace->start + prev];
+			b = pMesh->pUvs[pFace->start + lowestLoop];
+			c = pMesh->pUvs[pFace->start + next];
 		}
 		else {
 			int32_t vertPrev = pMesh->mesh.pLoops[pFace->start + prev];
