@@ -22,6 +22,15 @@ typedef struct {
 	float scale[4];
 } BaseTriVerts;
 
+typedef struct {
+	UBitField8 *pBaseLoop;
+	UBitField8 *pRuvmLoop;
+	UBitField8 *pSegment;
+	UBitField8 *pIsRuvm;
+	UBitField8 *pOnLine;
+	UBitField8 *pOnInVert;
+} BorderFaceBitArrs;
+
 int32_t checkFaceIsInBounds(V2_F32 min, V2_F32 max, FaceRange face, Mesh *pMesh);
 void getFaceBounds(FaceBounds *pBounds, V2_F32 *pUvs, FaceRange face);
 int32_t checkIfEdgeIsSeam(int32_t edgeIndex, FaceRange face, int32_t loop,
@@ -52,9 +61,12 @@ Mat3x3 buildFaceTbn(FaceRange face, Mesh *pMesh, int32_t *pLoopOveride);
 void getTriScale(int32_t size, BaseTriVerts *pTri);
 bool calcIntersection(V3_F32 a, V3_F32 b, V2_F32 c, V2_F32 cd,
                       V3_F32 *pPoint, float *pt, float *pt2);
-bool indexBitArray(UBitField8 *pArr, int32_t index);
-void setBitArr(UBitField8 *pArr, int32_t index, bool value);
+int32_t indexBitArray(UBitField8 *pArr, int32_t index, int32_t len);
+void setBitArr(UBitField8 *pArr, int32_t index, int32_t value, int32_t len);
 void fInsertionSort(int32_t *pIndexTable, int32_t count, float *pSort);
 Mat3x3 getInterpolatedTbn(Mesh *pMesh, FaceRange *pFace,
                           int8_t *pTriLoops, V3_F32 bc);
 int32_t calcFaceOrientation(Mesh *pMesh, FaceRange *pFace, bool useUvs);
+int32_t getBorderFaceMemType(int32_t mapFaceSize, int32_t bufFaceSize);
+int32_t getBorderFaceSize(int32_t memType);
+void getBorderFaceBitArrs(BorderFace *pEntry, BorderFaceBitArrs *pArrs);

@@ -603,7 +603,7 @@ bool calcIntersection(V3_F32 a, V3_F32 b, V2_F32 c, V2_F32 cd,
 		*pPoint = _(a V3ADD _(ab V3MULS t));
 	}
 	if (pt) {
-		*pt = fabs(t);
+		*pt = t;
 	}
 	if (pt2) {
 		det2 = _(cd V2DET *(V2_F32 *)&ab);
@@ -611,22 +611,41 @@ bool calcIntersection(V3_F32 a, V3_F32 b, V2_F32 c, V2_F32 cd,
 			return false;
 		}
 		RUVM_ASSERT("", det2 != .0f);
-		*pt2 = fabs(_(ac V2DET *(V2_F32 *)&ab) / det2);
+		*pt2 = _(ac V2DET *(V2_F32 *)&ab) / det2;
 	}
 	return true;
 }
 
-bool indexBitArray(UBitField8 *pArr, int32_t index) {
+//does not bounds check
+int32_t indexBitArray(UBitField8 *pArr, int32_t index, int32_t len) {
+	index *= len;
 	int32_t byte = index / 8;
 	int32_t bit = index % 8;
-	return pArr[byte] >> bit & 0x1;
+	int32_t mask = (0x1 << len) - 1;
+	if (bit + len > 8) {
+		//bit spans byte boundary
+		return *(UBitField16 *)&pArr[byte] >> bit & mask;
+	}
+	else {
+		return pArr[byte] >> bit & mask;
+	}
 }
 
-void setBitArr(UBitField8 *pArr, int32_t index, bool value) {
+//does not bounds check.
+//Also, if value is 0, only 1 bit will be set, len is ignored
+void setBitArr(UBitField8 *pArr, int32_t index, int32_t value, int32_t len) {
+	RUVM_ASSERT("", (value & (0x1 << len) - 1) == value);
+	index *= len;
 	int32_t byte = index / 8;
 	int32_t bit = index % 8;
 	if (value) {
-		pArr[byte] |= 0x1 << bit;
+		if (bit + len > 8) {
+			//cast to 16 bit as value spans across byte boundary
+			*(UBitField16 *)&pArr[byte] |= value << bit;
+		}
+		else {
+			pArr[byte] |= value << bit;
+		}
 	}
 	else {
 		UBitField8 mask = -0x1 ^ (0x1 << bit);
@@ -723,12 +742,15 @@ int32_t calcFaceOrientation(Mesh *pMesh, FaceRange *pFace, bool useUvs) {
 				int32_t vert = pMesh->mesh.pLoops[loop];
 				pos = *(V2_F32 *)&pMesh->pVerts[vert];
 			}
-			if (pos.d[0] < lowestCoord.d[0] ||
-				pos.d[1] < lowestCoord.d[1]) {
-
-				lowestLoop = i;
-				lowestCoord = pos;
+			if (pos.d[0] > lowestCoord.d[0]) {
+				continue;
 			}
+			else if (pos.d[0] == lowestCoord.d[0] &&
+			         pos.d[1] >= lowestCoord.d[1]) {
+				continue;
+			}
+			lowestLoop = i;
+			lowestCoord = pos;
 		}
 		int32_t prev = lowestLoop == 0 ? pFace->size - 1 : lowestLoop - 1;
 		int32_t next = (lowestLoop + 1) % pFace->size;
@@ -761,4 +783,68 @@ int32_t calcFaceOrientation(Mesh *pMesh, FaceRange *pFace, bool useUvs) {
 	} while(skipCount < pFace->size);
 	RUVM_ASSERT("face is degenerate", skipCount == pFace->size);
 	return 2;
+}
+
+int32_t getBorderFaceMemType(int32_t mapFaceSize, int32_t bufFaceSize) {
+	RUVM_ASSERT("", bufFaceSize >= 0);
+	if (bufFaceSize <= 14 && mapFaceSize <= 8) {
+		return 0;
+	}
+	else if (bufFaceSize <= 26 && mapFaceSize <= 16) {
+		return 1;
+	}
+	else if (bufFaceSize <= 50 && mapFaceSize <= 32) {
+		return 2;
+	}
+	RUVM_ASSERT("Border face size > 64", false);
+	return 0;
+}
+
+int32_t getBorderFaceSize(int32_t memType) {
+	RUVM_ASSERT("", memType >= 0 && memType <= 3);
+	switch (memType) {
+	case 0:
+		return sizeof(BorderFaceSmall);
+	case 1:
+		return sizeof(BorderFaceMid);
+	case 2:
+		return sizeof(BorderFaceLarge);
+	}
+	RUVM_ASSERT("This shouldn't be hit", false);
+	return 0;
+}
+
+void getBorderFaceBitArrs(BorderFace *pEntry, BorderFaceBitArrs *pArrs) {
+	switch (pEntry->memType) {
+		case 0: {
+			BorderFaceSmall *pCast = (BorderFaceSmall *)pEntry;
+			pArrs->pBaseLoop = &pCast->baseLoop;
+			pArrs->pRuvmLoop = &pCast->ruvmLoop;
+			pArrs->pSegment = &pCast->segment;
+			pArrs->pIsRuvm = &pCast->isRuvm;
+			pArrs->pOnLine = &pCast->onLine;
+			pArrs->pOnInVert = &pCast->onInVert;
+			return;
+		}
+		case 1: {
+			BorderFaceMid *pCast = (BorderFaceMid *)pEntry;
+			pArrs->pBaseLoop = &pCast->baseLoop;
+			pArrs->pRuvmLoop = &pCast->ruvmLoop;
+			pArrs->pSegment = &pCast->segment;
+			pArrs->pIsRuvm = &pCast->isRuvm;
+			pArrs->pOnLine = &pCast->onLine;
+			pArrs->pOnInVert = &pCast->onInVert;
+			return;
+		}
+		case 2: {
+			BorderFaceLarge *pCast = (BorderFaceLarge *)pEntry;
+			pArrs->pBaseLoop = &pCast->baseLoop;
+			pArrs->pRuvmLoop = &pCast->ruvmLoop;
+			pArrs->pSegment = &pCast->segment;
+			pArrs->pIsRuvm = &pCast->isRuvm;
+			pArrs->pOnLine = &pCast->onLine;
+			pArrs->pOnInVert = &pCast->onInVert;
+			return;
+		}
+	}
 }
