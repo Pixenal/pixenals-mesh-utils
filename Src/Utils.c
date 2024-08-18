@@ -653,6 +653,40 @@ void setBitArr(UBitField8 *pArr, int32_t index, int32_t value, int32_t len) {
 	}
 }
 
+void insertionSort(int32_t *pIndexTable, int32_t count, int32_t *pSort) {
+	//insertion sort
+	int32_t a = pSort[0];
+	int32_t b = pSort[1];
+	int32_t order = a < b;
+	pIndexTable[0] = !order;
+	pIndexTable[1] = order;
+	int32_t bufSize = 2;
+	for (int32_t i = bufSize; i < count; ++i) {
+		bool insert;
+		int32_t j;
+		for (j = bufSize - 1; j >= 0; --j) {
+			insert = pSort[i] < pSort[pIndexTable[j]] &&
+				pSort[i] > pSort[pIndexTable[j - 1]];
+			if (insert) {
+				break;
+			}
+			RUVM_ASSERT("", j < bufSize && j >= 0);
+		}
+		if (!insert) {
+			pIndexTable[bufSize] = i;
+		}
+		else {
+			for (int32_t m = bufSize; m > j; --m) {
+				pIndexTable[m] = pIndexTable[m - 1];
+				RUVM_ASSERT("", m <= bufSize && m > j);
+			}
+			pIndexTable[j] = i;
+		}
+		RUVM_ASSERT("", i >= bufSize && i < count);
+		bufSize++;
+	}
+}
+
 void fInsertionSort(int32_t *pIndexTable, int32_t count, float *pSort) {
 	//insertion sort
 	float a = pSort[0];

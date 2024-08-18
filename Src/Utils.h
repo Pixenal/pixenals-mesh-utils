@@ -63,6 +63,7 @@ bool calcIntersection(V3_F32 a, V3_F32 b, V2_F32 c, V2_F32 cd,
                       V3_F32 *pPoint, float *pt, float *pt2);
 int32_t indexBitArray(UBitField8 *pArr, int32_t index, int32_t len);
 void setBitArr(UBitField8 *pArr, int32_t index, int32_t value, int32_t len);
+void insertionSort(int32_t *pIndexTable, int32_t count, int32_t *pSort);
 void fInsertionSort(int32_t *pIndexTable, int32_t count, float *pSort);
 Mat3x3 getInterpolatedTbn(Mesh *pMesh, FaceRange *pFace,
                           int8_t *pTriLoops, V3_F32 bc);
