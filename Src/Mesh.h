@@ -21,10 +21,12 @@ typedef struct {
 	RuvmAttrib *pVertPreserveAttrib;
 	RuvmAttrib *pEdgeReceiveAttrib;
 	RuvmAttrib *pUsgAttrib;
+	RuvmAttrib *pWScaleAttrib;
 	Ruvm_V3_F32 *pVerts;
 	Ruvm_V3_F32 *pNormals;
 	Ruvm_V3_F32 *pTangents;
 	float *pTSigns;
+	float *pWScale;
 	Ruvm_V2_F32 *pUvs;
 	int8_t *pEdgePreserve;
 	int8_t *pVertPreserve;

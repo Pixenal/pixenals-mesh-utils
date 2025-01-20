@@ -330,13 +330,14 @@ bool checkIfMesh(RuvmMesh *pMesh) {
 static
 void bulkCopyAttribs(AttribArray *pSrc, int32_t SrcOffset,
                      AttribArray *pDest, int32_t dataLen) {
-	for (int32_t i = 0; i < pSrc->count; ++i) {
-		if (pSrc->pArr[i].origin == RUVM_ATTRIB_ORIGIN_IGNORE) {
+	for (int32_t i = 0; i < pDest->count; ++i) {
+		Attrib *pSrcAttrib = getAttrib(pDest->pArr[i].name, pSrc);
+		if (!pSrcAttrib) {
 			continue;
 		}
 		void *attribDestStart = attribAsVoid(pDest->pArr + i, SrcOffset);
-		int32_t attribTypeSize = getAttribSize(pSrc->pArr[i].type);
-		memcpy(attribDestStart, pSrc->pArr[i].pData, attribTypeSize * dataLen);
+		int32_t attribTypeSize = getAttribSize(pDest->pArr[i].type);
+		memcpy(attribDestStart, pSrcAttrib->pData, attribTypeSize * dataLen);
 	}
 }
 
