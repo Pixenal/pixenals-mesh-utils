@@ -59,12 +59,14 @@ void reallocBufMesh(const RuvmAlloc *pAlloc,
 		*pDomain->ppList[i] =
 			pAlloc->pRealloc(*pDomain->ppList[i],
 									 sizeof(int32_t) * *pDomain->pBufSize);
-		int32_t *pStart = *pDomain->ppList[i] + realBorderEnd + 1;
-		memmove(pStart + diff, pStart, sizeof(int32_t) * *pBufDomain->pBorderCount);
-		int32_t newFirstElement = (*pDomain->ppList[i])[realBorderEnd + 1 + diff];
-		int32_t newLastElement = (*pDomain->ppList[i])[*pDomain->pBufSize - 1];
-		RUVM_ASSERT("", newFirstElement == oldFirstElement);
-		RUVM_ASSERT("", newLastElement == oldLastElement);
+		if (*pBufDomain->pBorderCount) {
+			int32_t *pStart = *pDomain->ppList[i] + realBorderEnd + 1;
+			memmove(pStart + diff, pStart, sizeof(int32_t) * *pBufDomain->pBorderCount);
+			int32_t newFirstElement = (*pDomain->ppList[i])[realBorderEnd + 1 + diff];
+			int32_t newLastElement = (*pDomain->ppList[i])[*pDomain->pBufSize - 1];
+			RUVM_ASSERT("", newFirstElement == oldFirstElement);
+			RUVM_ASSERT("", newLastElement == oldLastElement);
+		}
 	}
 	reallocAndMoveAttribs(pAlloc, pMesh, pDomain->pAttribArr, realBorderEnd + 1,
 	                      diff, *pBufDomain->pBorderCount, *pDomain->pBufSize);

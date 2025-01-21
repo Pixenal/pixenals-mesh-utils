@@ -352,22 +352,13 @@ V3_F32 getBarycentricInFace(V2_F32 *pTriUvs, int8_t *pTriLoops,
 }
 
 //TODO replace custom barrier with system barrier?
-void waitForJobs(RuvmContext pContext, int32_t *pJobsCompleted, void *pMutex) {
-	RUVM_ASSERT("", pContext && pJobsCompleted && *pJobsCompleted >= 0);
-	RUVM_ASSERT("", pContext->pThreadPoolHandle && pMutex);
-	int32_t waiting;
+void waitForJobs(RuvmContext pContext, int32_t *pActiveJobs, void *pMutex) {
+	bool waiting;
 	do  {
-		void (*pJob)(void *) = NULL;
-		void *pArgs = NULL;
-		pContext->threadPool.pJobStackGetJob(pContext->pThreadPoolHandle,
-		                                     &pJob, &pArgs);
-		if (pJob) {
-			RUVM_ASSERT("", pArgs);
-			pJob(pArgs);
-		}
+		pContext->threadPool.pGetAndDoJob(pContext->pThreadPoolHandle);
 		pContext->threadPool.pMutexLock(pContext->pThreadPoolHandle, pMutex);
 		RUVM_ASSERT("", pContext->threadCount >= 0);
-		waiting = *pJobsCompleted < pContext->threadCount;
+		waiting = *pActiveJobs > 0;
 		pContext->threadPool.pMutexUnlock(pContext->pThreadPoolHandle, pMutex);
 	} while(waiting);
 }
