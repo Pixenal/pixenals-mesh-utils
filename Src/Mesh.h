@@ -6,9 +6,9 @@
 #include <DebugAndPerf.h>
 
 typedef struct {
-	int32_t index;
-	int32_t realIndex;
-} BufMeshIndex;
+	int32_t idx;
+	int32_t realIdx;
+} BufMeshIdx;
 
 typedef struct {
 	RuvmMesh mesh;
@@ -33,7 +33,7 @@ typedef struct {
 	int8_t *pEdgeReceive;
 	int32_t *pUsg;
 	int32_t faceBufSize;
-	int32_t loopBufSize;
+	int32_t cornerBufSize;
 	int32_t edgeBufSize;
 	int32_t vertBufSize;
 } Mesh;
@@ -41,7 +41,7 @@ typedef struct {
 typedef struct {
 	Mesh mesh;
 	int32_t borderVertCount;
-	int32_t borderLoopCount;
+	int32_t borderCornerCount;
 	int32_t borderEdgeCount;
 	int32_t borderFaceCount;
 	RuvmAttrib *pWAttrib;
@@ -58,7 +58,7 @@ typedef struct {
 
 typedef struct {
 	int32_t faces;
-	int32_t loops;
+	int32_t corners;
 	int32_t edges;
 	int32_t verts;
 } MeshCounts;
@@ -67,24 +67,24 @@ typedef struct {
 	int32_t start;
 	int32_t end;
 	int32_t size;
-	int32_t index;
+	int32_t idx;
 } FaceRange;
 
 void createMesh(RuvmContext pContext, RuvmObject *pObj, RuvmObjectType type);
-BufMeshIndex bufMeshAddFace(const RuvmAlloc *pAlloc, BufMesh *pMesh, bool border,
+BufMeshIdx bufMeshAddFace(const RuvmAlloc *pAlloc, BufMesh *pMesh, bool border,
                             DebugAndPerfVars *pDpVars, bool *pRealloced);
-BufMeshIndex bufMeshAddLoop(const RuvmAlloc *pAlloc, BufMesh *pMesh, bool border,
+BufMeshIdx bufMeshAddCorner(const RuvmAlloc *pAlloc, BufMesh *pMesh, bool border,
                             DebugAndPerfVars *pDpVars, bool *pRealloced);
-BufMeshIndex bufMeshAddEdge(const RuvmAlloc *pAlloc, BufMesh *pMesh, bool border,
+BufMeshIdx bufMeshAddEdge(const RuvmAlloc *pAlloc, BufMesh *pMesh, bool border,
                             DebugAndPerfVars *pDpVars, bool *pRealloced);
-BufMeshIndex bufMeshAddVert(const RuvmAlloc *pAlloc, BufMesh *pMesh, bool border,
+BufMeshIdx bufMeshAddVert(const RuvmAlloc *pAlloc, BufMesh *pMesh, bool border,
                             DebugAndPerfVars *pDpVars, bool *pRealloced);
-BufMeshIndex convertBorderFaceIndex(const BufMesh *pMesh, int32_t face);
-BufMeshIndex convertBorderLoopIndex(const BufMesh *pMesh, int32_t loop);
-BufMeshIndex convertBorderEdgeIndex(const BufMesh *pMesh, int32_t edge);
-BufMeshIndex convertBorderVertIndex(const BufMesh *pMesh, int32_t vert);
+BufMeshIdx convertBorderFaceIdx(const BufMesh *pMesh, int32_t face);
+BufMeshIdx convertBorderCornerIdx(const BufMesh *pMesh, int32_t corner);
+BufMeshIdx convertBorderEdgeIdx(const BufMesh *pMesh, int32_t edge);
+BufMeshIdx convertBorderVertIdx(const BufMesh *pMesh, int32_t vert);
 int32_t meshAddFace(const RuvmAlloc *pAlloc, Mesh *pMesh, bool *pRealloced);
-int32_t meshAddLoop(const RuvmAlloc *pAlloc, Mesh *pMesh, bool *pRealloced);
+int32_t meshAddCorner(const RuvmAlloc *pAlloc, Mesh *pMesh, bool *pRealloced);
 int32_t meshAddEdge(const RuvmAlloc *pAlloc, Mesh *pMesh, bool *pRealloced);
 int32_t meshAddVert(const RuvmAlloc *pAlloc, Mesh *pMesh, bool *pRealloced);
 void reallocMeshToFit(const RuvmAlloc *pAlloc, Mesh *pMesh);
@@ -99,7 +99,7 @@ void applyObjTransform(RuvmObject *pObj);
 void mergeObjArr(RuvmContext pContext, Mesh *pMesh,
                  int32_t objCount, RuvmObject *pObjArr, bool setCommon);
 void destroyObjArr(RuvmContext pContext, int32_t objCount, RuvmObject *pObjArr);
-FaceRange getFaceRange(const RuvmMesh *pMesh, int32_t index, bool border);
+FaceRange getFaceRange(const RuvmMesh *pMesh, int32_t idx, bool border);
 void buildTangents(Mesh *pMesh);
 //TODO remove this, it's unecessary, just do &pBufMesh->mesh instead.
 //     Obviously also rename mesh in Mesh to core, so it would be

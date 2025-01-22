@@ -5,9 +5,9 @@
 #include <Mesh.h>
 
 typedef struct {
-	int32_t* pLoops;
+	int32_t* pCorners;
 	int32_t triCount;
-	int32_t loopCount;
+	int32_t cornerCount;
 } FaceTriangulated;
 
 typedef struct {
@@ -23,8 +23,8 @@ typedef struct {
 } BaseTriVerts;
 
 typedef struct {
-	UBitField8 *pBaseLoop;
-	UBitField8 *pRuvmLoop;
+	UBitField8 *pBaseCorner;
+	UBitField8 *pRuvmCorner;
 	UBitField8 *pSegment;
 	UBitField8 *pIsRuvm;
 	UBitField8 *pOnLine;
@@ -33,18 +33,18 @@ typedef struct {
 
 int32_t checkFaceIsInBounds(V2_F32 min, V2_F32 max, FaceRange face, Mesh *pMesh);
 void getFaceBounds(FaceBounds *pBounds, V2_F32 *pUvs, FaceRange face);
-int32_t checkIfEdgeIsSeam(int32_t edgeIndex, FaceRange face, int32_t loop,
+int32_t checkIfEdgeIsSeam(int32_t edgeIdx, FaceRange face, int32_t corner,
                           Mesh *pMesh, EdgeVerts *pEdgeVerts);
 
-uint32_t ruvmFnvHash(uint8_t *value, int32_t valueSize, uint32_t size);
+uint32_t uvsFnvHash(uint8_t *value, int32_t valueSize, uint32_t size);
 
 bool checkIfEdgeIsPreserve(Mesh* pMesh, int32_t edge);
 bool checkIfVertIsPreserve(Mesh* pMesh, int32_t vert);
 int32_t checkIfEdgeIsReceive(Mesh* pMesh, int32_t edge);
 FaceTriangulated triangulateFace(RuvmAlloc alloc, FaceRange baseFace, void *pVerts,
-                                 int32_t *pLoops, int32_t useUvs);
-V3_F32 getBarycentricInFace(V2_F32 *pTriUvs, int8_t *pTriLoops,
-                            int32_t loopCount, V2_F32 vert);
+                                 int32_t *pCorners, int32_t useUvs);
+V3_F32 getBarycentricInFace(V2_F32 *pTriUvs, int8_t *pTriCorners,
+                            int32_t cornerCount, V2_F32 vert);
 void waitForJobs(RuvmContext pContext, int32_t *pJobsCompleted, void *pMutex);
 void buildEdgeList(RuvmContext pContext, Mesh* pMesh);
 bool isMeshInvalid(Mesh* pMesh);
@@ -57,16 +57,16 @@ void stageBeginWrap(RuvmContext pContext, const char* pName, int32_t max);
 void stageProgressWrap(RuvmContext pContext, int32_t progress);
 void stageEndWrap(RuvmContext pContext);
 void setStageName(RuvmContext pContext, const char* pName);
-Mat3x3 buildFaceTbn(FaceRange face, Mesh *pMesh, int32_t *pLoopOveride);
+Mat3x3 buildFaceTbn(FaceRange face, Mesh *pMesh, int32_t *pCornerOveride);
 void getTriScale(int32_t size, BaseTriVerts *pTri);
 bool calcIntersection(V3_F32 a, V3_F32 b, V2_F32 c, V2_F32 cd,
                       V3_F32 *pPoint, float *pt, float *pt2);
-int32_t indexBitArray(UBitField8 *pArr, int32_t index, int32_t len);
-void setBitArr(UBitField8 *pArr, int32_t index, int32_t value, int32_t len);
-void insertionSort(int32_t *pIndexTable, int32_t count, int32_t *pSort);
-void fInsertionSort(int32_t *pIndexTable, int32_t count, float *pSort);
+int32_t idxBitArray(UBitField8 *pArr, int32_t idx, int32_t len);
+void setBitArr(UBitField8 *pArr, int32_t idx, int32_t value, int32_t len);
+void insertionSort(int32_t *pIdxTable, int32_t count, int32_t *pSort);
+void fInsertionSort(int32_t *pIdxTable, int32_t count, float *pSort);
 Mat3x3 getInterpolatedTbn(Mesh *pMesh, FaceRange *pFace,
-                          int8_t *pTriLoops, V3_F32 bc);
+                          int8_t *pTriCorners, V3_F32 bc);
 int32_t calcFaceOrientation(Mesh *pMesh, FaceRange *pFace, bool useUvs);
 int32_t getBorderFaceMemType(int32_t mapFaceSize, int32_t bufFaceSize);
 int32_t getBorderFaceSize(int32_t memType);

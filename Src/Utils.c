@@ -11,15 +11,15 @@
 #include <Error.h>
 
 int32_t checkFaceIsInBounds(V2_F32 min, V2_F32 max, FaceRange face, Mesh *pMesh) {
-	RUVM_ASSERT("", pMesh && pMesh->pVerts && pMesh->mesh.pLoops);
-	RUVM_ASSERT("", face.size >= 3 && face.start >= 0 && face.end >= 0 && face.index >= 0);
+	RUVM_ASSERT("", pMesh && pMesh->pVerts && pMesh->mesh.pCorners);
+	RUVM_ASSERT("", face.size >= 3 && face.start >= 0 && face.end >= 0 && face.idx >= 0);
 	RUVM_ASSERT("", v2IsFinite(min) && v2IsFinite(max));
 	V2_F32 faceMin, faceMax;
 	faceMin.d[0] = faceMin.d[1] = FLT_MAX;
 	faceMax.d[0] = faceMax.d[1] = 0;
 	for (int32_t i = 0; i < face.size; ++i) {
-		int32_t vertIndex = pMesh->mesh.pLoops[face.start + i];
-		V3_F32 *pVert = pMesh->pVerts + vertIndex;
+		int32_t vertIdx = pMesh->mesh.pCorners[face.start + i];
+		V3_F32 *pVert = pMesh->pVerts + vertIdx;
 		RUVM_ASSERT("", pVert && v3IsFinite(*pVert));
 		if (pVert->d[0] < faceMin.d[0]) {
 			faceMin.d[0] = pVert->d[0];
@@ -46,7 +46,7 @@ int32_t checkFaceIsInBounds(V2_F32 min, V2_F32 max, FaceRange face, Mesh *pMesh)
 	return inside.d[0] && inside.d[1];
 }
 
-uint32_t ruvmFnvHash(uint8_t *value, int32_t valueSize, uint32_t size) {
+uint32_t uvsFnvHash(uint8_t *value, int32_t valueSize, uint32_t size) {
 	RUVM_ASSERT("", value && valueSize > 0 && size > 0);
 	uint32_t hash = 2166136261;
 	for (int32_t i = 0; i < valueSize; ++i) {
@@ -61,7 +61,7 @@ uint32_t ruvmFnvHash(uint8_t *value, int32_t valueSize, uint32_t size) {
 void getFaceBounds(FaceBounds *pBounds, V2_F32 *pUvs, FaceRange face) {
 	RUVM_ASSERT("", pBounds && pUvs && v2IsFinite(*pUvs));
 	RUVM_ASSERT("", face.size >= 3 && face.start >= 0);
-	RUVM_ASSERT("", face.end >= 0 && face.index >= 0);
+	RUVM_ASSERT("", face.end >= 0 && face.idx >= 0);
 	pBounds->fMin.d[0] = pBounds->fMin.d[1] = FLT_MAX;
 	pBounds->fMax.d[0] = pBounds->fMax.d[1] = -FLT_MAX;
 	for (int32_t i = 0; i < face.size; ++i) {
@@ -84,7 +84,7 @@ void getFaceBoundsVert(FaceBounds* pBounds, V3_F32* pVerts, FaceRange face) {
 	RUVM_ASSERT("", pBounds && v2IsFinite(pBounds->fMin) && v2IsFinite(pBounds->fMax));
 	RUVM_ASSERT("", pVerts && v3IsFinite(*pVerts));
 	RUVM_ASSERT("", face.size >= 3 && face.start >= 0);
-	RUVM_ASSERT("", face.end >= 0 && face.index >= 0);
+	RUVM_ASSERT("", face.end >= 0 && face.idx >= 0);
 	pBounds->fMin.d[0] = pBounds->fMin.d[1] = FLT_MAX;
 	pBounds->fMax.d[0] = pBounds->fMax.d[1] = .0f;
 	for (int32_t i = 0; i < face.size; ++i) {
@@ -103,24 +103,24 @@ void getFaceBoundsVert(FaceBounds* pBounds, V3_F32* pVerts, FaceRange face) {
 	RUVM_ASSERT("", _(pBounds->fMax V2GREATEQL pBounds->fMin));
 }
 
-int32_t checkIfEdgeIsSeam(int32_t edgeIndex, FaceRange face, int32_t loop,
+int32_t checkIfEdgeIsSeam(int32_t edgeIdx, FaceRange face, int32_t corner,
                           Mesh *pMesh, EdgeVerts *pEdgeVerts) {
 	RUVM_ASSERT("", pMesh && pEdgeVerts);
 	RUVM_ASSERT("", face.size >= 3 && face.start >= 0 && face.end >= 0 && face.size >= 0);
-	RUVM_ASSERT("", edgeIndex >= 0 && loop >= 0 && loop < face.size);
-	int32_t *pVerts = pEdgeVerts[edgeIndex].verts;
+	RUVM_ASSERT("", edgeIdx >= 0 && corner >= 0 && corner < face.size);
+	int32_t *pVerts = pEdgeVerts[edgeIdx].verts;
 	RUVM_ASSERT("", pVerts);
 	if (pVerts[1] < 0) {
 		return 2;
 	}
 	else {
-		RUVM_ASSERT("", pVerts[0] == face.start + loop || pVerts[1] == face.start + loop);
-		int32_t whichLoop = pVerts[0] == face.start + loop;
-		int32_t otherLoop = pVerts[whichLoop];
-		int32_t iNext = (loop + 1) % face.size;
-		int32_t nextBaseLoop = face.start + iNext;
-		V2_F32 uv = pMesh->pUvs[nextBaseLoop];
-		V2_F32 uvOther = pMesh->pUvs[otherLoop];
+		RUVM_ASSERT("", pVerts[0] == face.start + corner || pVerts[1] == face.start + corner);
+		int32_t whichCorner = pVerts[0] == face.start + corner;
+		int32_t otherCorner = pVerts[whichCorner];
+		int32_t iNext = (corner + 1) % face.size;
+		int32_t nextBaseCorner = face.start + iNext;
+		V2_F32 uv = pMesh->pUvs[nextBaseCorner];
+		V2_F32 uvOther = pMesh->pUvs[otherCorner];
 		RUVM_ASSERT("", v2IsFinite(uv) && v2IsFinite(uvOther));
 		int32_t isSeam = !_(uv V2APROXEQL uvOther);
 		if (isSeam) {
@@ -193,7 +193,7 @@ void initTriEdgeEntry(TriEdge* pEntry, int32_t verta, int32_t vertb, int32_t tri
 static
 void addTriEdgeToTable(RuvmAlloc *pAlloc, int32_t tableSize, TriEdge *pEdgeTable, int32_t verta, int32_t vertb, int32_t tri) {
 	uint32_t sum = verta + vertb;
-	int32_t hash = ruvmFnvHash((uint8_t *)&sum, 4, tableSize);
+	int32_t hash = uvsFnvHash((uint8_t *)&sum, 4, tableSize);
 	TriEdge *pEntry = pEdgeTable + hash;
 	if (!pEntry->valid) {
 		initTriEdgeEntry(pEntry, verta, vertb, tri);
@@ -219,14 +219,14 @@ void addTriEdgeToTable(RuvmAlloc *pAlloc, int32_t tableSize, TriEdge *pEdgeTable
 //This gives really long tris, where short tris are possible.
 //Re-add search to find short tris, and prefer those.
 FaceTriangulated triangulateFace(RuvmAlloc alloc, FaceRange baseFace, void *pVerts,
-                                 int32_t *pLoops, int32_t useUvs) {
+                                 int32_t *pCorners, int32_t useUvs) {
 	FaceTriangulated outMesh = {0};
 	outMesh.triCount = baseFace.size - 2;
-	int32_t loopCount = outMesh.triCount * 3;
-	outMesh.pLoops = alloc.pMalloc(sizeof(int32_t) * loopCount);
+	int32_t cornerCount = outMesh.triCount * 3;
+	outMesh.pCorners = alloc.pMalloc(sizeof(int32_t) * cornerCount);
 	TriEdge *pEdgeTable = alloc.pCalloc(baseFace.size, sizeof(TriEdge));
 	int8_t *pVertsRemoved = alloc.pCalloc(baseFace.size, 1);
-	int32_t loopsLeft = baseFace.size;
+	int32_t cornersLeft = baseFace.size;
 	int32_t start = 0;
 	int32_t end = baseFace.size;
 	do {
@@ -255,17 +255,17 @@ FaceTriangulated triangulateFace(RuvmAlloc alloc, FaceRange baseFace, void *pVer
 			}
 			else {
 				V3_F32 *pVertsCast = pVerts;
-				V3_F32 verta = pVertsCast[pLoops[baseFace.start + i]];
-				V3_F32 vertb = pVertsCast[pLoops[baseFace.start + ib]];
-				V3_F32 vertc = pVertsCast[pLoops[baseFace.start + ic]];
+				V3_F32 verta = pVertsCast[pCorners[baseFace.start + i]];
+				V3_F32 vertb = pVertsCast[pCorners[baseFace.start + ib]];
+				V3_F32 vertc = pVertsCast[pCorners[baseFace.start + ic]];
 				height = v3TriHeight(verta, vertb, vertc);
 				V3_F32 ac = _(vertc V3SUB verta);
 				len = v3Len(ac);
 			}
 			//If ear is not degenerate, then add.
-			//Or, if skipped == i, the loop has wrapped back around,
+			//Or, if skipped == i, the corner has wrapped back around,
 			//without finding a non degenerate ear.
-			//In this case, add the ear to avoid an infinite loop
+			//In this case, add the ear to avoid an infinite corner
 			if (height > .000001f && len < shortestLen) {
 				ear[0] = i;
 				ear[1] = ib;
@@ -287,19 +287,19 @@ FaceTriangulated triangulateFace(RuvmAlloc alloc, FaceRange baseFace, void *pVer
 			ear[2] = earFallback[2];
 		}
 		addTriEdgeToTable(&alloc, baseFace.size, pEdgeTable, ear[0], ear[1],
-		                  outMesh.loopCount);
+		                  outMesh.cornerCount);
 		addTriEdgeToTable(&alloc, baseFace.size, pEdgeTable, ear[1], ear[2],
-		                  outMesh.loopCount);
+		                  outMesh.cornerCount);
 		addTriEdgeToTable(&alloc, baseFace.size, pEdgeTable, ear[2], ear[0],
-		                  outMesh.loopCount);
+		                  outMesh.cornerCount);
 		for (int32_t i = 0; i < 3; ++i) {
-			outMesh.pLoops[outMesh.loopCount] = ear[i];
-			outMesh.loopCount++;
+			outMesh.pCorners[outMesh.cornerCount] = ear[i];
+			outMesh.cornerCount++;
 		}
 		start = ear[2];
 		pVertsRemoved[ear[1]] = 1;
-		loopsLeft--;
-	} while (loopsLeft >= 3);
+		cornersLeft--;
+	} while (cornersLeft >= 3);
 	alloc.pFree(pVertsRemoved);
 
 	//spin
@@ -320,12 +320,12 @@ FaceTriangulated triangulateFace(RuvmAlloc alloc, FaceRange baseFace, void *pVer
 
 
 //Caller must check for nan in return value
-V3_F32 getBarycentricInFace(V2_F32 *pTriUvs, int8_t *pTriLoops,
-                          int32_t loopCount, V2_F32 vert) {
+V3_F32 getBarycentricInFace(V2_F32 *pTriUvs, int8_t *pTriCorners,
+                          int32_t cornerCount, V2_F32 vert) {
 	RUVM_ASSERT("", pTriUvs && v2IsFinite(*pTriUvs) && v2IsFinite(vert));
-	RUVM_ASSERT("", loopCount >= 3 && pTriLoops);
+	RUVM_ASSERT("", cornerCount >= 3 && pTriCorners);
 	V3_F32 vertBc = cartesianToBarycentric(pTriUvs, &vert);
-	if (loopCount == 4 && v3IsFinite(vertBc) && vertBc.d[1] < 0) {
+	if (cornerCount == 4 && v3IsFinite(vertBc) && vertBc.d[1] < 0) {
 		//base face is a quad, and vert is outside first tri,
 		//so use the second tri
 		
@@ -340,12 +340,12 @@ V3_F32 getBarycentricInFace(V2_F32 *pTriUvs, int8_t *pTriLoops,
 		V2_F32 triBuf[3] =
 			{pTriUvs[2], pTriUvs[3], pTriUvs[0]};
 		vertBc = cartesianToBarycentric(triBuf, &vert);
-		pTriLoops[0] = 2;
-		pTriLoops[1] = 3;
+		pTriCorners[0] = 2;
+		pTriCorners[1] = 3;
 	}
 	else {
 		for (int32_t k = 0; k < 3; ++k) {
-			pTriLoops[k] = k;
+			pTriCorners[k] = k;
 		}
 	}
 	return vertBc;
@@ -365,7 +365,7 @@ void waitForJobs(RuvmContext pContext, int32_t *pActiveJobs, void *pMutex) {
 
 typedef struct {
 	int32_t face;
-	int32_t loop;
+	int32_t corner;
 } AdjEntry;
 
 typedef struct {
@@ -375,12 +375,12 @@ typedef struct {
 } AdjBucket;
 
 static
-void buildLoopAdjTable(RuvmAlloc *pAlloc,
+void buildCornerAdjTable(RuvmAlloc *pAlloc,
                        Mesh* pMesh, AdjBucket *pAdjTable) {
 	for (int32_t i = 0; i < pMesh->mesh.faceCount; ++i) {
 		FaceRange face = getFaceRange(&pMesh->mesh, i, false);
 		for (int32_t j = 0; j < face.size; ++j) {
-			AdjBucket* pBucket = pAdjTable + pMesh->mesh.pLoops[face.start + j];
+			AdjBucket* pBucket = pAdjTable + pMesh->mesh.pCorners[face.start + j];
 			RUVM_ASSERT("", pBucket->count <= pBucket->size);
 			if (!pBucket->pArr) {
 				pBucket->size = 2;
@@ -394,7 +394,7 @@ void buildLoopAdjTable(RuvmAlloc *pAlloc,
 						pBucket->size);
 			}
 			pBucket->pArr[pBucket->count].face = i;
-			pBucket->pArr[pBucket->count].loop = j;
+			pBucket->pArr[pBucket->count].corner = j;
 			pBucket->count++;
 		}
 	}
@@ -410,28 +410,28 @@ void findEdges(Mesh* pMesh, AdjBucket* pAdjTable) {
 			}
 			int32_t edge = pMesh->mesh.edgeCount;
 			pMesh->mesh.edgeCount++;
-			AdjBucket* pBucket = pAdjTable + pMesh->mesh.pLoops[face.start + j];
+			AdjBucket* pBucket = pAdjTable + pMesh->mesh.pCorners[face.start + j];
 			RUVM_ASSERT("", pBucket->count > 0 &&
 				pBucket->size >= pBucket->count);
 			for (int32_t k = 0; k < pBucket->count; ++k) {
 				AdjEntry* pEntry = pBucket->pArr + k;
 				if (pEntry->face == i) {
-					RUVM_ASSERT("Invalid mesh, 2 loops in this face share 1 vert",
-						pEntry->loop == j);
+					RUVM_ASSERT("Invalid mesh, 2 corners in this face share 1 vert",
+						pEntry->corner == j);
 					continue;
 				}
 				FaceRange otherFace = getFaceRange(&pMesh->mesh, pEntry->face, false);
-				int32_t nextLoop = (j + 1) % face.size;
-				int32_t otherPrevLoop = pEntry->loop ?
-					pEntry->loop - 1 : otherFace.size - 1;
-				if (pMesh->mesh.pEdges[otherFace.start + otherPrevLoop] >= 0) {
+				int32_t nextCorner = (j + 1) % face.size;
+				int32_t otherPrevCorner = pEntry->corner ?
+					pEntry->corner - 1 : otherFace.size - 1;
+				if (pMesh->mesh.pEdges[otherFace.start + otherPrevCorner] >= 0) {
 					continue; //Already set
 				}
-				if (pMesh->mesh.pLoops[face.start + nextLoop] !=
-					pMesh->mesh.pLoops[otherFace.start + otherPrevLoop]) {
+				if (pMesh->mesh.pCorners[face.start + nextCorner] !=
+					pMesh->mesh.pCorners[otherFace.start + otherPrevCorner]) {
 					continue; //Not connected
 				}
-				pMesh->mesh.pEdges[otherFace.start + otherPrevLoop] = edge;
+				pMesh->mesh.pEdges[otherFace.start + otherPrevCorner] = edge;
 				break;
 			}
 			pMesh->mesh.pEdges[face.start + j] = edge;
@@ -445,10 +445,10 @@ void buildEdgeList(RuvmContext pContext, Mesh* pMesh) {
 	RUVM_ASSERT("", pMesh->mesh.vertCount);
 	AdjBucket* pAdjTable =
 		pAlloc->pCalloc(pMesh->mesh.vertCount, sizeof(AdjBucket));
-	buildLoopAdjTable(pAlloc, pMesh, pAdjTable);
+	buildCornerAdjTable(pAlloc, pMesh, pAdjTable);
 
-	RUVM_ASSERT("", pMesh->mesh.loopCount);
-	int32_t dataSize = sizeof(int32_t) * pMesh->mesh.loopCount;
+	RUVM_ASSERT("", pMesh->mesh.cornerCount);
+	int32_t dataSize = sizeof(int32_t) * pMesh->mesh.cornerCount;
 	pMesh->mesh.pEdges = pAlloc->pMalloc(dataSize);
 	memset(pMesh->mesh.pEdges, -1, dataSize);
 	findEdges(pMesh, pAdjTable);
@@ -532,19 +532,19 @@ void setStageName(RuvmContext pContext, const char* pName) {
 	strncpy(pContext->stageReport.stage, pName, RUVM_STAGE_NAME_LEN);
 }
 
-Mat3x3 buildFaceTbn(FaceRange face, Mesh *pMesh, int32_t *pLoopOveride) {
-	int32_t loop = pLoopOveride ? face.start + pLoopOveride[1] : face.start;
-	int32_t vertIndex = pMesh->mesh.pLoops[loop];
-	V2_F32 uv = pMesh->pUvs[loop];
-	V3_F32 vert = pMesh->pVerts[vertIndex];
-	int32_t next = pLoopOveride ? face.start + pLoopOveride[2] : face.start + 1;
-	int32_t vertIndexNext = pMesh->mesh.pLoops[next];
+Mat3x3 buildFaceTbn(FaceRange face, Mesh *pMesh, int32_t *pCornerOveride) {
+	int32_t corner = pCornerOveride ? face.start + pCornerOveride[1] : face.start;
+	int32_t vertIdx = pMesh->mesh.pCorners[corner];
+	V2_F32 uv = pMesh->pUvs[corner];
+	V3_F32 vert = pMesh->pVerts[vertIdx];
+	int32_t next = pCornerOveride ? face.start + pCornerOveride[2] : face.start + 1;
+	int32_t vertIdxNext = pMesh->mesh.pCorners[next];
 	V2_F32 uvNext = pMesh->pUvs[next];
-	V3_F32 vertNext = pMesh->pVerts[vertIndexNext];
-	int32_t prev = pLoopOveride ? face.start + pLoopOveride[0] : face.end - 1;
-	int32_t vertIndexPrev = pMesh->mesh.pLoops[prev];
+	V3_F32 vertNext = pMesh->pVerts[vertIdxNext];
+	int32_t prev = pCornerOveride ? face.start + pCornerOveride[0] : face.end - 1;
+	int32_t vertIdxPrev = pMesh->mesh.pCorners[prev];
 	V2_F32 uvPrev = pMesh->pUvs[prev];
-	V3_F32 vertPrev = pMesh->pVerts[vertIndexPrev];
+	V3_F32 vertPrev = pMesh->pVerts[vertIdxPrev];
 	//uv space direction vectors,
 	//forming the coefficient matrix
 	Mat2x2 coeffMat;
@@ -608,10 +608,10 @@ bool calcIntersection(V3_F32 a, V3_F32 b, V2_F32 c, V2_F32 cd,
 }
 
 //does not bounds check
-int32_t indexBitArray(UBitField8 *pArr, int32_t index, int32_t len) {
-	index *= len;
-	int32_t byte = index / 8;
-	int32_t bit = index % 8;
+int32_t idxBitArray(UBitField8 *pArr, int32_t idx, int32_t len) {
+	idx *= len;
+	int32_t byte = idx / 8;
+	int32_t bit = idx % 8;
 	int32_t mask = (0x1 << len) - 1;
 	if (bit + len > 8) {
 		//bit spans byte boundary
@@ -624,11 +624,11 @@ int32_t indexBitArray(UBitField8 *pArr, int32_t index, int32_t len) {
 
 //does not bounds check.
 //Also, if value is 0, only 1 bit will be set, len is ignored
-void setBitArr(UBitField8 *pArr, int32_t index, int32_t value, int32_t len) {
+void setBitArr(UBitField8 *pArr, int32_t idx, int32_t value, int32_t len) {
 	RUVM_ASSERT("", (value & (0x1 << len) - 1) == value);
-	index *= len;
-	int32_t byte = index / 8;
-	int32_t bit = index % 8;
+	idx *= len;
+	int32_t byte = idx / 8;
+	int32_t bit = idx % 8;
 	if (value) {
 		if (bit + len > 8) {
 			//cast to 16 bit as value spans across byte boundary
@@ -644,68 +644,68 @@ void setBitArr(UBitField8 *pArr, int32_t index, int32_t value, int32_t len) {
 	}
 }
 
-void insertionSort(int32_t *pIndexTable, int32_t count, int32_t *pSort) {
+void insertionSort(int32_t *pIdxTable, int32_t count, int32_t *pSort) {
 	//insertion sort
 	int32_t a = pSort[0];
 	int32_t b = pSort[1];
 	int32_t order = a < b;
-	pIndexTable[0] = !order;
-	pIndexTable[1] = order;
+	pIdxTable[0] = !order;
+	pIdxTable[1] = order;
 	int32_t bufSize = 2;
 	for (int32_t i = bufSize; i < count; ++i) {
 		bool insert;
 		int32_t j;
 		for (j = bufSize - 1; j >= 0; --j) {
-			insert = pSort[i] < pSort[pIndexTable[j]] &&
-				pSort[i] > pSort[pIndexTable[j - 1]];
+			insert = pSort[i] < pSort[pIdxTable[j]] &&
+				pSort[i] > pSort[pIdxTable[j - 1]];
 			if (insert) {
 				break;
 			}
 			RUVM_ASSERT("", j < bufSize && j >= 0);
 		}
 		if (!insert) {
-			pIndexTable[bufSize] = i;
+			pIdxTable[bufSize] = i;
 		}
 		else {
 			for (int32_t m = bufSize; m > j; --m) {
-				pIndexTable[m] = pIndexTable[m - 1];
+				pIdxTable[m] = pIdxTable[m - 1];
 				RUVM_ASSERT("", m <= bufSize && m > j);
 			}
-			pIndexTable[j] = i;
+			pIdxTable[j] = i;
 		}
 		RUVM_ASSERT("", i >= bufSize && i < count);
 		bufSize++;
 	}
 }
 
-void fInsertionSort(int32_t *pIndexTable, int32_t count, float *pSort) {
+void fInsertionSort(int32_t *pIdxTable, int32_t count, float *pSort) {
 	//insertion sort
 	float a = pSort[0];
 	float b = pSort[1];
 	int32_t order = a < b;
-	pIndexTable[0] = !order;
-	pIndexTable[1] = order;
+	pIdxTable[0] = !order;
+	pIdxTable[1] = order;
 	int32_t bufSize = 2;
 	for (int32_t i = bufSize; i < count; ++i) {
 		bool insert;
 		int32_t j;
 		for (j = bufSize - 1; j >= 0; --j) {
-			insert = pSort[i] < pSort[pIndexTable[j]] &&
-			         pSort[i] > pSort[pIndexTable[j - 1]];
+			insert = pSort[i] < pSort[pIdxTable[j]] &&
+			         pSort[i] > pSort[pIdxTable[j - 1]];
 			if (insert) {
 				break;
 			}
 			RUVM_ASSERT("", j < bufSize && j >= 0);
 		}
 		if (!insert) {
-			pIndexTable[bufSize] = i;
+			pIdxTable[bufSize] = i;
 		}
 		else {
 			for (int32_t m = bufSize; m > j; --m) {
-				pIndexTable[m] = pIndexTable[m - 1];
+				pIdxTable[m] = pIdxTable[m - 1];
 				RUVM_ASSERT("", m <= bufSize && m > j);
 			}
-			pIndexTable[j] = i;
+			pIdxTable[j] = i;
 		}
 		RUVM_ASSERT("", i >= bufSize && i < count);
 		bufSize++;
@@ -713,21 +713,21 @@ void fInsertionSort(int32_t *pIndexTable, int32_t count, float *pSort) {
 }
 
 Mat3x3 getInterpolatedTbn(Mesh *pMesh, FaceRange *pFace,
-                          int8_t *pTriLoops, V3_F32 bc) {
+                          int8_t *pTriCorners, V3_F32 bc) {
 	//TODO replace interpolation in this func with the attrib
 	//     interpolation funcions or macros
 	V3_F32 *pNormals = pMesh->pNormals;
-	V3_F32 normal = _(pNormals[pFace->start + pTriLoops[0]] V3MULS bc.d[0]);
-	_(&normal V3ADDEQL _(pNormals[pFace->start + pTriLoops[1]] V3MULS bc.d[1]));
-	_(&normal V3ADDEQL _(pNormals[pFace->start + pTriLoops[2]] V3MULS bc.d[2]));
+	V3_F32 normal = _(pNormals[pFace->start + pTriCorners[0]] V3MULS bc.d[0]);
+	_(&normal V3ADDEQL _(pNormals[pFace->start + pTriCorners[1]] V3MULS bc.d[1]));
+	_(&normal V3ADDEQL _(pNormals[pFace->start + pTriCorners[2]] V3MULS bc.d[2]));
 	_(&normal V3DIVEQLS bc.d[0] + bc.d[1] + bc.d[2]);
 	V3_F32 *pTangents = pMesh->pTangents;
-	V3_F32 tangent = _(pTangents[pFace->start + pTriLoops[0]] V3MULS bc.d[0]);
-	_(&tangent V3ADDEQL _(pTangents[pFace->start + pTriLoops[1]] V3MULS bc.d[1]));
-	_(&tangent V3ADDEQL _(pTangents[pFace->start + pTriLoops[2]] V3MULS bc.d[2]));
+	V3_F32 tangent = _(pTangents[pFace->start + pTriCorners[0]] V3MULS bc.d[0]);
+	_(&tangent V3ADDEQL _(pTangents[pFace->start + pTriCorners[1]] V3MULS bc.d[1]));
+	_(&tangent V3ADDEQL _(pTangents[pFace->start + pTriCorners[2]] V3MULS bc.d[2]));
 	_(&tangent V3DIVEQLS bc.d[0] + bc.d[1] + bc.d[2]);
 	//TODO should this be interpolated? Or are such edge cases invalid?
-	float tSign = pMesh->pTSigns[pFace->start + pTriLoops[0]];
+	float tSign = pMesh->pTSigns[pFace->start + pTriCorners[0]];
 	V3_F32 bitangent = _(_(normal V3CROSS tangent) V3MULS tSign);
 	Mat3x3 tbn;
 	*(V3_F32 *)&tbn.d[0] = tangent;
@@ -737,9 +737,9 @@ Mat3x3 getInterpolatedTbn(Mesh *pMesh, FaceRange *pFace,
 }
 
 static
-bool isMarkedSkip(int32_t *pSkip, int32_t skipCount, int32_t index) {
+bool isMarkedSkip(int32_t *pSkip, int32_t skipCount, int32_t idx) {
 	for (int32_t i = 0; i < skipCount; ++i) {
-		if (index == pSkip[i]) {
+		if (idx == pSkip[i]) {
 			return true;
 		}
 	}
@@ -752,19 +752,19 @@ int32_t calcFaceOrientation(Mesh *pMesh, FaceRange *pFace, bool useUvs) {
 	int32_t skip[16] = {0};
 	int32_t skipCount = 0;
 	do {
-		int32_t lowestLoop = 0;
+		int32_t lowestCorner = 0;
 		V2_F32 lowestCoord = { FLT_MAX, FLT_MAX };
 		for (int32_t i = 0; i < pFace->size; ++i) {
 			if (isMarkedSkip(skip, skipCount, i)) {
 				continue;
 			}
-			int32_t loop = pFace->start + i;
+			int32_t corner = pFace->start + i;
 			V2_F32 pos;
 			if (useUvs) {
-				pos = pMesh->pUvs[loop];
+				pos = pMesh->pUvs[corner];
 			}
 			else {
-				int32_t vert = pMesh->mesh.pLoops[loop];
+				int32_t vert = pMesh->mesh.pCorners[corner];
 				pos = *(V2_F32 *)&pMesh->pVerts[vert];
 			}
 			if (pos.d[0] > lowestCoord.d[0]) {
@@ -774,23 +774,23 @@ int32_t calcFaceOrientation(Mesh *pMesh, FaceRange *pFace, bool useUvs) {
 			         pos.d[1] >= lowestCoord.d[1]) {
 				continue;
 			}
-			lowestLoop = i;
+			lowestCorner = i;
 			lowestCoord = pos;
 		}
-		int32_t prev = lowestLoop == 0 ? pFace->size - 1 : lowestLoop - 1;
-		int32_t next = (lowestLoop + 1) % pFace->size;
+		int32_t prev = lowestCorner == 0 ? pFace->size - 1 : lowestCorner - 1;
+		int32_t next = (lowestCorner + 1) % pFace->size;
 		V2_F32 a;
 		V2_F32 b;
 		V2_F32 c;
 		if (useUvs) {
 			a = pMesh->pUvs[pFace->start + prev];
-			b = pMesh->pUvs[pFace->start + lowestLoop];
+			b = pMesh->pUvs[pFace->start + lowestCorner];
 			c = pMesh->pUvs[pFace->start + next];
 		}
 		else {
-			int32_t vertPrev = pMesh->mesh.pLoops[pFace->start + prev];
-			int32_t vert = pMesh->mesh.pLoops[pFace->start + lowestLoop];
-			int32_t vertNext = pMesh->mesh.pLoops[pFace->start + next];
+			int32_t vertPrev = pMesh->mesh.pCorners[pFace->start + prev];
+			int32_t vert = pMesh->mesh.pCorners[pFace->start + lowestCorner];
+			int32_t vertNext = pMesh->mesh.pCorners[pFace->start + next];
 			a = *(V2_F32 *)&pMesh->pVerts[vertPrev];
 			b = *(V2_F32 *)&pMesh->pVerts[vert];
 			c = *(V2_F32 *)&pMesh->pVerts[vertNext];
@@ -803,7 +803,7 @@ int32_t calcFaceOrientation(Mesh *pMesh, FaceRange *pFace, bool useUvs) {
 			return det > .0f;
 		}
 		//abc is degenerate, find another corner
-		skip[skipCount] = lowestLoop;
+		skip[skipCount] = lowestCorner;
 		skipCount++;
 	} while(skipCount < pFace->size);
 	RUVM_ASSERT("face is degenerate", skipCount == pFace->size);
@@ -843,8 +843,8 @@ void getBorderFaceBitArrs(BorderFace *pEntry, BorderFaceBitArrs *pArrs) {
 	switch (pEntry->memType) {
 		case 0: {
 			BorderFaceSmall *pCast = (BorderFaceSmall *)pEntry;
-			pArrs->pBaseLoop = &pCast->baseLoop;
-			pArrs->pRuvmLoop = &pCast->ruvmLoop;
+			pArrs->pBaseCorner = &pCast->baseCorner;
+			pArrs->pRuvmCorner = &pCast->uvsCorner;
 			pArrs->pSegment = &pCast->segment;
 			pArrs->pIsRuvm = &pCast->isRuvm;
 			pArrs->pOnLine = &pCast->onLine;
@@ -853,8 +853,8 @@ void getBorderFaceBitArrs(BorderFace *pEntry, BorderFaceBitArrs *pArrs) {
 		}
 		case 1: {
 			BorderFaceMid *pCast = (BorderFaceMid *)pEntry;
-			pArrs->pBaseLoop = &pCast->baseLoop;
-			pArrs->pRuvmLoop = &pCast->ruvmLoop;
+			pArrs->pBaseCorner = &pCast->baseCorner;
+			pArrs->pRuvmCorner = &pCast->uvsCorner;
 			pArrs->pSegment = &pCast->segment;
 			pArrs->pIsRuvm = &pCast->isRuvm;
 			pArrs->pOnLine = &pCast->onLine;
@@ -863,8 +863,8 @@ void getBorderFaceBitArrs(BorderFace *pEntry, BorderFaceBitArrs *pArrs) {
 		}
 		case 2: {
 			BorderFaceLarge *pCast = (BorderFaceLarge *)pEntry;
-			pArrs->pBaseLoop = &pCast->baseLoop;
-			pArrs->pRuvmLoop = &pCast->ruvmLoop;
+			pArrs->pBaseCorner = &pCast->baseCorner;
+			pArrs->pRuvmCorner = &pCast->uvsCorner;
 			pArrs->pSegment = &pCast->segment;
 			pArrs->pIsRuvm = &pCast->isRuvm;
 			pArrs->pOnLine = &pCast->onLine;
