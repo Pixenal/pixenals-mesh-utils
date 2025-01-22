@@ -2,7 +2,7 @@
 
 #include <stdint.h>
 
-#include <RUVM.h>
+#include <UvStucco.h>
 #include <DebugAndPerf.h>
 
 typedef struct {
@@ -11,23 +11,23 @@ typedef struct {
 } BufMeshIdx;
 
 typedef struct {
-	RuvmMesh mesh;
-	RuvmAttrib *pVertAttrib;
-	RuvmAttrib *pUvAttrib;
-	RuvmAttrib *pNormalAttrib;
-	RuvmAttrib *pTangentAttrib;
-	RuvmAttrib *pTSignAttrib;
-	RuvmAttrib *pEdgePreserveAttrib;
-	RuvmAttrib *pVertPreserveAttrib;
-	RuvmAttrib *pEdgeReceiveAttrib;
-	RuvmAttrib *pUsgAttrib;
-	RuvmAttrib *pWScaleAttrib;
-	Ruvm_V3_F32 *pVerts;
-	Ruvm_V3_F32 *pNormals;
-	Ruvm_V3_F32 *pTangents;
+	StucMesh mesh;
+	StucAttrib *pVertAttrib;
+	StucAttrib *pUvAttrib;
+	StucAttrib *pNormalAttrib;
+	StucAttrib *pTangentAttrib;
+	StucAttrib *pTSignAttrib;
+	StucAttrib *pEdgePreserveAttrib;
+	StucAttrib *pVertPreserveAttrib;
+	StucAttrib *pEdgeReceiveAttrib;
+	StucAttrib *pUsgAttrib;
+	StucAttrib *pWScaleAttrib;
+	Stuc_V3_F32 *pVerts;
+	Stuc_V3_F32 *pNormals;
+	Stuc_V3_F32 *pTangents;
 	float *pTSigns;
 	float *pWScale;
-	Ruvm_V2_F32 *pUvs;
+	Stuc_V2_F32 *pStuc;
 	int8_t *pEdgePreserve;
 	int8_t *pVertPreserve;
 	int8_t *pEdgeReceive;
@@ -44,14 +44,14 @@ typedef struct {
 	int32_t borderCornerCount;
 	int32_t borderEdgeCount;
 	int32_t borderFaceCount;
-	RuvmAttrib *pWAttrib;
-	RuvmAttrib *pInNormalAttrib;
-	RuvmAttrib *pInTangentAttrib;
-	RuvmAttrib *pAlphaAttrib;
-	RuvmAttrib *pInTSignAttrib;
+	StucAttrib *pWAttrib;
+	StucAttrib *pInNormalAttrib;
+	StucAttrib *pInTangentAttrib;
+	StucAttrib *pAlphaAttrib;
+	StucAttrib *pInTSignAttrib;
 	float *pW;
-	Ruvm_V3_F32 *pInNormal;
-	Ruvm_V3_F32 *pInTangent;
+	Stuc_V3_F32 *pInNormal;
+	Stuc_V3_F32 *pInTangent;
 	float *pAlpha;
 	float *pInTSign;
 } BufMesh;
@@ -70,36 +70,36 @@ typedef struct {
 	int32_t idx;
 } FaceRange;
 
-void createMesh(RuvmContext pContext, RuvmObject *pObj, RuvmObjectType type);
-BufMeshIdx bufMeshAddFace(const RuvmAlloc *pAlloc, BufMesh *pMesh, bool border,
+void createMesh(StucContext pContext, StucObject *pObj, StucObjectType type);
+BufMeshIdx bufMeshAddFace(const StucAlloc *pAlloc, BufMesh *pMesh, bool border,
                             DebugAndPerfVars *pDpVars, bool *pRealloced);
-BufMeshIdx bufMeshAddCorner(const RuvmAlloc *pAlloc, BufMesh *pMesh, bool border,
+BufMeshIdx bufMeshAddCorner(const StucAlloc *pAlloc, BufMesh *pMesh, bool border,
                             DebugAndPerfVars *pDpVars, bool *pRealloced);
-BufMeshIdx bufMeshAddEdge(const RuvmAlloc *pAlloc, BufMesh *pMesh, bool border,
+BufMeshIdx bufMeshAddEdge(const StucAlloc *pAlloc, BufMesh *pMesh, bool border,
                             DebugAndPerfVars *pDpVars, bool *pRealloced);
-BufMeshIdx bufMeshAddVert(const RuvmAlloc *pAlloc, BufMesh *pMesh, bool border,
+BufMeshIdx bufMeshAddVert(const StucAlloc *pAlloc, BufMesh *pMesh, bool border,
                             DebugAndPerfVars *pDpVars, bool *pRealloced);
 BufMeshIdx convertBorderFaceIdx(const BufMesh *pMesh, int32_t face);
 BufMeshIdx convertBorderCornerIdx(const BufMesh *pMesh, int32_t corner);
 BufMeshIdx convertBorderEdgeIdx(const BufMesh *pMesh, int32_t edge);
 BufMeshIdx convertBorderVertIdx(const BufMesh *pMesh, int32_t vert);
-int32_t meshAddFace(const RuvmAlloc *pAlloc, Mesh *pMesh, bool *pRealloced);
-int32_t meshAddCorner(const RuvmAlloc *pAlloc, Mesh *pMesh, bool *pRealloced);
-int32_t meshAddEdge(const RuvmAlloc *pAlloc, Mesh *pMesh, bool *pRealloced);
-int32_t meshAddVert(const RuvmAlloc *pAlloc, Mesh *pMesh, bool *pRealloced);
-void reallocMeshToFit(const RuvmAlloc *pAlloc, Mesh *pMesh);
-void meshSetLastFace(const RuvmAlloc *pAlloc, Mesh *pMesh);
-void bufMeshSetLastFaces(const RuvmAlloc *pAlloc, BufMesh *pBufMesh,
+int32_t meshAddFace(const StucAlloc *pAlloc, Mesh *pMesh, bool *pRealloced);
+int32_t meshAddCorner(const StucAlloc *pAlloc, Mesh *pMesh, bool *pRealloced);
+int32_t meshAddEdge(const StucAlloc *pAlloc, Mesh *pMesh, bool *pRealloced);
+int32_t meshAddVert(const StucAlloc *pAlloc, Mesh *pMesh, bool *pRealloced);
+void reallocMeshToFit(const StucAlloc *pAlloc, Mesh *pMesh);
+void meshSetLastFace(const StucAlloc *pAlloc, Mesh *pMesh);
+void bufMeshSetLastFaces(const StucAlloc *pAlloc, BufMesh *pBufMesh,
                          DebugAndPerfVars *pDpVars);
-bool checkIfMesh(RuvmMesh *pMesh);
-void addToMeshCounts(RuvmContext pContext, MeshCounts *pCounts,
+bool checkIfMesh(StucMesh *pMesh);
+void addToMeshCounts(StucContext pContext, MeshCounts *pCounts,
                      MeshCounts *pBoundsCounts, Mesh *pMeshSrc);
-void copyMesh(RuvmMesh *pDestMesh, RuvmMesh *pSrcMesh);
-void applyObjTransform(RuvmObject *pObj);
-void mergeObjArr(RuvmContext pContext, Mesh *pMesh,
-                 int32_t objCount, RuvmObject *pObjArr, bool setCommon);
-void destroyObjArr(RuvmContext pContext, int32_t objCount, RuvmObject *pObjArr);
-FaceRange getFaceRange(const RuvmMesh *pMesh, int32_t idx, bool border);
+void copyMesh(StucMesh *pDestMesh, StucMesh *pSrcMesh);
+void applyObjTransform(StucObject *pObj);
+void mergeObjArr(StucContext pContext, Mesh *pMesh,
+                 int32_t objCount, StucObject *pObjArr, bool setCommon);
+void destroyObjArr(StucContext pContext, int32_t objCount, StucObject *pObjArr);
+FaceRange getFaceRange(const StucMesh *pMesh, int32_t idx, bool border);
 void buildTangents(Mesh *pMesh);
 //TODO remove this, it's unecessary, just do &pBufMesh->mesh instead.
 //     Obviously also rename mesh in Mesh to core, so it would be

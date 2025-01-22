@@ -11,16 +11,16 @@
 #include <Error.h>
 
 int32_t checkFaceIsInBounds(V2_F32 min, V2_F32 max, FaceRange face, Mesh *pMesh) {
-	RUVM_ASSERT("", pMesh && pMesh->pVerts && pMesh->mesh.pCorners);
-	RUVM_ASSERT("", face.size >= 3 && face.start >= 0 && face.end >= 0 && face.idx >= 0);
-	RUVM_ASSERT("", v2IsFinite(min) && v2IsFinite(max));
+	STUC_ASSERT("", pMesh && pMesh->pVerts && pMesh->mesh.pCorners);
+	STUC_ASSERT("", face.size >= 3 && face.start >= 0 && face.end >= 0 && face.idx >= 0);
+	STUC_ASSERT("", v2IsFinite(min) && v2IsFinite(max));
 	V2_F32 faceMin, faceMax;
 	faceMin.d[0] = faceMin.d[1] = FLT_MAX;
 	faceMax.d[0] = faceMax.d[1] = 0;
 	for (int32_t i = 0; i < face.size; ++i) {
 		int32_t vertIdx = pMesh->mesh.pCorners[face.start + i];
 		V3_F32 *pVert = pMesh->pVerts + vertIdx;
-		RUVM_ASSERT("", pVert && v3IsFinite(*pVert));
+		STUC_ASSERT("", pVert && v3IsFinite(*pVert));
 		if (pVert->d[0] < faceMin.d[0]) {
 			faceMin.d[0] = pVert->d[0];
 		}
@@ -35,7 +35,7 @@ int32_t checkFaceIsInBounds(V2_F32 min, V2_F32 max, FaceRange face, Mesh *pMesh)
 		}
 	}
 	//Faces can be flat (they may be facing sideways in a map for instance)
-	RUVM_ASSERT("", _(faceMax V2GREATEQL faceMin));
+	STUC_ASSERT("", _(faceMax V2GREATEQL faceMin));
 	V2_I32 inside;
 	inside.d[0] = (faceMin.d[0] >= min.d[0] && faceMin.d[0] < max.d[0]) ||
 	           (faceMax.d[0] >= min.d[0] && faceMax.d[0] < max.d[0]) ||
@@ -46,27 +46,27 @@ int32_t checkFaceIsInBounds(V2_F32 min, V2_F32 max, FaceRange face, Mesh *pMesh)
 	return inside.d[0] && inside.d[1];
 }
 
-uint32_t uvsFnvHash(uint8_t *value, int32_t valueSize, uint32_t size) {
-	RUVM_ASSERT("", value && valueSize > 0 && size > 0);
+uint32_t stucFnvHash(uint8_t *value, int32_t valueSize, uint32_t size) {
+	STUC_ASSERT("", value && valueSize > 0 && size > 0);
 	uint32_t hash = 2166136261;
 	for (int32_t i = 0; i < valueSize; ++i) {
 		hash ^= value[i];
 		hash *= 16777619;
 	}
 	hash %= size;
-	RUVM_ASSERT("", hash >= 0);
+	STUC_ASSERT("", hash >= 0);
 	return hash;
 }
 
-void getFaceBounds(FaceBounds *pBounds, V2_F32 *pUvs, FaceRange face) {
-	RUVM_ASSERT("", pBounds && pUvs && v2IsFinite(*pUvs));
-	RUVM_ASSERT("", face.size >= 3 && face.start >= 0);
-	RUVM_ASSERT("", face.end >= 0 && face.idx >= 0);
+void getFaceBounds(FaceBounds *pBounds, V2_F32 *pStuc, FaceRange face) {
+	STUC_ASSERT("", pBounds && pStuc && v2IsFinite(*pStuc));
+	STUC_ASSERT("", face.size >= 3 && face.start >= 0);
+	STUC_ASSERT("", face.end >= 0 && face.idx >= 0);
 	pBounds->fMin.d[0] = pBounds->fMin.d[1] = FLT_MAX;
 	pBounds->fMax.d[0] = pBounds->fMax.d[1] = -FLT_MAX;
 	for (int32_t i = 0; i < face.size; ++i) {
-		V2_F32 *uv = pUvs + face.start + i;
-		RUVM_ASSERT("", uv && v2IsFinite(*uv));
+		V2_F32 *uv = pStuc + face.start + i;
+		STUC_ASSERT("", uv && v2IsFinite(*uv));
 		pBounds->fMin.d[0] = uv->d[0] < pBounds->fMin.d[0] ?
 			uv->d[0] : pBounds->fMin.d[0];
 		pBounds->fMin.d[1] = uv->d[1] < pBounds->fMin.d[1] ?
@@ -77,19 +77,19 @@ void getFaceBounds(FaceBounds *pBounds, V2_F32 *pUvs, FaceRange face) {
 			uv->d[1] : pBounds->fMax.d[1];
 	}
 	//Faces can be flat (they may be facing sideways in a map for instance)
-	RUVM_ASSERT("", _(pBounds->fMax V2GREATEQL pBounds->fMin));
+	STUC_ASSERT("", _(pBounds->fMax V2GREATEQL pBounds->fMin));
 }
 
 void getFaceBoundsVert(FaceBounds* pBounds, V3_F32* pVerts, FaceRange face) {
-	RUVM_ASSERT("", pBounds && v2IsFinite(pBounds->fMin) && v2IsFinite(pBounds->fMax));
-	RUVM_ASSERT("", pVerts && v3IsFinite(*pVerts));
-	RUVM_ASSERT("", face.size >= 3 && face.start >= 0);
-	RUVM_ASSERT("", face.end >= 0 && face.idx >= 0);
+	STUC_ASSERT("", pBounds && v2IsFinite(pBounds->fMin) && v2IsFinite(pBounds->fMax));
+	STUC_ASSERT("", pVerts && v3IsFinite(*pVerts));
+	STUC_ASSERT("", face.size >= 3 && face.start >= 0);
+	STUC_ASSERT("", face.end >= 0 && face.idx >= 0);
 	pBounds->fMin.d[0] = pBounds->fMin.d[1] = FLT_MAX;
 	pBounds->fMax.d[0] = pBounds->fMax.d[1] = .0f;
 	for (int32_t i = 0; i < face.size; ++i) {
 		V3_F32* vert = pVerts + face.start + i;
-		RUVM_ASSERT("", vert && v3IsFinite(*vert));
+		STUC_ASSERT("", vert && v3IsFinite(*vert));
 		pBounds->fMin.d[0] = vert->d[0] < pBounds->fMin.d[0] ?
 			vert->d[0] : pBounds->fMin.d[0];
 		pBounds->fMin.d[1] = vert->d[1] < pBounds->fMin.d[1] ?
@@ -100,28 +100,28 @@ void getFaceBoundsVert(FaceBounds* pBounds, V3_F32* pVerts, FaceRange face) {
 			vert->d[1] : pBounds->fMax.d[1];
 	}
 	//Faces can be flat (they may be facing sideways in a map for instance)
-	RUVM_ASSERT("", _(pBounds->fMax V2GREATEQL pBounds->fMin));
+	STUC_ASSERT("", _(pBounds->fMax V2GREATEQL pBounds->fMin));
 }
 
 int32_t checkIfEdgeIsSeam(int32_t edgeIdx, FaceRange face, int32_t corner,
                           Mesh *pMesh, EdgeVerts *pEdgeVerts) {
-	RUVM_ASSERT("", pMesh && pEdgeVerts);
-	RUVM_ASSERT("", face.size >= 3 && face.start >= 0 && face.end >= 0 && face.size >= 0);
-	RUVM_ASSERT("", edgeIdx >= 0 && corner >= 0 && corner < face.size);
+	STUC_ASSERT("", pMesh && pEdgeVerts);
+	STUC_ASSERT("", face.size >= 3 && face.start >= 0 && face.end >= 0 && face.size >= 0);
+	STUC_ASSERT("", edgeIdx >= 0 && corner >= 0 && corner < face.size);
 	int32_t *pVerts = pEdgeVerts[edgeIdx].verts;
-	RUVM_ASSERT("", pVerts);
+	STUC_ASSERT("", pVerts);
 	if (pVerts[1] < 0) {
 		return 2;
 	}
 	else {
-		RUVM_ASSERT("", pVerts[0] == face.start + corner || pVerts[1] == face.start + corner);
+		STUC_ASSERT("", pVerts[0] == face.start + corner || pVerts[1] == face.start + corner);
 		int32_t whichCorner = pVerts[0] == face.start + corner;
 		int32_t otherCorner = pVerts[whichCorner];
 		int32_t iNext = (corner + 1) % face.size;
 		int32_t nextBaseCorner = face.start + iNext;
-		V2_F32 uv = pMesh->pUvs[nextBaseCorner];
-		V2_F32 uvOther = pMesh->pUvs[otherCorner];
-		RUVM_ASSERT("", v2IsFinite(uv) && v2IsFinite(uvOther));
+		V2_F32 uv = pMesh->pStuc[nextBaseCorner];
+		V2_F32 uvOther = pMesh->pStuc[otherCorner];
+		STUC_ASSERT("", v2IsFinite(uv) && v2IsFinite(uvOther));
 		int32_t isSeam = !_(uv V2APROXEQL uvOther);
 		if (isSeam) {
 			return 1;
@@ -131,32 +131,32 @@ int32_t checkIfEdgeIsSeam(int32_t edgeIdx, FaceRange face, int32_t corner,
 }
 
 bool checkIfEdgeIsPreserve(Mesh* pMesh, int32_t edge) {
-	RUVM_ASSERT("", pMesh && edge >= 0);
+	STUC_ASSERT("", pMesh && edge >= 0);
 	if (pMesh->pEdgePreserve) {
-		RUVM_ASSERT("", pMesh->pEdgePreserve[edge] % 2 == pMesh->pEdgePreserve[edge]);
+		STUC_ASSERT("", pMesh->pEdgePreserve[edge] % 2 == pMesh->pEdgePreserve[edge]);
 	}
 	return pMesh->pEdgePreserve ? pMesh->pEdgePreserve[edge] : false;
 }
 
 bool checkIfVertIsPreserve(Mesh* pMesh, int32_t vert) {
-	RUVM_ASSERT("", pMesh && vert >= 0);
+	STUC_ASSERT("", pMesh && vert >= 0);
 	if (pMesh->pVertPreserve) {
-		RUVM_ASSERT("", pMesh->pVertPreserve[vert] % 2 == pMesh->pVertPreserve[vert]);
+		STUC_ASSERT("", pMesh->pVertPreserve[vert] % 2 == pMesh->pVertPreserve[vert]);
 	}
 	return pMesh->pVertPreserve ? pMesh->pVertPreserve[vert] : false;
 }
 
 int32_t checkIfEdgeIsReceive(Mesh* pMesh, int32_t edge) {
-	RUVM_ASSERT("", pMesh && edge >= 0);
+	STUC_ASSERT("", pMesh && edge >= 0);
 	if (pMesh->pEdgeReceive) {
-		RUVM_ASSERT("", pMesh->pEdgeReceive[edge] == 0 || pMesh->pEdgeReceive[edge] == 1);
+		STUC_ASSERT("", pMesh->pEdgeReceive[edge] == 0 || pMesh->pEdgeReceive[edge] == 1);
 	}
 	return pMesh->pEdgeReceive ? pMesh->pEdgeReceive[edge] : 0;
 }
 
 static
 int32_t getOtherVert(int32_t i, int32_t faceSize, int8_t *pVertsRemoved) {
-	RUVM_ASSERT("", i >= 0 && faceSize >= 3 && i < faceSize && pVertsRemoved);
+	STUC_ASSERT("", i >= 0 && faceSize >= 3 && i < faceSize && pVertsRemoved);
 	int32_t ib = (i + 1) % faceSize;
 	//search from i + 1 to facesize, and if non found,
 	//then run again from 0 to facesize. If non found then,
@@ -165,7 +165,7 @@ int32_t getOtherVert(int32_t i, int32_t faceSize, int8_t *pVertsRemoved) {
 	do {
 		attempts++;
 		for (; ib < faceSize; ++ib) {
-			RUVM_ASSERT("", pVertsRemoved[ib] >= 0);
+			STUC_ASSERT("", pVertsRemoved[ib] >= 0);
 			if (!pVertsRemoved[ib]) {
 				return ib;
 			}
@@ -191,9 +191,9 @@ void initTriEdgeEntry(TriEdge* pEntry, int32_t verta, int32_t vertb, int32_t tri
 }
 
 static
-void addTriEdgeToTable(RuvmAlloc *pAlloc, int32_t tableSize, TriEdge *pEdgeTable, int32_t verta, int32_t vertb, int32_t tri) {
+void addTriEdgeToTable(StucAlloc *pAlloc, int32_t tableSize, TriEdge *pEdgeTable, int32_t verta, int32_t vertb, int32_t tri) {
 	uint32_t sum = verta + vertb;
-	int32_t hash = uvsFnvHash((uint8_t *)&sum, 4, tableSize);
+	int32_t hash = stucFnvHash((uint8_t *)&sum, 4, tableSize);
 	TriEdge *pEntry = pEdgeTable + hash;
 	if (!pEntry->valid) {
 		initTriEdgeEntry(pEntry, verta, vertb, tri);
@@ -218,8 +218,8 @@ void addTriEdgeToTable(RuvmAlloc *pAlloc, int32_t tableSize, TriEdge *pEdgeTable
 
 //This gives really long tris, where short tris are possible.
 //Re-add search to find short tris, and prefer those.
-FaceTriangulated triangulateFace(RuvmAlloc alloc, FaceRange baseFace, void *pVerts,
-                                 int32_t *pCorners, int32_t useUvs) {
+FaceTriangulated triangulateFace(StucAlloc alloc, FaceRange baseFace, void *pVerts,
+                                 int32_t *pCorners, int32_t useStuc) {
 	FaceTriangulated outMesh = {0};
 	outMesh.triCount = baseFace.size - 2;
 	int32_t cornerCount = outMesh.triCount * 3;
@@ -244,11 +244,11 @@ FaceTriangulated triangulateFace(RuvmAlloc alloc, FaceRange baseFace, void *pVer
 			int32_t ic = getOtherVert(ib, baseFace.size, pVertsRemoved);
 			float height;
 			float len;
-			if (useUvs) {
-				V2_F32 *pUvs = pVerts;
-				V2_F32 verta = pUvs[baseFace.start + i];
-				V2_F32 vertb = pUvs[baseFace.start + ib];
-				V2_F32 vertc = pUvs[baseFace.start + ic];
+			if (useStuc) {
+				V2_F32 *pStuc = pVerts;
+				V2_F32 verta = pStuc[baseFace.start + i];
+				V2_F32 vertb = pStuc[baseFace.start + ib];
+				V2_F32 vertc = pStuc[baseFace.start + ic];
 				height = v2TriHeight(verta, vertb, vertc);
 				V2_F32 ac = _(vertc V2SUB verta);
 				len = v2Len(ac);
@@ -281,7 +281,7 @@ FaceTriangulated triangulateFace(RuvmAlloc alloc, FaceRange baseFace, void *pVer
 			}
 		}
 		if (!earIsValid) {
-			RUVM_ASSERT("", fallback);
+			STUC_ASSERT("", fallback);
 			ear[0] = earFallback[0];
 			ear[1] = earFallback[1];
 			ear[2] = earFallback[2];
@@ -320,11 +320,11 @@ FaceTriangulated triangulateFace(RuvmAlloc alloc, FaceRange baseFace, void *pVer
 
 
 //Caller must check for nan in return value
-V3_F32 getBarycentricInFace(V2_F32 *pTriUvs, int8_t *pTriCorners,
+V3_F32 getBarycentricInFace(V2_F32 *pTriStuc, int8_t *pTriCorners,
                           int32_t cornerCount, V2_F32 vert) {
-	RUVM_ASSERT("", pTriUvs && v2IsFinite(*pTriUvs) && v2IsFinite(vert));
-	RUVM_ASSERT("", cornerCount >= 3 && pTriCorners);
-	V3_F32 vertBc = cartesianToBarycentric(pTriUvs, &vert);
+	STUC_ASSERT("", pTriStuc && v2IsFinite(*pTriStuc) && v2IsFinite(vert));
+	STUC_ASSERT("", cornerCount >= 3 && pTriCorners);
+	V3_F32 vertBc = cartesianToBarycentric(pTriStuc, &vert);
 	if (cornerCount == 4 && v3IsFinite(vertBc) && vertBc.d[1] < 0) {
 		//base face is a quad, and vert is outside first tri,
 		//so use the second tri
@@ -338,7 +338,7 @@ V3_F32 getBarycentricInFace(V2_F32 *pTriUvs, int8_t *pTriCorners,
 		//are slightly outside of the quad, by a margin of error.
 		//A vert will always end up in one or the other tri.
 		V2_F32 triBuf[3] =
-			{pTriUvs[2], pTriUvs[3], pTriUvs[0]};
+			{pTriStuc[2], pTriStuc[3], pTriStuc[0]};
 		vertBc = cartesianToBarycentric(triBuf, &vert);
 		pTriCorners[0] = 2;
 		pTriCorners[1] = 3;
@@ -352,12 +352,12 @@ V3_F32 getBarycentricInFace(V2_F32 *pTriUvs, int8_t *pTriCorners,
 }
 
 //TODO replace custom barrier with system barrier?
-void waitForJobs(RuvmContext pContext, int32_t *pActiveJobs, void *pMutex) {
+void waitForJobs(StucContext pContext, int32_t *pActiveJobs, void *pMutex) {
 	bool waiting;
 	do  {
 		pContext->threadPool.pGetAndDoJob(pContext->pThreadPoolHandle);
 		pContext->threadPool.pMutexLock(pContext->pThreadPoolHandle, pMutex);
-		RUVM_ASSERT("", pContext->threadCount >= 0);
+		STUC_ASSERT("", pContext->threadCount >= 0);
 		waiting = *pActiveJobs > 0;
 		pContext->threadPool.pMutexUnlock(pContext->pThreadPoolHandle, pMutex);
 	} while(waiting);
@@ -375,13 +375,13 @@ typedef struct {
 } AdjBucket;
 
 static
-void buildCornerAdjTable(RuvmAlloc *pAlloc,
+void buildCornerAdjTable(StucAlloc *pAlloc,
                        Mesh* pMesh, AdjBucket *pAdjTable) {
 	for (int32_t i = 0; i < pMesh->mesh.faceCount; ++i) {
 		FaceRange face = getFaceRange(&pMesh->mesh, i, false);
 		for (int32_t j = 0; j < face.size; ++j) {
 			AdjBucket* pBucket = pAdjTable + pMesh->mesh.pCorners[face.start + j];
-			RUVM_ASSERT("", pBucket->count <= pBucket->size);
+			STUC_ASSERT("", pBucket->count <= pBucket->size);
 			if (!pBucket->pArr) {
 				pBucket->size = 2;
 				pBucket->pArr =
@@ -411,12 +411,12 @@ void findEdges(Mesh* pMesh, AdjBucket* pAdjTable) {
 			int32_t edge = pMesh->mesh.edgeCount;
 			pMesh->mesh.edgeCount++;
 			AdjBucket* pBucket = pAdjTable + pMesh->mesh.pCorners[face.start + j];
-			RUVM_ASSERT("", pBucket->count > 0 &&
+			STUC_ASSERT("", pBucket->count > 0 &&
 				pBucket->size >= pBucket->count);
 			for (int32_t k = 0; k < pBucket->count; ++k) {
 				AdjEntry* pEntry = pBucket->pArr + k;
 				if (pEntry->face == i) {
-					RUVM_ASSERT("Invalid mesh, 2 corners in this face share 1 vert",
+					STUC_ASSERT("Invalid mesh, 2 corners in this face share 1 vert",
 						pEntry->corner == j);
 					continue;
 				}
@@ -439,15 +439,15 @@ void findEdges(Mesh* pMesh, AdjBucket* pAdjTable) {
 	}
 }
 
-void buildEdgeList(RuvmContext pContext, Mesh* pMesh) {
-	RUVM_ASSERT("", !pMesh->mesh.pEdges);
-	RuvmAlloc* pAlloc = &pContext->alloc;
-	RUVM_ASSERT("", pMesh->mesh.vertCount);
+void buildEdgeList(StucContext pContext, Mesh* pMesh) {
+	STUC_ASSERT("", !pMesh->mesh.pEdges);
+	StucAlloc* pAlloc = &pContext->alloc;
+	STUC_ASSERT("", pMesh->mesh.vertCount);
 	AdjBucket* pAdjTable =
 		pAlloc->pCalloc(pMesh->mesh.vertCount, sizeof(AdjBucket));
 	buildCornerAdjTable(pAlloc, pMesh, pAdjTable);
 
-	RUVM_ASSERT("", pMesh->mesh.cornerCount);
+	STUC_ASSERT("", pMesh->mesh.cornerCount);
 	int32_t dataSize = sizeof(int32_t) * pMesh->mesh.cornerCount;
 	pMesh->mesh.pEdges = pAlloc->pMalloc(dataSize);
 	memset(pMesh->mesh.pEdges, -1, dataSize);
@@ -475,7 +475,7 @@ void progressBarClear() {
 	printf("\x1b[2K");
 }
 
-void progressBarPrint(RuvmContext pContext, int32_t progress) {
+void progressBarPrint(StucContext pContext, int32_t progress) {
 	printf("	");
 	for (int32_t i = 0u; i < pContext->stageReport.outOf; ++i) {
 		char character;
@@ -489,11 +489,11 @@ void progressBarPrint(RuvmContext pContext, int32_t progress) {
 	}
 }
 
-void stageBegin(void *pContext, RuvmStageReport *pReport, const char* pName) {
+void stageBegin(void *pContext, StucStageReport *pReport, const char* pName) {
 	return;
 	setStageName(pContext, pName);
 }
-void stageProgress(void *pContext, RuvmStageReport *pReport, int32_t progress) {
+void stageProgress(void *pContext, StucStageReport *pReport, int32_t progress) {
 	return;
 	if (progress) {
 		progressBarClear();
@@ -501,13 +501,13 @@ void stageProgress(void *pContext, RuvmStageReport *pReport, int32_t progress) {
 	printf("%s", pReport->stage);
 	progressBarPrint(pContext, progress);
 }
-void stageEnd(void *pContext, RuvmStageReport *pReport) {
+void stageEnd(void *pContext, StucStageReport *pReport) {
 	return;
-	memset(pReport->stage, 0, RUVM_STAGE_NAME_LEN);
+	memset(pReport->stage, 0, STUC_STAGE_NAME_LEN);
 	progressBarClear();
 }
 
-void stageBeginWrap(RuvmContext pContext, const char* pName, int32_t max) {
+void stageBeginWrap(StucContext pContext, const char* pName, int32_t max) {
 	pContext->stageReport.pBegin(pContext, &pContext->stageReport, pName);
 	//Only needed if using default stage report functions,
 	//it's just used for the progress bar
@@ -515,7 +515,7 @@ void stageBeginWrap(RuvmContext pContext, const char* pName, int32_t max) {
 		1 : max / pContext->stageReport.outOf;
 }
 
-void stageProgressWrap(RuvmContext pContext, int32_t progress) {
+void stageProgressWrap(StucContext pContext, int32_t progress) {
 	if (pContext->stageInterval != 1 && progress % pContext->stageInterval) {
 		return;
 	}
@@ -524,26 +524,26 @@ void stageProgressWrap(RuvmContext pContext, int32_t progress) {
 	pContext->stageReport.pProgress(pContext, &pContext->stageReport, normProgress);
 }
 
-void stageEndWrap(RuvmContext pContext) {
+void stageEndWrap(StucContext pContext) {
 	pContext->stageReport.pEnd(pContext, &pContext->stageReport);
 }
 
-void setStageName(RuvmContext pContext, const char* pName) {
-	strncpy(pContext->stageReport.stage, pName, RUVM_STAGE_NAME_LEN);
+void setStageName(StucContext pContext, const char* pName) {
+	strncpy(pContext->stageReport.stage, pName, STUC_STAGE_NAME_LEN);
 }
 
 Mat3x3 buildFaceTbn(FaceRange face, Mesh *pMesh, int32_t *pCornerOveride) {
 	int32_t corner = pCornerOveride ? face.start + pCornerOveride[1] : face.start;
 	int32_t vertIdx = pMesh->mesh.pCorners[corner];
-	V2_F32 uv = pMesh->pUvs[corner];
+	V2_F32 uv = pMesh->pStuc[corner];
 	V3_F32 vert = pMesh->pVerts[vertIdx];
 	int32_t next = pCornerOveride ? face.start + pCornerOveride[2] : face.start + 1;
 	int32_t vertIdxNext = pMesh->mesh.pCorners[next];
-	V2_F32 uvNext = pMesh->pUvs[next];
+	V2_F32 uvNext = pMesh->pStuc[next];
 	V3_F32 vertNext = pMesh->pVerts[vertIdxNext];
 	int32_t prev = pCornerOveride ? face.start + pCornerOveride[0] : face.end - 1;
 	int32_t vertIdxPrev = pMesh->mesh.pCorners[prev];
-	V2_F32 uvPrev = pMesh->pUvs[prev];
+	V2_F32 uvPrev = pMesh->pStuc[prev];
 	V3_F32 vertPrev = pMesh->pVerts[vertIdxPrev];
 	//uv space direction vectors,
 	//forming the coefficient matrix
@@ -588,7 +588,7 @@ bool calcIntersection(V3_F32 a, V3_F32 b, V2_F32 c, V2_F32 cd,
 	if (det2 == .0f) {
 		return false;
 	}
-	RUVM_ASSERT("", det2 != .0f);
+	STUC_ASSERT("", det2 != .0f);
 	float t = _(ac V2DET cd) / det2;
 	if (pPoint) {
 		*pPoint = _(a V3ADD _(ab V3MULS t));
@@ -601,7 +601,7 @@ bool calcIntersection(V3_F32 a, V3_F32 b, V2_F32 c, V2_F32 cd,
 		if (det2 == .0f) {
 			return false;
 		}
-		RUVM_ASSERT("", det2 != .0f);
+		STUC_ASSERT("", det2 != .0f);
 		*pt2 = _(ac V2DET *(V2_F32 *)&ab) / det2;
 	}
 	return true;
@@ -625,7 +625,7 @@ int32_t idxBitArray(UBitField8 *pArr, int32_t idx, int32_t len) {
 //does not bounds check.
 //Also, if value is 0, only 1 bit will be set, len is ignored
 void setBitArr(UBitField8 *pArr, int32_t idx, int32_t value, int32_t len) {
-	RUVM_ASSERT("", (value & (0x1 << len) - 1) == value);
+	STUC_ASSERT("", (value & (0x1 << len) - 1) == value);
 	idx *= len;
 	int32_t byte = idx / 8;
 	int32_t bit = idx % 8;
@@ -661,7 +661,7 @@ void insertionSort(int32_t *pIdxTable, int32_t count, int32_t *pSort) {
 			if (insert) {
 				break;
 			}
-			RUVM_ASSERT("", j < bufSize && j >= 0);
+			STUC_ASSERT("", j < bufSize && j >= 0);
 		}
 		if (!insert) {
 			pIdxTable[bufSize] = i;
@@ -669,11 +669,11 @@ void insertionSort(int32_t *pIdxTable, int32_t count, int32_t *pSort) {
 		else {
 			for (int32_t m = bufSize; m > j; --m) {
 				pIdxTable[m] = pIdxTable[m - 1];
-				RUVM_ASSERT("", m <= bufSize && m > j);
+				STUC_ASSERT("", m <= bufSize && m > j);
 			}
 			pIdxTable[j] = i;
 		}
-		RUVM_ASSERT("", i >= bufSize && i < count);
+		STUC_ASSERT("", i >= bufSize && i < count);
 		bufSize++;
 	}
 }
@@ -695,7 +695,7 @@ void fInsertionSort(int32_t *pIdxTable, int32_t count, float *pSort) {
 			if (insert) {
 				break;
 			}
-			RUVM_ASSERT("", j < bufSize && j >= 0);
+			STUC_ASSERT("", j < bufSize && j >= 0);
 		}
 		if (!insert) {
 			pIdxTable[bufSize] = i;
@@ -703,11 +703,11 @@ void fInsertionSort(int32_t *pIdxTable, int32_t count, float *pSort) {
 		else {
 			for (int32_t m = bufSize; m > j; --m) {
 				pIdxTable[m] = pIdxTable[m - 1];
-				RUVM_ASSERT("", m <= bufSize && m > j);
+				STUC_ASSERT("", m <= bufSize && m > j);
 			}
 			pIdxTable[j] = i;
 		}
-		RUVM_ASSERT("", i >= bufSize && i < count);
+		STUC_ASSERT("", i >= bufSize && i < count);
 		bufSize++;
 	}
 }
@@ -747,8 +747,8 @@ bool isMarkedSkip(int32_t *pSkip, int32_t skipCount, int32_t idx) {
 }
 
 //0 for clockwise, returns 1 for counterclockwise, & 2 if degenerate
-int32_t calcFaceOrientation(Mesh *pMesh, FaceRange *pFace, bool useUvs) {
-	RUVM_ASSERT("", pFace->start >= 0 && pFace->size >= 3);
+int32_t calcFaceOrientation(Mesh *pMesh, FaceRange *pFace, bool useStuc) {
+	STUC_ASSERT("", pFace->start >= 0 && pFace->size >= 3);
 	int32_t skip[16] = {0};
 	int32_t skipCount = 0;
 	do {
@@ -760,8 +760,8 @@ int32_t calcFaceOrientation(Mesh *pMesh, FaceRange *pFace, bool useUvs) {
 			}
 			int32_t corner = pFace->start + i;
 			V2_F32 pos;
-			if (useUvs) {
-				pos = pMesh->pUvs[corner];
+			if (useStuc) {
+				pos = pMesh->pStuc[corner];
 			}
 			else {
 				int32_t vert = pMesh->mesh.pCorners[corner];
@@ -782,10 +782,10 @@ int32_t calcFaceOrientation(Mesh *pMesh, FaceRange *pFace, bool useUvs) {
 		V2_F32 a;
 		V2_F32 b;
 		V2_F32 c;
-		if (useUvs) {
-			a = pMesh->pUvs[pFace->start + prev];
-			b = pMesh->pUvs[pFace->start + lowestCorner];
-			c = pMesh->pUvs[pFace->start + next];
+		if (useStuc) {
+			a = pMesh->pStuc[pFace->start + prev];
+			b = pMesh->pStuc[pFace->start + lowestCorner];
+			c = pMesh->pStuc[pFace->start + next];
 		}
 		else {
 			int32_t vertPrev = pMesh->mesh.pCorners[pFace->start + prev];
@@ -806,12 +806,12 @@ int32_t calcFaceOrientation(Mesh *pMesh, FaceRange *pFace, bool useUvs) {
 		skip[skipCount] = lowestCorner;
 		skipCount++;
 	} while(skipCount < pFace->size);
-	RUVM_ASSERT("face is degenerate", skipCount == pFace->size);
+	STUC_ASSERT("face is degenerate", skipCount == pFace->size);
 	return 2;
 }
 
 int32_t getBorderFaceMemType(int32_t mapFaceSize, int32_t bufFaceSize) {
-	RUVM_ASSERT("", bufFaceSize >= 0);
+	STUC_ASSERT("", bufFaceSize >= 0);
 	if (bufFaceSize <= 14 && mapFaceSize <= 8) {
 		return 0;
 	}
@@ -821,12 +821,12 @@ int32_t getBorderFaceMemType(int32_t mapFaceSize, int32_t bufFaceSize) {
 	else if (bufFaceSize <= 50 && mapFaceSize <= 32) {
 		return 2;
 	}
-	RUVM_ASSERT("Border face size > 64", false);
+	STUC_ASSERT("Border face size > 64", false);
 	return 0;
 }
 
 int32_t getBorderFaceSize(int32_t memType) {
-	RUVM_ASSERT("", memType >= 0 && memType <= 3);
+	STUC_ASSERT("", memType >= 0 && memType <= 3);
 	switch (memType) {
 	case 0:
 		return sizeof(BorderFaceSmall);
@@ -835,7 +835,7 @@ int32_t getBorderFaceSize(int32_t memType) {
 	case 2:
 		return sizeof(BorderFaceLarge);
 	}
-	RUVM_ASSERT("This shouldn't be hit", false);
+	STUC_ASSERT("This shouldn't be hit", false);
 	return 0;
 }
 
@@ -844,9 +844,9 @@ void getBorderFaceBitArrs(BorderFace *pEntry, BorderFaceBitArrs *pArrs) {
 		case 0: {
 			BorderFaceSmall *pCast = (BorderFaceSmall *)pEntry;
 			pArrs->pBaseCorner = &pCast->baseCorner;
-			pArrs->pRuvmCorner = &pCast->uvsCorner;
+			pArrs->pStucCorner = &pCast->stucCorner;
 			pArrs->pSegment = &pCast->segment;
-			pArrs->pIsRuvm = &pCast->isRuvm;
+			pArrs->pIsStuc = &pCast->isStuc;
 			pArrs->pOnLine = &pCast->onLine;
 			pArrs->pOnInVert = &pCast->onInVert;
 			return;
@@ -854,9 +854,9 @@ void getBorderFaceBitArrs(BorderFace *pEntry, BorderFaceBitArrs *pArrs) {
 		case 1: {
 			BorderFaceMid *pCast = (BorderFaceMid *)pEntry;
 			pArrs->pBaseCorner = &pCast->baseCorner;
-			pArrs->pRuvmCorner = &pCast->uvsCorner;
+			pArrs->pStucCorner = &pCast->stucCorner;
 			pArrs->pSegment = &pCast->segment;
-			pArrs->pIsRuvm = &pCast->isRuvm;
+			pArrs->pIsStuc = &pCast->isStuc;
 			pArrs->pOnLine = &pCast->onLine;
 			pArrs->pOnInVert = &pCast->onInVert;
 			return;
@@ -864,9 +864,9 @@ void getBorderFaceBitArrs(BorderFace *pEntry, BorderFaceBitArrs *pArrs) {
 		case 2: {
 			BorderFaceLarge *pCast = (BorderFaceLarge *)pEntry;
 			pArrs->pBaseCorner = &pCast->baseCorner;
-			pArrs->pRuvmCorner = &pCast->uvsCorner;
+			pArrs->pStucCorner = &pCast->stucCorner;
 			pArrs->pSegment = &pCast->segment;
-			pArrs->pIsRuvm = &pCast->isRuvm;
+			pArrs->pIsStuc = &pCast->isStuc;
 			pArrs->pOnLine = &pCast->onLine;
 			pArrs->pOnInVert = &pCast->onInVert;
 			return;
