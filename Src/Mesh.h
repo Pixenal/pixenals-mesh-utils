@@ -27,7 +27,7 @@ typedef struct {
 	Stuc_V3_F32 *pTangents;
 	float *pTSigns;
 	float *pWScale;
-	Stuc_V2_F32 *pStuc;
+	Stuc_V2_F32 *pUvs;
 	int8_t *pEdgePreserve;
 	int8_t *pVertPreserve;
 	int8_t *pEdgeReceive;

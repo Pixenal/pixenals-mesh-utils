@@ -526,7 +526,7 @@ void mikktGetTexCoord(const SMikkTSpaceContext *pContext, float *pFvTexcOut,
                       const int iFace, const int iVert) {
 	Mesh *pMesh = pContext->m_pUserData;
 	FaceRange face = getFaceRange(&pMesh->mesh, iFace, false);
-	*(V2_F32 *)pFvTexcOut = pMesh->pStuc[face.start + iVert];
+	*(V2_F32 *)pFvTexcOut = pMesh->pUvs[face.start + iVert];
 }
 
 static

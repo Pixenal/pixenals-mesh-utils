@@ -47,6 +47,8 @@
 //their edges when merging border faces
 //TODO add user define void * args to custom callbacks
 //TODO add the ability to open map files in dcc, to make edits to mesh, USGs etc
+//TODO prevent outmesh from copying over special attributes like TSign or Tangent,
+//can probably reuse code for wscale
 
 static
 void stucSetTypeDefaultConfig(StucContext pContext) {

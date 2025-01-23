@@ -119,8 +119,8 @@ int32_t checkIfEdgeIsSeam(int32_t edgeIdx, FaceRange face, int32_t corner,
 		int32_t otherCorner = pVerts[whichCorner];
 		int32_t iNext = (corner + 1) % face.size;
 		int32_t nextBaseCorner = face.start + iNext;
-		V2_F32 uv = pMesh->pStuc[nextBaseCorner];
-		V2_F32 uvOther = pMesh->pStuc[otherCorner];
+		V2_F32 uv = pMesh->pUvs[nextBaseCorner];
+		V2_F32 uvOther = pMesh->pUvs[otherCorner];
 		STUC_ASSERT("", v2IsFinite(uv) && v2IsFinite(uvOther));
 		int32_t isSeam = !_(uv V2APROXEQL uvOther);
 		if (isSeam) {
@@ -535,15 +535,15 @@ void setStageName(StucContext pContext, const char* pName) {
 Mat3x3 buildFaceTbn(FaceRange face, Mesh *pMesh, int32_t *pCornerOveride) {
 	int32_t corner = pCornerOveride ? face.start + pCornerOveride[1] : face.start;
 	int32_t vertIdx = pMesh->mesh.pCorners[corner];
-	V2_F32 uv = pMesh->pStuc[corner];
+	V2_F32 uv = pMesh->pUvs[corner];
 	V3_F32 vert = pMesh->pVerts[vertIdx];
 	int32_t next = pCornerOveride ? face.start + pCornerOveride[2] : face.start + 1;
 	int32_t vertIdxNext = pMesh->mesh.pCorners[next];
-	V2_F32 uvNext = pMesh->pStuc[next];
+	V2_F32 uvNext = pMesh->pUvs[next];
 	V3_F32 vertNext = pMesh->pVerts[vertIdxNext];
 	int32_t prev = pCornerOveride ? face.start + pCornerOveride[0] : face.end - 1;
 	int32_t vertIdxPrev = pMesh->mesh.pCorners[prev];
-	V2_F32 uvPrev = pMesh->pStuc[prev];
+	V2_F32 uvPrev = pMesh->pUvs[prev];
 	V3_F32 vertPrev = pMesh->pVerts[vertIdxPrev];
 	//uv space direction vectors,
 	//forming the coefficient matrix
@@ -761,7 +761,7 @@ int32_t calcFaceOrientation(Mesh *pMesh, FaceRange *pFace, bool useStuc) {
 			int32_t corner = pFace->start + i;
 			V2_F32 pos;
 			if (useStuc) {
-				pos = pMesh->pStuc[corner];
+				pos = pMesh->pUvs[corner];
 			}
 			else {
 				int32_t vert = pMesh->mesh.pCorners[corner];
@@ -783,9 +783,9 @@ int32_t calcFaceOrientation(Mesh *pMesh, FaceRange *pFace, bool useStuc) {
 		V2_F32 b;
 		V2_F32 c;
 		if (useStuc) {
-			a = pMesh->pStuc[pFace->start + prev];
-			b = pMesh->pStuc[pFace->start + lowestCorner];
-			c = pMesh->pStuc[pFace->start + next];
+			a = pMesh->pUvs[pFace->start + prev];
+			b = pMesh->pUvs[pFace->start + lowestCorner];
+			c = pMesh->pUvs[pFace->start + next];
 		}
 		else {
 			int32_t vertPrev = pMesh->mesh.pCorners[pFace->start + prev];
