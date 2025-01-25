@@ -11,14 +11,14 @@
 #include <Error.h>
 
 int32_t checkFaceIsInBounds(V2_F32 min, V2_F32 max, FaceRange face, Mesh *pMesh) {
-	STUC_ASSERT("", pMesh && pMesh->pVerts && pMesh->mesh.pCorners);
+	STUC_ASSERT("", pMesh && pMesh->pVerts && pMesh->core.pCorners);
 	STUC_ASSERT("", face.size >= 3 && face.start >= 0 && face.end >= 0 && face.idx >= 0);
 	STUC_ASSERT("", v2IsFinite(min) && v2IsFinite(max));
 	V2_F32 faceMin, faceMax;
 	faceMin.d[0] = faceMin.d[1] = FLT_MAX;
 	faceMax.d[0] = faceMax.d[1] = 0;
 	for (int32_t i = 0; i < face.size; ++i) {
-		int32_t vertIdx = pMesh->mesh.pCorners[face.start + i];
+		int32_t vertIdx = pMesh->core.pCorners[face.start + i];
 		V3_F32 *pVert = pMesh->pVerts + vertIdx;
 		STUC_ASSERT("", pVert && v3IsFinite(*pVert));
 		if (pVert->d[0] < faceMin.d[0]) {
@@ -377,10 +377,10 @@ typedef struct {
 static
 void buildCornerAdjTable(StucAlloc *pAlloc,
                        Mesh* pMesh, AdjBucket *pAdjTable) {
-	for (int32_t i = 0; i < pMesh->mesh.faceCount; ++i) {
-		FaceRange face = getFaceRange(&pMesh->mesh, i, false);
+	for (int32_t i = 0; i < pMesh->core.faceCount; ++i) {
+		FaceRange face = getFaceRange(&pMesh->core, i, false);
 		for (int32_t j = 0; j < face.size; ++j) {
-			AdjBucket* pBucket = pAdjTable + pMesh->mesh.pCorners[face.start + j];
+			AdjBucket* pBucket = pAdjTable + pMesh->core.pCorners[face.start + j];
 			STUC_ASSERT("", pBucket->count <= pBucket->size);
 			if (!pBucket->pArr) {
 				pBucket->size = 2;
@@ -402,15 +402,15 @@ void buildCornerAdjTable(StucAlloc *pAlloc,
 
 static
 void findEdges(Mesh* pMesh, AdjBucket* pAdjTable) {
-	for (int32_t i = 0; i < pMesh->mesh.faceCount; ++i) {
-		FaceRange face = getFaceRange(&pMesh->mesh, i, false);
+	for (int32_t i = 0; i < pMesh->core.faceCount; ++i) {
+		FaceRange face = getFaceRange(&pMesh->core, i, false);
 		for (int32_t j = 0; j < face.size; ++j) {
-			if (pMesh->mesh.pEdges[face.start + j] >= 0) {
+			if (pMesh->core.pEdges[face.start + j] >= 0) {
 				continue; //Already set
 			}
-			int32_t edge = pMesh->mesh.edgeCount;
-			pMesh->mesh.edgeCount++;
-			AdjBucket* pBucket = pAdjTable + pMesh->mesh.pCorners[face.start + j];
+			int32_t edge = pMesh->core.edgeCount;
+			pMesh->core.edgeCount++;
+			AdjBucket* pBucket = pAdjTable + pMesh->core.pCorners[face.start + j];
 			STUC_ASSERT("", pBucket->count > 0 &&
 				pBucket->size >= pBucket->count);
 			for (int32_t k = 0; k < pBucket->count; ++k) {
@@ -420,48 +420,48 @@ void findEdges(Mesh* pMesh, AdjBucket* pAdjTable) {
 						pEntry->corner == j);
 					continue;
 				}
-				FaceRange otherFace = getFaceRange(&pMesh->mesh, pEntry->face, false);
+				FaceRange otherFace = getFaceRange(&pMesh->core, pEntry->face, false);
 				int32_t nextCorner = (j + 1) % face.size;
 				int32_t otherPrevCorner = pEntry->corner ?
 					pEntry->corner - 1 : otherFace.size - 1;
-				if (pMesh->mesh.pEdges[otherFace.start + otherPrevCorner] >= 0) {
+				if (pMesh->core.pEdges[otherFace.start + otherPrevCorner] >= 0) {
 					continue; //Already set
 				}
-				if (pMesh->mesh.pCorners[face.start + nextCorner] !=
-					pMesh->mesh.pCorners[otherFace.start + otherPrevCorner]) {
+				if (pMesh->core.pCorners[face.start + nextCorner] !=
+					pMesh->core.pCorners[otherFace.start + otherPrevCorner]) {
 					continue; //Not connected
 				}
-				pMesh->mesh.pEdges[otherFace.start + otherPrevCorner] = edge;
+				pMesh->core.pEdges[otherFace.start + otherPrevCorner] = edge;
 				break;
 			}
-			pMesh->mesh.pEdges[face.start + j] = edge;
+			pMesh->core.pEdges[face.start + j] = edge;
 		}
 	}
 }
 
 void buildEdgeList(StucContext pContext, Mesh* pMesh) {
-	STUC_ASSERT("", !pMesh->mesh.pEdges);
+	STUC_ASSERT("", !pMesh->core.pEdges);
 	StucAlloc* pAlloc = &pContext->alloc;
-	STUC_ASSERT("", pMesh->mesh.vertCount);
+	STUC_ASSERT("", pMesh->core.vertCount);
 	AdjBucket* pAdjTable =
-		pAlloc->pCalloc(pMesh->mesh.vertCount, sizeof(AdjBucket));
+		pAlloc->pCalloc(pMesh->core.vertCount, sizeof(AdjBucket));
 	buildCornerAdjTable(pAlloc, pMesh, pAdjTable);
 
-	STUC_ASSERT("", pMesh->mesh.cornerCount);
-	int32_t dataSize = sizeof(int32_t) * pMesh->mesh.cornerCount;
-	pMesh->mesh.pEdges = pAlloc->pMalloc(dataSize);
-	memset(pMesh->mesh.pEdges, -1, dataSize);
+	STUC_ASSERT("", pMesh->core.cornerCount);
+	int32_t dataSize = sizeof(int32_t) * pMesh->core.cornerCount;
+	pMesh->core.pEdges = pAlloc->pMalloc(dataSize);
+	memset(pMesh->core.pEdges, -1, dataSize);
 	findEdges(pMesh, pAdjTable);
 
-	for (int32_t i = 0; i < pMesh->mesh.vertCount; ++i) {
+	for (int32_t i = 0; i < pMesh->core.vertCount; ++i) {
 		pAlloc->pFree(pAdjTable[i].pArr);
 	}
 	pAlloc->pFree(pAdjTable);
 }
 
 bool isMeshInvalid(Mesh* pMesh) {
-	for (int32_t i = 0; i < pMesh->mesh.faceCount; ++i) {
-		FaceRange face = getFaceRange(&pMesh->mesh, i, false);
+	for (int32_t i = 0; i < pMesh->core.faceCount; ++i) {
+		FaceRange face = getFaceRange(&pMesh->core, i, false);
 		if (face.size < 3) {
 			return true;
 		}
@@ -534,15 +534,15 @@ void setStageName(StucContext pContext, const char* pName) {
 
 Mat3x3 buildFaceTbn(FaceRange face, Mesh *pMesh, int32_t *pCornerOveride) {
 	int32_t corner = pCornerOveride ? face.start + pCornerOveride[1] : face.start;
-	int32_t vertIdx = pMesh->mesh.pCorners[corner];
+	int32_t vertIdx = pMesh->core.pCorners[corner];
 	V2_F32 uv = pMesh->pUvs[corner];
 	V3_F32 vert = pMesh->pVerts[vertIdx];
 	int32_t next = pCornerOveride ? face.start + pCornerOveride[2] : face.start + 1;
-	int32_t vertIdxNext = pMesh->mesh.pCorners[next];
+	int32_t vertIdxNext = pMesh->core.pCorners[next];
 	V2_F32 uvNext = pMesh->pUvs[next];
 	V3_F32 vertNext = pMesh->pVerts[vertIdxNext];
 	int32_t prev = pCornerOveride ? face.start + pCornerOveride[0] : face.end - 1;
-	int32_t vertIdxPrev = pMesh->mesh.pCorners[prev];
+	int32_t vertIdxPrev = pMesh->core.pCorners[prev];
 	V2_F32 uvPrev = pMesh->pUvs[prev];
 	V3_F32 vertPrev = pMesh->pVerts[vertIdxPrev];
 	//uv space direction vectors,
@@ -764,7 +764,7 @@ int32_t calcFaceOrientation(Mesh *pMesh, FaceRange *pFace, bool useStuc) {
 				pos = pMesh->pUvs[corner];
 			}
 			else {
-				int32_t vert = pMesh->mesh.pCorners[corner];
+				int32_t vert = pMesh->core.pCorners[corner];
 				pos = *(V2_F32 *)&pMesh->pVerts[vert];
 			}
 			if (pos.d[0] > lowestCoord.d[0]) {
@@ -788,9 +788,9 @@ int32_t calcFaceOrientation(Mesh *pMesh, FaceRange *pFace, bool useStuc) {
 			c = pMesh->pUvs[pFace->start + next];
 		}
 		else {
-			int32_t vertPrev = pMesh->mesh.pCorners[pFace->start + prev];
-			int32_t vert = pMesh->mesh.pCorners[pFace->start + lowestCorner];
-			int32_t vertNext = pMesh->mesh.pCorners[pFace->start + next];
+			int32_t vertPrev = pMesh->core.pCorners[pFace->start + prev];
+			int32_t vert = pMesh->core.pCorners[pFace->start + lowestCorner];
+			int32_t vertNext = pMesh->core.pCorners[pFace->start + next];
 			a = *(V2_F32 *)&pMesh->pVerts[vertPrev];
 			b = *(V2_F32 *)&pMesh->pVerts[vert];
 			c = *(V2_F32 *)&pMesh->pVerts[vertNext];

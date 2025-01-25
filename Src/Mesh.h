@@ -10,8 +10,12 @@ typedef struct {
 	int32_t realIdx;
 } BufMeshIdx;
 
+//is it worth just putting pData at the start of Attrib,
+//so you can just have pNormalAttrib and remove pNormal.
+//or would having to cast all the time be too annoying?
+//probably
 typedef struct {
-	StucMesh mesh;
+	StucMesh core;
 	StucAttrib *pVertAttrib;
 	StucAttrib *pUvAttrib;
 	StucAttrib *pNormalAttrib;
@@ -101,10 +105,3 @@ void mergeObjArr(StucContext pContext, Mesh *pMesh,
 void destroyObjArr(StucContext pContext, int32_t objCount, StucObject *pObjArr);
 FaceRange getFaceRange(const StucMesh *pMesh, int32_t idx, bool border);
 void buildTangents(Mesh *pMesh);
-//TODO remove this, it's unecessary, just do &pBufMesh->mesh instead.
-//     Obviously also rename mesh in Mesh to core, so it would be
-//     pBufMesh->mesh.core.faceCount, for instance.
-static inline
-Mesh *asMesh(BufMesh *pMesh) {
-	return (Mesh *)pMesh;
-}
