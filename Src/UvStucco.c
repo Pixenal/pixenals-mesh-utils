@@ -137,19 +137,17 @@ StucResult stucMapFileLoadForEdit(StucContext pContext, char *filePath,
 
 StucResult stucMapFileLoad(StucContext pContext, StucMap *pMapHandle,
                            char *filePath) {
-	StucResult status = STUC_NOT_SET;
+	StucResult err = STUC_NOT_SET;
 	StucMap pMap = pContext->alloc.pCalloc(1, sizeof(MapFile));
 	int32_t objCount = 0;
 	StucObject *pObjArr = NULL;
 	StucUsg *pUsgArr = NULL;
 	int32_t flatCutoffCount = 0;
 	StucObject *pFlatCutoffArr = NULL;
-	status = stucLoadStucFile(pContext, filePath, &objCount, &pObjArr,
+	err = stucLoadStucFile(pContext, filePath, &objCount, &pObjArr,
 	                          &pMap->usgArr.count, &pUsgArr, &flatCutoffCount,
 	                          &pFlatCutoffArr, false, &pMap->indexedAttribs);
-	if (status != STUC_SUCCESS) {
-		return status;
-	}
+	STUC_ERROR("failed to load file from disk", err);
 
 	for (int32_t i = 0; i < objCount; ++i) {
 		setSpecialAttribs(pContext, pObjArr[i].pData, 0xae); //10101110 - all except for preserve
@@ -189,7 +187,8 @@ StucResult stucMapFileLoad(StucContext pContext, StucMap *pMapHandle,
 	//the quadtree is created before USGs are assigned to verts,
 	//as the tree's used to speed up the process
 	printf("File loaded. Creating quad tree\n");
-	stucCreateQuadTree(pContext, pMap);
+	err = stucCreateQuadTree(pContext, pMap);
+	STUC_ERROR("failed to create quadtree", err);
 
 	if (pMap->usgArr.count) {
 		pMap->usgArr.pArr = pContext->alloc.pCalloc(pMap->usgArr.count, sizeof(Usg));
@@ -217,7 +216,8 @@ StucResult stucMapFileLoad(StucContext pContext, StucMap *pMapHandle,
 	*pMapHandle = pMap;
 	//TODO add proper checks, and return STUC_ERROR if fails.
 	//Do for all public functions (or internal ones as well)
-	return STUC_SUCCESS;
+	STUC_CATCH(err, stucMapFileUnload(pContext, pMap);)
+	return err;
 }
 
 StucResult stucMapFileUnload(StucContext pContext, StucMap pMap) {
@@ -525,6 +525,8 @@ void InFaceTableToHashTable(StucAlloc *pAlloc,
 Result stucMapToMesh(StucContext pContext, StucMap pMap, StucMesh *pMeshIn,
                      StucMesh *pMeshOut, StucCommonAttribList *pCommonAttribList,
                      float wScale) {
+	//TODO replace vars called 'result' with 'err'
+	StucResult err = STUC_NOT_SET;
 	if (!pMeshIn) {
 		printf("Stuc map to mesh failed, pMeshIn was null\n");
 		return STUC_ERROR;
@@ -562,7 +564,8 @@ Result stucMapToMesh(StucContext pContext, StucMap pMap, StucMesh *pMeshIn,
 	InFaceArr *pInFaceTable = NULL;
 	if (pMap->usgArr.count) {
 		MapFile squares = { .mesh = pMap->usgArr.squares };
-		stucCreateQuadTree(pContext, &squares);
+		err = stucCreateQuadTree(pContext, &squares);
+		STUC_ERROR("failed to create quadtree", err);
 		StucMesh squaresOut = {0};
 		mapToMeshInternal(pContext, &squares, &meshInWrap, &squaresOut, pCommonAttribList, &pInFaceTable, 1.0f);
 		sampleInAttribsAtUsgOrigins(pContext, pMap, &meshInWrap, &squaresOut, pInFaceTable);
@@ -574,6 +577,7 @@ Result stucMapToMesh(StucContext pContext, StucMap pMap, StucMesh *pMeshIn,
 	setSpecialAttribs(pContext, &meshInWrap, 0x50); //set perserve if present
 
 	mapToMeshInternal(pContext, pMap, &meshInWrap, pMeshOut, pCommonAttribList, NULL, wScale);
+	STUC_CATCH(err, ;);
 	if (pMap->usgArr.count) {
 		pContext->alloc.pFree(pMap->usgArr.pInFaceTable);
 		pMap->usgArr.pInFaceTable = NULL;
@@ -582,6 +586,7 @@ Result stucMapToMesh(StucContext pContext, StucMap pMap, StucMesh *pMeshIn,
 		}
 		pContext->alloc.pFree(pInFaceTable);
 	}
+	return err;
 }
 
 StucResult stucObjArrDestroy(StucContext pContext,
