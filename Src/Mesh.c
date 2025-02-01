@@ -404,6 +404,12 @@ void applyObjTransform(StucObject *pObj) {
 		_(&v4 V4MULEQLM4X4 &pObj->transform);
 		*pV3 = *(V3_F32 *)&v4;
 	}
+	for (int32_t i = 0; i < pMesh->core.cornerCount; ++i) {
+		Mat3x3 mat3x3 = Mat3x3FromMat4x4(&pObj->transform);
+		V3_F32 *pNormal = pMesh->pNormals + i;
+		_(pNormal V3MULEQLM3X3 &mat3x3);
+		*pNormal = v3Normalize(*pNormal);
+	}
 	pObj->transform = identM4x4;
 }
 
