@@ -137,6 +137,10 @@ StucResult stucMapFileLoadForEdit(StucContext pContext, char *filePath,
 
 StucResult stucMapFileLoad(StucContext pContext, StucMap *pMapHandle,
                            char *filePath) {
+	//TODO collapse materials into single mesh using combineMatsFromMeshArr func,
+	//then offset face attribs to correct for this (they're currently local).
+	//TODO make global materials indexed by 8 bit int, no point using 32 if all mats are being
+	//collapsed in mapping stage
 	StucResult err = STUC_NOT_SET;
 	StucMap pMap = pContext->alloc.pCalloc(1, sizeof(MapFile));
 	int32_t objCount = 0;
@@ -150,7 +154,7 @@ StucResult stucMapFileLoad(StucContext pContext, StucMap *pMapHandle,
 	STUC_ERROR("failed to load file from disk", err);
 
 	for (int32_t i = 0; i < objCount; ++i) {
-		setSpecialAttribs(pContext, pObjArr[i].pData, 0xae); //10101110 - all except for preserve
+		setSpecialAttribs(pContext, (Mesh *)pObjArr[i].pData, 0xae); //10101110 - all except for preserve
 		applyObjTransform(pObjArr + i);
 	}
 	pMap->mesh.core.type.type = STUC_OBJECT_DATA_MESH_INTERN;
