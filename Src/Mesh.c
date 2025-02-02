@@ -415,7 +415,6 @@ void applyObjTransform(StucObject *pObj) {
 
 void mergeObjArr(StucContext pContext, Mesh *pMesh,
                  int32_t objCount, StucObject *pObjArr, bool setCommon) {
-	//TODO allocate map mesh based on all meshes in obj arr
 	Mesh **ppSrcs = pContext->alloc.pCalloc(objCount, sizeof(void *));
 	MeshCounts totalCount = {0};
 	for (int32_t i = 0; i < objCount; ++i) {

@@ -21,34 +21,20 @@
 // - Reduce the bits written to the UVGP file for vert and corner indices, based on the total amount, in order to save space.
 //   No point storing them as 32 bit if there's only like 4,000 verts
 // - Split compressed data into chunks maybe?
-// - Split whole quadtree into chunks?
 //
 // - Add blending options to interface, that control how MeshIn attributes blend with
 //   those from the Map. Also add an option to disable or enable interpolation.
 //   Add these to the StucAttrib struct.
 //
-//TODO repalce localMesh with bufMesh.
-//The old name is still present in some functions & vars
 //TODO a highly distorted meshIn can cause invalid geometry
 //(enough to crash blender). When meshIn is quads atleast
 //(I've not tested with tris). Find out why
-//TODO stucPreserve isn't working.
 //TODO add option to vary z projection depth with uv stretch (for wires and such)
-//Add option to mask stucpreserve by map edges. Where masking is defined
-//per edge, not per face. An preserve meshin edge must pass through 2 map
-//edges which are marked preserve, for the edge to cut that map face.
-//This will cause there to be gaps in the corner, in cases of diagional meshin
-//preserve edges. Just triangulate these faces, or leave as an ngon?
 //TODO Add an option for subdivision like smoothing (for instances where
 //the map is higher res than the base mesh). So that the surface can be
 //smoothed, without needing to induce the perf cost of actually subdividing
 //the base mesh. Is this possible?
-//TODO add a cache (hash table?) for triangulated in faces, as your going to need to reference
-//their edges when merging border faces
 //TODO add user define void * args to custom callbacks
-//TODO add the ability to open map files in dcc, to make edits to mesh, USGs etc
-//TODO prevent outmesh from copying over special attributes like TSign or Tangent,
-//can probably reuse code for wscale
 //TODO allow for layered mapping. eg, map-faces assigned layer 0 are only mapped
 //to in-faces with a layer attribute of 0
 
@@ -137,10 +123,6 @@ StucResult stucMapFileLoadForEdit(StucContext pContext, char *filePath,
 
 StucResult stucMapFileLoad(StucContext pContext, StucMap *pMapHandle,
                            char *filePath) {
-	//TODO collapse materials into single mesh using combineMatsFromMeshArr func,
-	//then offset face attribs to correct for this (they're currently local).
-	//TODO make global materials indexed by 8 bit int, no point using 32 if all mats are being
-	//collapsed in mapping stage
 	StucResult err = STUC_NOT_SET;
 	StucMap pMap = pContext->alloc.pCalloc(1, sizeof(MapFile));
 	int32_t objCount = 0;
@@ -215,8 +197,6 @@ StucResult stucMapFileLoad(StucContext pContext, StucMap *pMapHandle,
 		pMap->usgArr.pMemArr = pUsgArr;
 	}
 
-	//setAttribsToIgnore(&pMap->mesh);
-
 	*pMapHandle = pMap;
 	//TODO add proper checks, and return STUC_ERROR if fails.
 	//Do for all public functions (or internal ones as well)
@@ -245,6 +225,7 @@ void getCommonAttribs(StucContext pContext, AttribArray *pMapAttribs,
 					  AttribArray *pMeshAttribs,
 					  int32_t *pCommonAttribCount,
 					  StucCommonAttrib **ppCommonAttribs) {
+	//TODO ignore special attribs like StucTangent or StucTSign
 	if (!pMeshAttribs || !pMapAttribs) {
 		return;
 	}
@@ -401,9 +382,6 @@ void buildVertTables(StucContext pContext, Mesh *pMesh,
 	*ppInVertTable = pContext->alloc.pCalloc(pMesh->core.vertCount, 1);
 	*ppVertSeamTable = pContext->alloc.pCalloc(pMesh->core.vertCount, 1);
 	*ppEdgeSeamTable = pContext->alloc.pCalloc(pMesh->core.edgeCount, 1);
-	//TODO do we need to list number of unique preserve edges per vert?
-	//I'm not doing so currently (hence why pEdgeCache is commented out),
-	//and it seems to be working. (talking about split to pieces)
 	EdgeCache *pEdgeCache =
 		pContext->alloc.pCalloc(pMesh->core.vertCount, sizeof(EdgeCache));
 	for (int32_t i = 0; i < pMesh->core.faceCount; ++i) {
@@ -554,8 +532,6 @@ Result stucMapToMesh(StucContext pContext, StucMap pMap, StucMesh *pMeshIn,
 	if (isMeshInvalid(&meshInWrap)) {
 		return STUC_ERROR;
 	}
-	STUC_ASSERT("", meshInWrap.pTangentAttrib && meshInWrap.pTSignAttrib);
-	//setAttribsToIgnore(&meshInWrap);
 
 	buildTangents(&meshInWrap);
 
