@@ -39,12 +39,6 @@
 //to in-faces with a layer attribute of 0
 
 static
-void stucSetTypeDefaultConfig(StucContext pContext) {
-	StucTypeDefaultConfig config = {0};
-	pContext->typeDefaults = config;
-}
-
-static
 void setDefaultStageReport(StucContext pContext) {
 	pContext->stageReport.outOf = 50,
 	pContext->stageReport.pBegin = stageBegin;
