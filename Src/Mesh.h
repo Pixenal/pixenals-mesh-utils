@@ -26,6 +26,7 @@ typedef struct {
 	StucAttrib *pEdgeReceiveAttrib;
 	StucAttrib *pUsgAttrib;
 	StucAttrib *pWScaleAttrib;
+	StucAttrib *pMatIdxAttrib;
 	Stuc_V3_F32 *pVerts;
 	Stuc_V3_F32 *pNormals;
 	Stuc_V3_F32 *pTangents;
@@ -36,6 +37,9 @@ typedef struct {
 	int8_t *pVertPreserve;
 	int8_t *pEdgeReceive;
 	int32_t *pUsg;
+	//it'd be ideal if this were unsigned, do dcc's usually store mats unsigned though?
+	//probably not worth it tbh, i've never see an object with 128 mat slots let alone 256
+	int8_t *pMatIdx;
 	int32_t faceBufSize;
 	int32_t cornerBufSize;
 	int32_t edgeBufSize;

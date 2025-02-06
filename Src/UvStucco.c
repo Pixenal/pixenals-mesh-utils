@@ -292,7 +292,7 @@ void sendOffJobs(StucContext pContext, StucMap pMap, SendOffArgs *pJobArgs,
                  int32_t *pActiveJobs, int32_t *pMapJobsSent, Mesh *pMesh, void *pMutex,
                  EdgeVerts *pEdgeVerts, int8_t *pInVertTable,
 				 StucCommonAttribList *pCommonAttribList,
-	             bool getInFaces, float wScale) {
+	             bool getInFaces, float wScale, int8_t maskIdx) {
 	//struct timeval start, stop;
 	//CLOCK_START;
 	int32_t facesPerThread = pMesh->core.faceCount / pContext->threadCount;
@@ -321,6 +321,7 @@ void sendOffJobs(StucContext pContext, StucMap pMap, SendOffArgs *pJobArgs,
 		pJobArgs[i].pCommonAttribList = pCommonAttribList;
 		pJobArgs[i].getInFaces = getInFaces;
 		pJobArgs[i].wScale = wScale;
+		pJobArgs[i].maskIdx = maskIdx;
 		jobArgPtrs[i] = pJobArgs + i;
 	}
 	*pMapJobsSent = *pActiveJobs;
@@ -403,7 +404,8 @@ void buildVertTables(StucContext pContext, Mesh *pMesh,
 
 static
 Result mapToMeshInternal(StucContext pContext, StucMap pMap, Mesh *pMeshIn,
-                         StucMesh *pMeshOut, StucCommonAttribList *pCommonAttribList,
+                         StucMesh *pMeshOut, int8_t maskIdx,
+                         StucCommonAttribList *pCommonAttribList,
                          InFaceArr **ppInFaceTable, float wScale) {
 	CLOCK_INIT;
 	CLOCK_START;
@@ -425,7 +427,7 @@ Result mapToMeshInternal(StucContext pContext, StucMap pMap, Mesh *pMeshIn,
 	pContext->threadPool.pMutexGet(pContext->pThreadPoolHandle, &pMutex);
 	sendOffJobs(pContext, pMap, jobArgs, &activeJobs, &mapJobsSent, pMeshIn, pMutex,
 	            pEdgeVerts, pInVertTable, pCommonAttribList,
-	            ppInFaceTable != NULL, wScale);
+	            ppInFaceTable != NULL, wScale, maskIdx);
 	if (!mapJobsSent) {
 		//no jobs sent
 		//implement an STUC_CANCELLED status
@@ -498,7 +500,7 @@ void InFaceTableToHashTable(StucAlloc *pAlloc,
 	}
 }
 
-Result stucMapToMesh(StucContext pContext, StucMap pMap, StucMesh *pMeshIn,
+Result stucMapToMesh(StucContext pContext, StucMapArr *pMapArr, StucMesh *pMeshIn,
                      StucMesh *pMeshOut, StucCommonAttribList *pCommonAttribList,
                      float wScale) {
 	//TODO replace vars called 'result' with 'err'
@@ -507,13 +509,13 @@ Result stucMapToMesh(StucContext pContext, StucMap pMap, StucMesh *pMeshIn,
 		printf("Stuc map to mesh failed, pMeshIn was null\n");
 		return STUC_ERROR;
 	}
-	if (!pMap) {
+	if (!pMapArr) {
 		printf("Stuc map to mesh failed, pMap was null\n");
 		return STUC_ERROR;
 	}
 	Mesh meshInWrap = {.core = *pMeshIn};
 
-	setSpecialAttribs(pContext, &meshInWrap, 0x70e); //don't set preserve yet
+	setSpecialAttribs(pContext, &meshInWrap, 0xf0e); //don't set preserve yet
 
 	setAttribOrigins(&meshInWrap.core.meshAttribs, STUC_ATTRIB_ORIGIN_MESH_IN);
 	setAttribOrigins(&meshInWrap.core.faceAttribs, STUC_ATTRIB_ORIGIN_MESH_IN);
@@ -535,31 +537,48 @@ Result stucMapToMesh(StucContext pContext, StucMap pMap, StucMesh *pMeshIn,
 		buildEdgeList(pContext, &meshInWrap);
 	}
 
-	InFaceArr *pInFaceTable = NULL;
-	if (pMap->usgArr.count) {
-		MapFile squares = { .mesh = pMap->usgArr.squares };
-		err = stucCreateQuadTree(pContext, &squares);
-		STUC_ERROR("failed to create quadtree", err);
-		StucMesh squaresOut = {0};
-		mapToMeshInternal(pContext, &squares, &meshInWrap, &squaresOut, pCommonAttribList, &pInFaceTable, 1.0f);
-		sampleInAttribsAtUsgOrigins(pContext, pMap, &meshInWrap, &squaresOut, pInFaceTable);
-		InFaceTableToHashTable(&pContext->alloc, pMap, squaresOut.faceCount, pInFaceTable);
-		//*pMeshOut = squaresOut;
-		//return STUC_SUCCESS;
-		stucMeshDestroy(pContext, &squaresOut);
-	}
-	setSpecialAttribs(pContext, &meshInWrap, 0x50); //set perserve if present
-
-	mapToMeshInternal(pContext, pMap, &meshInWrap, pMeshOut, pCommonAttribList, NULL, wScale);
-	STUC_CATCH(err, ;);
-	if (pMap->usgArr.count) {
-		pContext->alloc.pFree(pMap->usgArr.pInFaceTable);
-		pMap->usgArr.pInFaceTable = NULL;
-		for (int32_t i = 0; i < pMap->usgArr.count; ++i) {
-			//pContext->alloc.pFree(pInFaceTable[i].pArr);
+	Mesh *pOutBufArr = pContext->alloc.pCalloc(pMapArr->count, sizeof(Mesh));
+	StucObject *pOutObjWrapArr =
+		pContext->alloc.pCalloc(pMapArr->count, sizeof(StucObject));
+	for (int32_t i = 0; i < pMapArr->count; ++i) {
+		pOutObjWrapArr[i].pData = pOutBufArr + i;
+		StucMap pMap = pMapArr->ppArr[i];
+		int8_t matIdx = pMapArr->pMatArr[i];
+		InFaceArr *pInFaceTable = NULL;
+		if (pMap->usgArr.count) {
+			MapFile squares = { .mesh = pMap->usgArr.squares };
+			err = stucCreateQuadTree(pContext, &squares);
+			STUC_ERROR("failed to create quadtree", err);
+			StucMesh squaresOut = {0};
+			err = mapToMeshInternal(pContext, &squares, &meshInWrap, &squaresOut, matIdx,
+			                        pCommonAttribList + i, &pInFaceTable, 1.0f);
+			STUC_ERROR("map to mesh usg failed", err);
+			sampleInAttribsAtUsgOrigins(pContext, pMap, &meshInWrap, &squaresOut, pInFaceTable);
+			InFaceTableToHashTable(&pContext->alloc, pMap, squaresOut.faceCount, pInFaceTable);
+			//*pMeshOut = squaresOut;
+			//return STUC_SUCCESS;
+			stucMeshDestroy(pContext, &squaresOut);
 		}
-		pContext->alloc.pFree(pInFaceTable);
+		setSpecialAttribs(pContext, &meshInWrap, 0x50); //set perserve if present
+
+		err = mapToMeshInternal(pContext, pMap, &meshInWrap, &pOutBufArr[i].core, matIdx,
+		                        pCommonAttribList + i, NULL, wScale);
+		STUC_ERROR("map to mesh failed", err);
+		STUC_CATCH(err, ;);
+		if (pMap->usgArr.count) {
+			pContext->alloc.pFree(pMap->usgArr.pInFaceTable);
+			pMap->usgArr.pInFaceTable = NULL;
+			for (int32_t j = 0; j < pMap->usgArr.count; ++j) {
+				//TODO uncomment this and fix any memory issue
+				//pContext->alloc.pFree(pInFaceTable[i].pArr);
+			}
+			pContext->alloc.pFree(pInFaceTable);
+		}
 	}
+	pMeshOut->type.type = STUC_OBJECT_DATA_MESH;
+	Mesh meshOutWrap = {.core = *pMeshOut};
+	mergeObjArr(pContext, &meshOutWrap, pMapArr->count, pOutObjWrapArr, false);
+	*pMeshOut = meshOutWrap.core;
 	return err;
 }
 
