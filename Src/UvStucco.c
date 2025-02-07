@@ -143,7 +143,7 @@ StucResult stucMapFileLoad(StucContext pContext, StucMap *pMapHandle,
 	setAttribOrigins(&pMap->mesh.core.vertAttribs, STUC_ATTRIB_ORIGIN_MAP);
 	setAttribToDontCopy(pContext, &pMap->mesh, 0x7f0);
 
-	setSpecialAttribs(pContext, &pMap->mesh, 0xae);
+	setSpecialAttribs(pContext, &pMap->mesh, 0x8ae);
 
 	//TODO some form of heap corruption when many objects
 	//test with address sanitizer on CircuitPieces.stuc
@@ -402,10 +402,26 @@ void buildVertTables(StucContext pContext, Mesh *pMesh,
 }
 
 static
+bool checkIfNoFacesHaveMaskIdx(Mesh *pMesh, int8_t maskIdx) {
+	if (!pMesh->pMatIdx) {
+		return false;
+	}
+	for (int32_t i = 0; i < pMesh->core.faceCount; ++i) {
+		if (pMesh->pMatIdx[i] == maskIdx) {
+			return false;
+		}
+	}
+	return true;
+}
+
+static
 Result mapToMeshInternal(StucContext pContext, StucMap pMap, Mesh *pMeshIn,
                          StucMesh *pMeshOut, int8_t maskIdx,
                          StucCommonAttribList *pCommonAttribList,
                          InFaceArr **ppInFaceTable, float wScale) {
+	if (checkIfNoFacesHaveMaskIdx(pMeshIn, maskIdx)) {
+		return STUC_SUCCESS;
+	}
 	CLOCK_INIT;
 	CLOCK_START;
 	EdgeVerts *pEdgeVerts = {0};
@@ -450,6 +466,7 @@ Result mapToMeshInternal(StucContext pContext, StucMap pMap, Mesh *pMeshIn,
 		}
 	}
 	if (empty || jobResult != STUC_SUCCESS) {
+		printf("returning, empty is %d, jobResult is %d\n", empty, jobResult);
 		return jobResult;
 	}
 
@@ -499,6 +516,35 @@ void InFaceTableToHashTable(StucAlloc *pAlloc,
 	}
 }
 
+static
+void correctMatIndices(StucContext pContext, Mesh *pMeshArr, StucMapArr *pMapArr) {
+	//mesh and map arraya line up, ie each mesh is the out mesh
+	//for the map of the same index
+	int32_t idxOffset = 0;
+	for (int32_t i = 0; i < pMapArr->count; ++i) {
+		Mesh *pMesh = pMeshArr + i;
+		setSpecialAttribs(pContext, pMesh, 0x800);//only set mat indices
+		if (!pMesh->pMatIdx) {
+			continue;
+		}
+		AttribIndexedArr indexedArr = {0};
+		stucMapIndexedAttribsGet(pContext, pMapArr->ppArr[i], &indexedArr);
+		AttribIndexed *pMats = NULL;
+		for (int32_t j = 0; j < indexedArr.count; ++j) {
+			AttribIndexed *pAttrib = indexedArr.pArr + j;
+			if (!strncmp("StucMaterials", pAttrib->core.name, STUC_ATTRIB_NAME_MAX_LEN)) {
+				pMats = pAttrib;
+				break;
+			}
+		}
+		STUC_ASSERT("mesh faces have mat indices, but map has no materials?", pMats);
+		for (int32_t j = 0; j < pMesh->core.faceCount; ++j) {
+			pMesh->pMatIdx[j] += idxOffset;
+		}
+		idxOffset += pMats->count;
+	}
+}
+
 Result stucMapToMesh(StucContext pContext, StucMapArr *pMapArr, StucMesh *pMeshIn,
                      StucMesh *pMeshOut, StucCommonAttribList *pCommonAttribList,
                      float wScale) {
@@ -535,6 +581,8 @@ Result stucMapToMesh(StucContext pContext, StucMapArr *pMapArr, StucMesh *pMeshI
 		STUC_ASSERT("", !meshInWrap.core.edgeAttribs.pArr);
 		buildEdgeList(pContext, &meshInWrap);
 	}
+
+	printf("meshInWrap.pMatIdx[5] = %d\n", meshInWrap.pMatIdx[5]);
 
 	Mesh *pOutBufArr = pContext->alloc.pCalloc(pMapArr->count, sizeof(Mesh));
 	StucObject *pOutObjWrapArr =
@@ -576,7 +624,10 @@ Result stucMapToMesh(StucContext pContext, StucMapArr *pMapArr, StucMesh *pMeshI
 	}
 	pMeshOut->type.type = STUC_OBJECT_DATA_MESH;
 	Mesh meshOutWrap = {.core = *pMeshOut};
+	printf("merging obj arr\n");
+	correctMatIndices(pContext, pOutBufArr, pMapArr);
 	mergeObjArr(pContext, &meshOutWrap, pMapArr->count, pOutObjWrapArr, false);
+	printf("post-merging obj arr\n");
 	*pMeshOut = meshOutWrap.core;
 	return err;
 }

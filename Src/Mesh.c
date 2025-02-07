@@ -356,6 +356,14 @@ void addToMeshCounts(StucContext pContext, MeshCounts *pCounts,
 }
 
 void copyMesh(StucMesh *pDestMesh, StucMesh *pSrcMesh) {
+	printf("pSrcMesh->type.type			%d\n", pSrcMesh->type.type);
+	printf("pSrcMesh->faceCount			%d\n", pSrcMesh->faceCount);
+	printf("pSrcMesh->cornerCount		%d\n", pSrcMesh->cornerCount);
+	printf("pSrcMesh->vertCount			%d\n", pSrcMesh->vertCount);
+	printf("pSrcMesh->pFaces			%p\n", pSrcMesh->pFaces);
+	if (pSrcMesh->type.type == STUC_OBJECT_DATA_NULL) {
+		return;
+	}
 	STUC_ASSERT("", checkIfMesh(pDestMesh->type));
 	STUC_ASSERT("", checkIfMesh(pSrcMesh->type));
 	int32_t faceBase = pDestMesh->faceCount;
