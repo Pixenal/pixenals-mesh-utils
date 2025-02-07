@@ -305,15 +305,14 @@ void sendOffJobs(StucContext pContext, StucMap pMap, SendOffArgs *pJobArgs,
 		int32_t meshStart = facesPerThread * i;
 		int32_t meshEnd = i == *pActiveJobs - 1 ?
 			pMesh->core.faceCount : meshStart + facesPerThread;
-		Mesh meshPart = *pMesh;
-		meshPart.core.pFaces += meshStart;
-		meshPart.core.faceCount = meshEnd - meshStart;
 		pJobArgs[i].inFaceOffset = meshStart;
 		pJobArgs[i].pInVertTable = pInVertTable;
 		pJobArgs[i].pEdgeVerts = pEdgeVerts;
 		pJobArgs[i].pMap = pMap;
 		pJobArgs[i].borderTable.size = borderTableSize;
-		pJobArgs[i].mesh = meshPart;
+		pJobArgs[i].mesh = *pMesh;
+		pJobArgs[i].inFaceRange.start = meshStart;
+		pJobArgs[i].inFaceRange.end = meshEnd;
 		pJobArgs[i].pActiveJobs = pActiveJobs;
 		pJobArgs[i].id = i;
 		pJobArgs[i].pContext = pContext;
@@ -735,7 +734,9 @@ static void stucRenderJob(void *pArgs) {
 		              pixelScale * idx.d[1] + pixelHalfScale};
 		Color color = { 0 };
 		color.d[3] = FLT_MAX * -1.0f;
-		stucGetCellsForSingleFace(&searchState, 1, &pos, &faceCellsTable, NULL, 0);
+		Range faceRange = {.start = 0, .end = 1};
+		stucGetCellsForSingleFace(&searchState, 1, &pos, &faceCellsTable,
+		                          NULL, 0, faceRange);
 		int32_t leafIdx = faceCells.pCells[faceCells.cellSize - 1];
 		Cell *pLeaf = vars.pMap->quadTree.cellTable.pArr + leafIdx;
 		for (int32_t j = 0; j < faceCells.cellSize; ++j) {
