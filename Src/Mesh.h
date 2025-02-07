@@ -99,13 +99,13 @@ void reallocMeshToFit(const StucAlloc *pAlloc, Mesh *pMesh);
 void meshSetLastFace(const StucAlloc *pAlloc, Mesh *pMesh);
 void bufMeshSetLastFaces(const StucAlloc *pAlloc, BufMesh *pBufMesh,
                          DebugAndPerfVars *pDpVars);
-bool checkIfMesh(StucMesh *pMesh);
+bool checkIfMesh(StucObjectData type);
 void addToMeshCounts(StucContext pContext, MeshCounts *pCounts,
                      MeshCounts *pBoundsCounts, Mesh *pMeshSrc);
 void copyMesh(StucMesh *pDestMesh, StucMesh *pSrcMesh);
 void applyObjTransform(StucObject *pObj);
 void mergeObjArr(StucContext pContext, Mesh *pMesh,
                  int32_t objCount, StucObject *pObjArr, bool setCommon);
-void destroyObjArr(StucContext pContext, int32_t objCount, StucObject *pObjArr);
+StucResult destroyObjArr(StucContext pContext, int32_t objCount, StucObject *pObjArr);
 FaceRange getFaceRange(const StucMesh *pMesh, int32_t idx, bool border);
 void buildTangents(Mesh *pMesh);

@@ -97,7 +97,7 @@ StucResult stucContextDestroy(StucContext pContext) {
 	return STUC_SUCCESS;
 }
 
-StucResult stucMapFileExport(StucContext pContext, const char *pName,
+StucResult stucMapFileExport(StucContext pContext, char *pName,
                              int32_t objCount, StucObject* pObjArr,
                              int32_t usgCount, StucUsg* pUsgArr,
                              StucAttribIndexedArr indexedAttribs) {
@@ -152,9 +152,9 @@ StucResult stucMapFileLoad(StucContext pContext, StucMap *pMapHandle,
 	if (pMap->mesh.pUvAttrib) {
 		//TODO as with all special attributes, allow user to define what should be considered
 		//     the primary UV channel. This especially important for integration with other DCCs
-		if (!strncmp(pMap->mesh.pUvAttrib->name, "UVMap", STUC_ATTRIB_NAME_MAX_LEN)) {
+		if (!strncmp(pMap->mesh.pUvAttrib->core.name, "UVMap", STUC_ATTRIB_NAME_MAX_LEN)) {
 			char newName[STUC_ATTRIB_NAME_MAX_LEN] = "Map_UVMap";
-			memcpy(pMap->mesh.pUvAttrib->name, newName, STUC_ATTRIB_NAME_MAX_LEN);
+			memcpy(pMap->mesh.pUvAttrib->core.name, newName, STUC_ATTRIB_NAME_MAX_LEN);
 		}
 	}
 
@@ -173,13 +173,13 @@ StucResult stucMapFileLoad(StucContext pContext, StucMap *pMapHandle,
 	if (pMap->usgArr.count) {
 		pMap->usgArr.pArr = pContext->alloc.pCalloc(pMap->usgArr.count, sizeof(Usg));
 		for (int32_t i = 0; i < pMap->usgArr.count; ++i) {
-			setSpecialAttribs(pContext, pUsgArr[i].obj.pData, 0x02); //000010 - set only vert pos
+			setSpecialAttribs(pContext, (Mesh *)pUsgArr[i].obj.pData, 0x02); //000010 - set only vert pos
 			pMap->usgArr.pArr[i].origin = *(V2_F32 *)&pUsgArr[i].obj.transform.d[3];
-			pMap->usgArr.pArr[i].pMesh = pUsgArr[i].obj.pData;
+			pMap->usgArr.pArr[i].pMesh = (Mesh *)pUsgArr[i].obj.pData;
 			applyObjTransform(&pUsgArr[i].obj);
 			if (pUsgArr[i].pFlatCutoff) {
-				pMap->usgArr.pArr[i].pFlatCutoff = pUsgArr[i].pFlatCutoff->pData;
-				setSpecialAttribs(pContext, pUsgArr[i].pFlatCutoff->pData, 0x02); //000010 - set only vert pos
+				pMap->usgArr.pArr[i].pFlatCutoff = (Mesh *)pUsgArr[i].pFlatCutoff->pData;
+				setSpecialAttribs(pContext, (Mesh *)pUsgArr[i].pFlatCutoff->pData, 0x02); //000010 - set only vert pos
 				applyObjTransform(pUsgArr[i].pFlatCutoff);
 			}
 		}
@@ -208,9 +208,9 @@ StucResult stucMapFileUnload(StucContext pContext, StucMap pMap) {
 static
 void initCommonAttrib(StucContext pContext, StucCommonAttrib *pEntry,
                       StucAttrib *pAttrib) {
-	memcpy(pEntry->name, pAttrib->name, STUC_ATTRIB_NAME_MAX_LEN);
+	memcpy(pEntry->name, pAttrib->core.name, STUC_ATTRIB_NAME_MAX_LEN);
 	StucTypeDefault *pDefault = 
-		getTypeDefaultConfig(&pContext->typeDefaults, pAttrib->type);
+		getTypeDefaultConfig(&pContext->typeDefaults, pAttrib->core.type);
 	pEntry->blendConfig = pDefault->blendConfig;
 }
 
@@ -226,8 +226,8 @@ void getCommonAttribs(StucContext pContext, AttribArray *pMapAttribs,
 	int32_t count = 0;
 	for (int32_t i = 0; i < pMeshAttribs->count; ++i) {
 		for (int32_t j = 0; j < pMapAttribs->count; ++j) {
-			if (!strncmp(pMeshAttribs->pArr[i].name,
-			             pMapAttribs->pArr[j].name,
+			if (!strncmp(pMeshAttribs->pArr[i].core.name,
+			             pMapAttribs->pArr[j].core.name,
 			             STUC_ATTRIB_NAME_MAX_LEN)) {
 				count++;
 			}
@@ -238,8 +238,8 @@ void getCommonAttribs(StucContext pContext, AttribArray *pMapAttribs,
 	count = 0;
 	for (int32_t i = 0; i < pMeshAttribs->count; ++i) {
 		for (int32_t j = 0; j < pMapAttribs->count; ++j) {
-			if (!strncmp(pMeshAttribs->pArr[i].name,
-			             pMapAttribs->pArr[j].name,
+			if (!strncmp(pMeshAttribs->pArr[i].core.name,
+			             pMapAttribs->pArr[j].core.name,
 			             STUC_ATTRIB_NAME_MAX_LEN)) {
 				initCommonAttrib(pContext, *ppCommonAttribs + count,
 				                 pMeshAttribs->pArr + i);
@@ -540,7 +540,7 @@ Result stucMapToMesh(StucContext pContext, StucMapArr *pMapArr, StucMesh *pMeshI
 	StucObject *pOutObjWrapArr =
 		pContext->alloc.pCalloc(pMapArr->count, sizeof(StucObject));
 	for (int32_t i = 0; i < pMapArr->count; ++i) {
-		pOutObjWrapArr[i].pData = pOutBufArr + i;
+		pOutObjWrapArr[i].pData = (StucObjectData *)&pOutBufArr[i];
 		StucMap pMap = pMapArr->ppArr[i];
 		int8_t matIdx = pMapArr->pMatArr[i];
 		InFaceArr *pInFaceTable = NULL;
@@ -581,24 +581,27 @@ Result stucMapToMesh(StucContext pContext, StucMapArr *pMapArr, StucMesh *pMeshI
 	return err;
 }
 
-StucResult stucObjArrDestroy(StucContext pContext,
-                             int32_t objCount, StucObject *pObjArr) {
-	destroyObjArr(pContext, objCount, pObjArr);
+Result stucObjArrDestroy(StucContext pContext,
+                         int32_t objCount, StucObject *pObjArr) {
+	return destroyObjArr(pContext, objCount, pObjArr);
 }
 
-StucResult stucUsgArrDestroy(StucContext pContext,
-                                    int32_t count, StucUsg *pUsgArr) {
+Result stucUsgArrDestroy(StucContext pContext,
+                         int32_t count, StucUsg *pUsgArr) {
+	Result err = STUC_NOT_SET;
 	for (int32_t i = 0; i < count; ++i) {
-		stucMeshDestroy(pContext, pUsgArr[i].obj.pData);
+		err = stucMeshDestroy(pContext, (StucMesh *)pUsgArr[i].obj.pData);
+		STUC_ERROR("", err);
 	}
 	pContext->alloc.pFree(pUsgArr);
-	return STUC_SUCCESS;
+	STUC_CATCH(err, ;)
+	return err;
 }
 
 StucResult stucMeshDestroy(StucContext pContext, StucMesh *pMesh) {
 	for (int32_t i = 0; i < pMesh->meshAttribs.count; ++i) {
-		if (pMesh->meshAttribs.pArr[i].pData) {
-			pContext->alloc.pFree(pMesh->meshAttribs.pArr[i].pData);
+		if (pMesh->meshAttribs.pArr[i].core.pData) {
+			pContext->alloc.pFree(pMesh->meshAttribs.pArr[i].core.pData);
 		}
 	}
 	if (pMesh->meshAttribs.count && pMesh->meshAttribs.pArr) {
@@ -608,8 +611,8 @@ StucResult stucMeshDestroy(StucContext pContext, StucMesh *pMesh) {
 		pContext->alloc.pFree(pMesh->pFaces);
 	}
 	for (int32_t i = 0; i < pMesh->faceAttribs.count; ++i) {
-		if (pMesh->faceAttribs.pArr[i].pData) {
-			pContext->alloc.pFree(pMesh->faceAttribs.pArr[i].pData);
+		if (pMesh->faceAttribs.pArr[i].core.pData) {
+			pContext->alloc.pFree(pMesh->faceAttribs.pArr[i].core.pData);
 		}
 	}
 	if (pMesh->faceAttribs.count && pMesh->faceAttribs.pArr) {
@@ -619,8 +622,8 @@ StucResult stucMeshDestroy(StucContext pContext, StucMesh *pMesh) {
 		pContext->alloc.pFree(pMesh->pCorners);
 	}
 	for (int32_t i = 0; i < pMesh->cornerAttribs.count; ++i) {
-		if (pMesh->cornerAttribs.pArr[i].pData) {
-			pContext->alloc.pFree(pMesh->cornerAttribs.pArr[i].pData);
+		if (pMesh->cornerAttribs.pArr[i].core.pData) {
+			pContext->alloc.pFree(pMesh->cornerAttribs.pArr[i].core.pData);
 		}
 	}
 	if (pMesh->cornerAttribs.count && pMesh->cornerAttribs.pArr) {
@@ -630,16 +633,16 @@ StucResult stucMeshDestroy(StucContext pContext, StucMesh *pMesh) {
 		pContext->alloc.pFree(pMesh->pEdges);
 	}
 	for (int32_t i = 0; i < pMesh->edgeAttribs.count; ++i) {
-		if (pMesh->edgeAttribs.pArr[i].pData) {
-			pContext->alloc.pFree(pMesh->edgeAttribs.pArr[i].pData);
+		if (pMesh->edgeAttribs.pArr[i].core.pData) {
+			pContext->alloc.pFree(pMesh->edgeAttribs.pArr[i].core.pData);
 		}
 	}
 	if (pMesh->edgeAttribs.count && pMesh->edgeAttribs.pArr) {
 		pContext->alloc.pFree(pMesh->edgeAttribs.pArr);
 	}
 	for (int32_t i = 0; i < pMesh->vertAttribs.count; ++i) {
-		if (pMesh->vertAttribs.pArr[i].pData) {
-			pContext->alloc.pFree(pMesh->vertAttribs.pArr[i].pData);
+		if (pMesh->vertAttribs.pArr[i].core.pData) {
+			pContext->alloc.pFree(pMesh->vertAttribs.pArr[i].core.pData);
 		}
 	}
 	if (pMesh->vertAttribs.count && pMesh->vertAttribs.pArr) {
@@ -649,7 +652,7 @@ StucResult stucMeshDestroy(StucContext pContext, StucMesh *pMesh) {
 }
 
 StucResult stucGetAttribSize(StucAttrib *pAttrib, int32_t *pSize) {
-	*pSize = getAttribSize(pAttrib->type);
+	*pSize = getAttribSize(pAttrib->core.type);
 	return STUC_SUCCESS;
 }
 

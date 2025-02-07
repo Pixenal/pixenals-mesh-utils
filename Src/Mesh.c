@@ -309,8 +309,8 @@ void bufMeshSetLastFaces(const StucAlloc *pAlloc, BufMesh *pBufMesh,
 	pBufMesh->borderFaceCount--;
 }
 
-bool checkIfMesh(StucMesh *pMesh) {
-	switch (pMesh->type.type) {
+bool checkIfMesh(StucObjectData type) {
+	switch (type.type) {
 		case STUC_OBJECT_DATA_MESH:
 			return true;
 		case STUC_OBJECT_DATA_MESH_INTERN:
@@ -326,13 +326,13 @@ static
 void bulkCopyAttribs(AttribArray *pSrc, int32_t SrcOffset,
                      AttribArray *pDest, int32_t dataLen) {
 	for (int32_t i = 0; i < pDest->count; ++i) {
-		Attrib *pSrcAttrib = getAttrib(pDest->pArr[i].name, pSrc);
+		Attrib *pSrcAttrib = getAttrib(pDest->pArr[i].core.name, pSrc);
 		if (!pSrcAttrib) {
 			continue;
 		}
-		void *attribDestStart = attribAsVoid(pDest->pArr + i, SrcOffset);
-		int32_t attribTypeSize = getAttribSize(pDest->pArr[i].type);
-		memcpy(attribDestStart, pSrcAttrib->pData, attribTypeSize * dataLen);
+		void *attribDestStart = attribAsVoid(&pDest->pArr[i].core, SrcOffset);
+		int32_t attribTypeSize = getAttribSize(pDest->pArr[i].core.type);
+		memcpy(attribDestStart, pSrcAttrib->core.pData, attribTypeSize * dataLen);
 	}
 }
 
@@ -346,7 +346,7 @@ void addToMeshCounts(StucContext pContext, MeshCounts *pCounts,
 	pCounts->corners += pMeshSrc->core.cornerCount;
 	pCounts->edges += pMeshSrc->core.edgeCount;
 	pCounts->verts += pMeshSrc->core.vertCount;
-	if (((StucObjectType *)pMeshSrc) == STUC_OBJECT_DATA_MESH_BUF) {
+	if (pMeshSrc->core.type.type == STUC_OBJECT_DATA_MESH_BUF) {
 		BufMesh *pBufMesh = (BufMesh *)pMeshSrc;
 		pBoundsCounts->faces += pBufMesh->borderFaceCount;
 		pBoundsCounts->corners += pBufMesh->borderCornerCount;
@@ -356,8 +356,8 @@ void addToMeshCounts(StucContext pContext, MeshCounts *pCounts,
 }
 
 void copyMesh(StucMesh *pDestMesh, StucMesh *pSrcMesh) {
-	STUC_ASSERT("", checkIfMesh(pDestMesh));
-	STUC_ASSERT("", checkIfMesh(pSrcMesh));
+	STUC_ASSERT("", checkIfMesh(pDestMesh->type));
+	STUC_ASSERT("", checkIfMesh(pSrcMesh->type));
 	int32_t faceBase = pDestMesh->faceCount;
 	int32_t cornerBase = pDestMesh->cornerCount;
 	int32_t edgeBase = pDestMesh->edgeCount;
@@ -397,7 +397,7 @@ void copyMesh(StucMesh *pDestMesh, StucMesh *pSrcMesh) {
 //move these to a separate Obj.c if more functions are made?
 
 void applyObjTransform(StucObject *pObj) {
-	Mesh *pMesh = pObj->pData;
+	Mesh *pMesh = (Mesh *)pObj->pData;
 	for (int32_t i = 0; i < pMesh->core.vertCount; ++i) {
 		V3_F32 *pV3 = pMesh->pVerts + i;
 		V4_F32 v4 = {pV3->d[0], pV3->d[1], pV3->d[2], 1.0f};
@@ -418,7 +418,7 @@ void mergeObjArr(StucContext pContext, Mesh *pMesh,
 	Mesh **ppSrcs = pContext->alloc.pCalloc(objCount, sizeof(void *));
 	MeshCounts totalCount = {0};
 	for (int32_t i = 0; i < objCount; ++i) {
-		ppSrcs[i] = pObjArr[i].pData;
+		ppSrcs[i] = (Mesh *)pObjArr[i].pData;
 		addToMeshCounts(pContext, &totalCount, NULL, (Mesh *)pObjArr[i].pData);
 	}
 	pMesh->faceBufSize = totalCount.faces + 1; //+1 for last face index
@@ -433,16 +433,20 @@ void mergeObjArr(StucContext pContext, Mesh *pMesh,
 		pContext->alloc.pMalloc(sizeof(int32_t) * pMesh->cornerBufSize);
 	allocAttribsFromMeshArr(&pContext->alloc, pMesh, objCount, ppSrcs, setCommon);
 	for (int32_t i = 0; i < objCount; ++i) {
-		copyMesh(pMesh, pObjArr[i].pData);
+		copyMesh(&pMesh->core, (StucMesh *)pObjArr[i].pData);
 	}
 }
 
-void destroyObjArr(StucContext pContext, int32_t objCount, StucObject *pObjArr) {
+Result destroyObjArr(StucContext pContext, int32_t objCount, StucObject *pObjArr) {
+	StucResult err = STUC_NOT_SET;
 	for (int32_t i = 0; i < objCount; ++i) {
-		stucMeshDestroy(pContext, pObjArr[i].pData);
+		err = stucMeshDestroy(pContext, (StucMesh *)pObjArr[i].pData);
+		STUC_ERROR("", err);
 		pContext->alloc.pFree(pObjArr[i].pData);
 	}
 	pContext->alloc.pFree(pObjArr);
+	STUC_CATCH(err, ;)
+	return err;
 }
 
 FaceRange getFaceRange(const StucMesh *pMesh,

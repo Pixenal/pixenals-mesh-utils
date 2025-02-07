@@ -843,32 +843,32 @@ void getBorderFaceBitArrs(BorderFace *pEntry, BorderFaceBitArrs *pArrs) {
 	switch (pEntry->memType) {
 		case 0: {
 			BorderFaceSmall *pCast = (BorderFaceSmall *)pEntry;
-			pArrs->pBaseCorner = &pCast->baseCorner;
-			pArrs->pStucCorner = &pCast->stucCorner;
-			pArrs->pSegment = &pCast->segment;
-			pArrs->pIsStuc = &pCast->isStuc;
-			pArrs->pOnLine = &pCast->onLine;
-			pArrs->pOnInVert = &pCast->onInVert;
+			pArrs->pBaseCorner = pCast->baseCorner;
+			pArrs->pStucCorner = pCast->stucCorner;
+			pArrs->pSegment = pCast->segment;
+			pArrs->pIsStuc = pCast->isStuc;
+			pArrs->pOnLine = pCast->onLine;
+			pArrs->pOnInVert = pCast->onInVert;
 			return;
 		}
 		case 1: {
 			BorderFaceMid *pCast = (BorderFaceMid *)pEntry;
-			pArrs->pBaseCorner = &pCast->baseCorner;
-			pArrs->pStucCorner = &pCast->stucCorner;
-			pArrs->pSegment = &pCast->segment;
-			pArrs->pIsStuc = &pCast->isStuc;
-			pArrs->pOnLine = &pCast->onLine;
-			pArrs->pOnInVert = &pCast->onInVert;
+			pArrs->pBaseCorner = pCast->baseCorner;
+			pArrs->pStucCorner = pCast->stucCorner;
+			pArrs->pSegment = pCast->segment;
+			pArrs->pIsStuc = pCast->isStuc;
+			pArrs->pOnLine = pCast->onLine;
+			pArrs->pOnInVert = pCast->onInVert;
 			return;
 		}
 		case 2: {
 			BorderFaceLarge *pCast = (BorderFaceLarge *)pEntry;
-			pArrs->pBaseCorner = &pCast->baseCorner;
-			pArrs->pStucCorner = &pCast->stucCorner;
-			pArrs->pSegment = &pCast->segment;
-			pArrs->pIsStuc = &pCast->isStuc;
-			pArrs->pOnLine = &pCast->onLine;
-			pArrs->pOnInVert = &pCast->onInVert;
+			pArrs->pBaseCorner = pCast->baseCorner;
+			pArrs->pStucCorner = pCast->stucCorner;
+			pArrs->pSegment = pCast->segment;
+			pArrs->pIsStuc = pCast->isStuc;
+			pArrs->pOnLine = pCast->onLine;
+			pArrs->pOnInVert = pCast->onInVert;
 			return;
 		}
 	}
