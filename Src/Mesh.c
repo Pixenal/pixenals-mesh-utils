@@ -439,7 +439,7 @@ void mergeObjArr(StucContext pContext, Mesh *pMesh,
 		pContext->alloc.pMalloc(sizeof(int32_t) * pMesh->cornerBufSize);
 	pMesh->core.pEdges =
 		pContext->alloc.pMalloc(sizeof(int32_t) * pMesh->cornerBufSize);
-	allocAttribsFromMeshArr(&pContext->alloc, pMesh, objCount, ppSrcs, setCommon);
+	allocAttribsFromMeshArr(&pContext->alloc, pMesh, objCount, ppSrcs, setCommon, true);
 	for (int32_t i = 0; i < objCount; ++i) {
 		copyMesh(&pMesh->core, (StucMesh *)pObjArr[i].pData);
 	}
@@ -449,11 +449,11 @@ Result destroyObjArr(StucContext pContext, int32_t objCount, StucObject *pObjArr
 	StucResult err = STUC_NOT_SET;
 	for (int32_t i = 0; i < objCount; ++i) {
 		err = stucMeshDestroy(pContext, (StucMesh *)pObjArr[i].pData);
-		STUC_ERROR("", err);
+		STUC_THROW_IF(err, true, "", 0);
 		pContext->alloc.pFree(pObjArr[i].pData);
 	}
 	pContext->alloc.pFree(pObjArr);
-	STUC_CATCH(err, ;)
+	STUC_CATCH(0, err, ;)
 	return err;
 }
 

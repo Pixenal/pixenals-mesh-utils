@@ -100,9 +100,9 @@ StucResult stucContextDestroy(StucContext pContext) {
 StucResult stucMapFileExport(StucContext pContext, char *pName,
                              int32_t objCount, StucObject* pObjArr,
                              int32_t usgCount, StucUsg* pUsgArr,
-                             StucAttribIndexedArr indexedAttribs) {
+                             StucAttribIndexedArr *pIndexedAttribs) {
 	return stucWriteStucFile(pContext, pName, objCount, pObjArr,
-	                         usgCount, pUsgArr, indexedAttribs);
+	                         usgCount, pUsgArr, pIndexedAttribs);
 }
 
 //TODO replace these with StucUsg and StucObj arr structs, that combine arr and count
@@ -127,10 +127,12 @@ StucResult stucMapFileLoad(StucContext pContext, StucMap *pMapHandle,
 	err = stucLoadStucFile(pContext, filePath, &objCount, &pObjArr,
 	                          &pMap->usgArr.count, &pUsgArr, &flatCutoffCount,
 	                          &pFlatCutoffArr, false, &pMap->indexedAttribs);
-	STUC_ERROR("failed to load file from disk", err);
+	//TODO validate meshes, ensure pMatIdx is within mat range, faces are within max corner limit,
+	//float values are valid, etc.
+	STUC_THROW_IF(err, true, "failed to load file from disk", 0);
 
 	for (int32_t i = 0; i < objCount; ++i) {
-		setSpecialAttribs(pContext, (Mesh *)pObjArr[i].pData, 0xae); //10101110 - all except for preserve
+		setSpecialAttribs(pContext, (Mesh *)pObjArr[i].pData, 0x8ae); //10101110 - all except for preserve
 		applyObjTransform(pObjArr + i);
 	}
 	pMap->mesh.core.type.type = STUC_OBJECT_DATA_MESH_INTERN;
@@ -168,7 +170,7 @@ StucResult stucMapFileLoad(StucContext pContext, StucMap *pMapHandle,
 	//as the tree's used to speed up the process
 	printf("File loaded. Creating quad tree\n");
 	err = stucCreateQuadTree(pContext, pMap);
-	STUC_ERROR("failed to create quadtree", err);
+	STUC_THROW_IF(err, true, "failed to create quadtree", 0);
 
 	if (pMap->usgArr.count) {
 		pMap->usgArr.pArr = pContext->alloc.pCalloc(pMap->usgArr.count, sizeof(Usg));
@@ -194,7 +196,7 @@ StucResult stucMapFileLoad(StucContext pContext, StucMap *pMapHandle,
 	*pMapHandle = pMap;
 	//TODO add proper checks, and return STUC_ERROR if fails.
 	//Do for all public functions (or internal ones as well)
-	STUC_CATCH(err, stucMapFileUnload(pContext, pMap);)
+	STUC_CATCH(0, err, stucMapFileUnload(pContext, pMap);)
 	return err;
 }
 
@@ -517,37 +519,136 @@ void InFaceTableToHashTable(StucAlloc *pAlloc,
 }
 
 static
-void correctMatIndices(StucContext pContext, Mesh *pMeshArr, StucMapArr *pMapArr) {
-	//mesh and map arraya line up, ie each mesh is the out mesh
-	//for the map of the same index
-	int32_t idxOffset = 0;
+Result getMatsToAdd(StucContext pContext, StucMapArr *pMapArr, int32_t mapIdx,
+                    CommonAttribList *pCommonAttribs,AttribIndexedArr *pInIndexedAttribs,
+                    AttribIndexed **ppMatsToAdd) {
+	AttribIndexedArr *pMapAttribArr = &pMapArr->ppArr[mapIdx]->indexedAttribs;
+	CommonAttribList *pMapCommon = pCommonAttribs + mapIdx;
+	char *pAttribName = pContext->spAttribs[STUC_ATTRIB_SP_MAT_IDX];
+	CommonAttrib *pCommonAttrib = getCommonAttrib(pMapCommon->pFace, pMapCommon->faceCount,
+	                                              pAttribName);
+	BlendConfig *pConfig = {0};
+	if (pCommonAttrib) {
+		pConfig = &pCommonAttrib->blendConfig;
+	}
+	else {
+		pConfig = &getTypeDefaultConfig(&pContext->typeDefaults,
+		                                STUC_ATTRIB_STRING)->blendConfig;
+	}
+	char *pName = "StucMaterials";
+	AttribIndexed *pInMats = getAttribIndexed(pInIndexedAttribs, pName);
+	AttribIndexed *pMapMats = getAttribIndexed(pMapAttribArr, pName);
+	if (!pInMats) {
+		*ppMatsToAdd = pMapMats;
+	}
+	else if (!pMapMats) {
+		*ppMatsToAdd = pInMats;
+	}
+	else {
+		*ppMatsToAdd = pConfig->order ? pInMats : pMapMats;
+	}
+	return STUC_SUCCESS;
+}
+
+static
+void appendToOutMatsBuf(StucAlloc *pAlloc, Mesh *pMesh,
+                        AttribIndexed *pOutMats, char *pMatName) {
+	STUC_ASSERT("", pOutMats->count <= pOutMats->size);
+	if (pOutMats->count == pOutMats->size) {
+		pOutMats->size *= 2;
+		reallocAttrib(pAlloc, pMesh, &pOutMats->core, pOutMats->size);
+	}
+	memcpy(attribAsStr(&pOutMats->core, pOutMats->count), pMatName,
+			STUC_ATTRIB_STRING_MAX_LEN);
+	pOutMats->count++;
+}
+
+typedef struct {
+	int8_t idx;
+	bool hasRef;
+} MatTableEntry;
+
+static
+void appendToOutMats(AttribIndexed *pOutMats, char *pOutMatBuf,
+                     MatTableEntry *pEntry) {
+	pEntry->hasRef = true;
+	char *pDest = attribAsStr(&pOutMats->core, pOutMats->count);
+	char *pSrc = pOutMatBuf + pEntry->idx * STUC_ATTRIB_STRING_MAX_LEN;
+	memcpy(pDest, pSrc, STUC_ATTRIB_STRING_MAX_LEN);
+	pEntry->idx = pOutMats->count;
+	pOutMats->count++;
+}
+
+static
+Result correctMatIndices(StucContext pContext, Mesh *pMeshArr, StucMapArr *pMapArr,
+                         CommonAttribList *pCommonAttribs,
+                         AttribIndexedArr *pInIndexedAttribs,
+                         AttribIndexedArr *pOutIndexedAttribs) {
+	Result err = STUC_SUCCESS;
+	StucAlloc *pAlloc = &pContext->alloc;
+	pOutIndexedAttribs->size = 1;
+	pOutIndexedAttribs->count = 1;
+	pOutIndexedAttribs->pArr = pAlloc->pCalloc(pOutIndexedAttribs->size, sizeof(AttribIndexed));
+	AttribIndexed *pOutMats = pOutIndexedAttribs->pArr;
+	pOutMats->size = pMapArr->count;
+	pOutMats->size += (pOutMats->size % 2);
+	initAttribCore(pAlloc, &pOutMats->core, "StucMaterials", pOutMats->size,
+	               STUC_ATTRIB_STRING);
+	MatTableEntry **ppMatTable = pAlloc->pCalloc(pMapArr->count, sizeof(void *));
+
 	for (int32_t i = 0; i < pMapArr->count; ++i) {
 		Mesh *pMesh = pMeshArr + i;
 		setSpecialAttribs(pContext, pMesh, 0x800);//only set mat indices
 		if (!pMesh->pMatIdx) {
 			continue;
 		}
-		AttribIndexedArr indexedArr = {0};
-		stucMapIndexedAttribsGet(pContext, pMapArr->ppArr[i], &indexedArr);
-		AttribIndexed *pMats = NULL;
-		for (int32_t j = 0; j < indexedArr.count; ++j) {
-			AttribIndexed *pAttrib = indexedArr.pArr + j;
-			if (!strncmp("StucMaterials", pAttrib->core.name, STUC_ATTRIB_NAME_MAX_LEN)) {
-				pMats = pAttrib;
-				break;
-			}
-		}
-		STUC_ASSERT("mesh faces have mat indices, but map has no materials?", pMats);
+		AttribIndexed *pMatsToAdd = NULL;
+		err = getMatsToAdd(pContext, pMapArr, i, pCommonAttribs, pInIndexedAttribs,
+		                   &pMatsToAdd);
+		STUC_ASSERT("mesh faces have mat indices, but map has no materials?",
+		            pMatsToAdd && pMatsToAdd->count);
+		STUC_THROW_IF(err, true, "", 0);
+		ppMatTable[i] = pAlloc->pCalloc(pMatsToAdd->count, sizeof(MatTableEntry));
+
 		for (int32_t j = 0; j < pMesh->core.faceCount; ++j) {
-			pMesh->pMatIdx[j] += idxOffset;
+			int32_t matIdx = pMesh->pMatIdx[j];
+			STUC_THROW_IF(err, matIdx >= 0 && matIdx < pMatsToAdd->count, "", 0);
+			MatTableEntry *pEntry = ppMatTable[i] + matIdx;
+			if (!pEntry->hasRef) {
+				pEntry->hasRef = true;
+				//We're just through material slots, so linear search should be fine for now
+				char *pMatName = attribAsStr(&pMatsToAdd->core, matIdx);
+				int32_t idx = -1;
+				for (int32_t k = 0; k < pOutMats->count; ++k) {
+					if (!strncmp(attribAsStr(&pOutMats->core, k), pMatName, STUC_ATTRIB_STRING_MAX_LEN)) {
+						idx = k;
+						break;
+					}
+				}
+				if (idx >= 0) {
+					pEntry->idx = idx;
+				}
+				else {
+					pEntry->idx = pOutMats->count;
+					appendToOutMatsBuf(pAlloc, pMesh, pOutMats, pMatName);
+				}
+			}
+			pMesh->pMatIdx[j] = pEntry->idx;
 		}
-		idxOffset += pMats->count;
+		STUC_CATCH(0, err, ;)
+		pAlloc->pFree(ppMatTable[i]);
+		ppMatTable[i] = NULL;
+		STUC_THROW_IF(err, true, "", 1);
 	}
+	STUC_CATCH(1, err, ;)
+	pAlloc->pFree(ppMatTable);
+	return err;
 }
 
-Result stucMapToMesh(StucContext pContext, StucMapArr *pMapArr, StucMesh *pMeshIn,
-                     StucMesh *pMeshOut, StucCommonAttribList *pCommonAttribList,
-                     float wScale) {
+Result stucMapToMesh(StucContext pContext, StucMapArr *pMapArr,
+                     StucMesh *pMeshIn, StucAttribIndexedArr *pInIndexedAttribs,
+                     StucMesh *pMeshOut, StucAttribIndexedArr *pOutIndexedAttribs,
+                     StucCommonAttribList *pCommonAttribList, float wScale) {
 	//TODO replace vars called 'result' with 'err'
 	StucResult err = STUC_NOT_SET;
 	if (!pMeshIn) {
@@ -595,11 +696,11 @@ Result stucMapToMesh(StucContext pContext, StucMapArr *pMapArr, StucMesh *pMeshI
 		if (pMap->usgArr.count) {
 			MapFile squares = { .mesh = pMap->usgArr.squares };
 			err = stucCreateQuadTree(pContext, &squares);
-			STUC_ERROR("failed to create quadtree", err);
+			STUC_THROW_IF(err, true, "failed to create quadtree", 0);
 			StucMesh squaresOut = {0};
 			err = mapToMeshInternal(pContext, &squares, &meshInWrap, &squaresOut, matIdx,
 			                        pCommonAttribList + i, &pInFaceTable, 1.0f);
-			STUC_ERROR("map to mesh usg failed", err);
+			STUC_THROW_IF(err, true, "map to mesh usg failed", 0);
 			sampleInAttribsAtUsgOrigins(pContext, pMap, &meshInWrap, &squaresOut, pInFaceTable);
 			InFaceTableToHashTable(&pContext->alloc, pMap, squaresOut.faceCount, pInFaceTable);
 			//*pMeshOut = squaresOut;
@@ -610,8 +711,8 @@ Result stucMapToMesh(StucContext pContext, StucMapArr *pMapArr, StucMesh *pMeshI
 
 		err = mapToMeshInternal(pContext, pMap, &meshInWrap, &pOutBufArr[i].core, matIdx,
 		                        pCommonAttribList + i, NULL, wScale);
-		STUC_ERROR("map to mesh failed", err);
-		STUC_CATCH(err, ;);
+		STUC_THROW_IF(err, true, "map to mesh failed", 0);
+		STUC_CATCH(0, err, stucMeshDestroy(pContext, pOutBufArr + i);)
 		if (pMap->usgArr.count) {
 			pContext->alloc.pFree(pMap->usgArr.pInFaceTable);
 			pMap->usgArr.pInFaceTable = NULL;
@@ -621,14 +722,18 @@ Result stucMapToMesh(StucContext pContext, StucMapArr *pMapArr, StucMesh *pMeshI
 			}
 			pContext->alloc.pFree(pInFaceTable);
 		}
+		STUC_THROW_IF(err, true, "", 1);
 	}
 	pMeshOut->type.type = STUC_OBJECT_DATA_MESH;
 	Mesh meshOutWrap = {.core = *pMeshOut};
 	printf("merging obj arr\n");
-	correctMatIndices(pContext, pOutBufArr, pMapArr);
+	err = correctMatIndices(pContext, pOutBufArr, pMapArr, pCommonAttribList,
+	                        pInIndexedAttribs, pOutIndexedAttribs);
+	STUC_THROW_IF(err, true, "", 1);
 	mergeObjArr(pContext, &meshOutWrap, pMapArr->count, pOutObjWrapArr, false);
 	printf("post-merging obj arr\n");
 	*pMeshOut = meshOutWrap.core;
+	STUC_CATCH(1, err, stucMeshDestroy(pContext, pMeshOut);)
 	return err;
 }
 
@@ -642,10 +747,10 @@ Result stucUsgArrDestroy(StucContext pContext,
 	Result err = STUC_NOT_SET;
 	for (int32_t i = 0; i < count; ++i) {
 		err = stucMeshDestroy(pContext, (StucMesh *)pUsgArr[i].obj.pData);
-		STUC_ERROR("", err);
+		STUC_THROW_IF(err, true, "", 0);
 	}
 	pContext->alloc.pFree(pUsgArr);
-	STUC_CATCH(err, ;)
+	STUC_CATCH(0, err, ;)
 	return err;
 }
 
@@ -707,8 +812,14 @@ StucResult stucGetAttribSize(StucAttrib *pAttrib, int32_t *pSize) {
 	return STUC_SUCCESS;
 }
 
-StucResult stucGetAttrib(char *pName, AttribArray *pAttribs, Attrib **ppAttrib) {
+StucResult stucGetAttrib(char *pName, StucAttribArray *pAttribs, StucAttrib **ppAttrib) {
 	*ppAttrib = getAttrib(pName, pAttribs);
+	return STUC_SUCCESS;
+}
+
+StucResult stucGetAttribIndexed(char *pName, StucAttribIndexedArr *pAttribs,
+                                StucAttribIndexed **ppAttrib) {
+	*ppAttrib = getAttribIndexed(pAttribs, pName);
 	return STUC_SUCCESS;
 }
 
