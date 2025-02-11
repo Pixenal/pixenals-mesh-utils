@@ -45,7 +45,6 @@ FaceTriangulated triangulateFace(StucAlloc alloc, FaceRange baseFace, void *pVer
                                  int32_t *pCorners, int32_t useStuc);
 V3_F32 getBarycentricInFace(V2_F32 *pTriStuc, int8_t *pTriCorners,
                             int32_t cornerCount, V2_F32 vert);
-void waitForJobs(StucContext pContext, int32_t *pJobsCompleted, void *pMutex);
 void buildEdgeList(StucContext pContext, Mesh* pMesh);
 bool isMeshInvalid(Mesh* pMesh);
 void progressBarClear();
@@ -71,3 +70,5 @@ int32_t calcFaceOrientation(Mesh *pMesh, FaceRange *pFace, bool useStuc);
 int32_t getBorderFaceMemType(int32_t mapFaceSize, int32_t bufFaceSize);
 int32_t getBorderFaceSize(int32_t memType);
 void getBorderFaceBitArrs(BorderFace *pEntry, BorderFaceBitArrs *pArrs);
+Result stucValidateAndDestroyJobs(StucContext pContext, int32_t jobCount,
+                                  void ***pppJobHandles);

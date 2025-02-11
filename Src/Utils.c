@@ -9,6 +9,7 @@
 #include <AttribUtils.h>
 #include <Clock.h>
 #include <Error.h>
+#include <ThreadPool.h>
 
 int32_t checkFaceIsInBounds(V2_F32 min, V2_F32 max, FaceRange face, Mesh *pMesh) {
 	STUC_ASSERT("", pMesh && pMesh->pVerts && pMesh->core.pCorners);
@@ -349,18 +350,6 @@ V3_F32 getBarycentricInFace(V2_F32 *pTriStuc, int8_t *pTriCorners,
 		}
 	}
 	return vertBc;
-}
-
-//TODO replace custom barrier with system barrier?
-void waitForJobs(StucContext pContext, int32_t *pActiveJobs, void *pMutex) {
-	bool waiting;
-	do  {
-		pContext->threadPool.pGetAndDoJob(pContext->pThreadPoolHandle);
-		pContext->threadPool.pMutexLock(pContext->pThreadPoolHandle, pMutex);
-		STUC_ASSERT("", pContext->threadCount >= 0);
-		waiting = *pActiveJobs > 0;
-		pContext->threadPool.pMutexUnlock(pContext->pThreadPoolHandle, pMutex);
-	} while(waiting);
 }
 
 typedef struct {
@@ -872,4 +861,21 @@ void getBorderFaceBitArrs(BorderFace *pEntry, BorderFaceBitArrs *pArrs) {
 			return;
 		}
 	}
+}
+
+Result stucValidateAndDestroyJobs(StucContext pContext, int32_t jobCount,
+                                  void ***pppJobHandles) {
+	Result err = STUC_SUCCESS;
+	STUC_THROW_IF(err, pContext && pppJobHandles, "", 0);
+	STUC_THROW_IF(err, jobCount > 0, "", 0);
+	for (int32_t i = 0; i < jobCount; ++i) {
+		StucResult jobErr = STUC_NOT_SET;
+		err = stucGetJobErr(pContext->pThreadPoolHandle, (*pppJobHandles)[i], &jobErr);
+		STUC_THROW_IF(err, jobErr == STUC_SUCCESS, "", 0);
+		stucJobHandleDestroy(pContext->pThreadPoolHandle, *pppJobHandles + i);
+	}
+	pContext->alloc.pFree(*pppJobHandles);
+	*pppJobHandles = NULL;
+	STUC_CATCH(0, err, ;);
+	return err;
 }

@@ -290,22 +290,24 @@ StucResult stucDestroyCommonAttribs(StucContext pContext,
 }
 
 static
-void sendOffJobs(StucContext pContext, StucMap pMap, SendOffArgs *pJobArgs,
-                 int32_t *pActiveJobs, int32_t *pMapJobsSent, Mesh *pMesh, void *pMutex,
+void sendOffJobs(StucContext pContext, StucMap pMap, int32_t *pJobCount,
+                 void ***pppJobHandles, SendOffArgs *pJobArgs, Mesh *pMesh,
                  EdgeVerts *pEdgeVerts, int8_t *pInVertTable,
-				 StucCommonAttribList *pCommonAttribList,
-	             bool getInFaces, float wScale, int8_t maskIdx) {
+                 StucCommonAttribList *pCommonAttribList, bool getInFaces,
+                 float wScale, int8_t maskIdx) {
 	//struct timeval start, stop;
 	//CLOCK_START;
-	int32_t facesPerThread = pMesh->core.faceCount / pContext->threadCount;
+	*pJobCount = MAX_SUB_MAPPING_JOBS;
+	*pJobCount += *pJobCount == 0;
+	int32_t facesPerThread = pMesh->core.faceCount / *pJobCount;
 	bool singleThread = !facesPerThread;
+	*pJobCount = singleThread ? 1 : *pJobCount;
 	void *jobArgPtrs[MAX_THREADS];
 	int32_t borderTableSize = pMap->mesh.core.faceCount / 5 + 2; //+ 2 incase is 0
 	printf("fromjobsendoff: BorderTableSize: %d\n", borderTableSize);
-	*pActiveJobs = singleThread ? 1 : pContext->threadCount;
-	for (int32_t i = 0; i < *pActiveJobs; ++i) {
+	for (int32_t i = 0; i < *pJobCount; ++i) {
 		int32_t meshStart = facesPerThread * i;
-		int32_t meshEnd = i == *pActiveJobs - 1 ?
+		int32_t meshEnd = i == *pJobCount - 1 ?
 			pMesh->core.faceCount : meshStart + facesPerThread;
 		pJobArgs[i].inFaceOffset = meshStart;
 		pJobArgs[i].pInVertTable = pInVertTable;
@@ -315,19 +317,18 @@ void sendOffJobs(StucContext pContext, StucMap pMap, SendOffArgs *pJobArgs,
 		pJobArgs[i].mesh = *pMesh;
 		pJobArgs[i].inFaceRange.start = meshStart;
 		pJobArgs[i].inFaceRange.end = meshEnd;
-		pJobArgs[i].pActiveJobs = pActiveJobs;
+		pJobArgs[i].pActiveJobs = pJobCount;
 		pJobArgs[i].id = i;
 		pJobArgs[i].pContext = pContext;
-		pJobArgs[i].pMutex = pMutex;
 		pJobArgs[i].pCommonAttribList = pCommonAttribList;
 		pJobArgs[i].getInFaces = getInFaces;
 		pJobArgs[i].wScale = wScale;
 		pJobArgs[i].maskIdx = maskIdx;
 		jobArgPtrs[i] = pJobArgs + i;
 	}
-	*pMapJobsSent = *pActiveJobs;
-	pContext->threadPool.pJobStackPushJobs(pContext->pThreadPoolHandle,
-	                                       *pActiveJobs, stucMapToJobMesh, jobArgPtrs);
+	*pppJobHandles = pContext->alloc.pCalloc(*pJobCount, sizeof(void *));
+	pContext->threadPool.pJobStackPushJobs(pContext->pThreadPoolHandle, *pJobCount,
+	                                       *pppJobHandles, stucMapToJobMesh, jobArgPtrs);
 	//CLOCK_STOP("send off jobs");
 }
 
@@ -421,6 +422,7 @@ Result mapToMeshInternal(StucContext pContext, StucMap pMap, Mesh *pMeshIn,
                          StucMesh *pMeshOut, int8_t maskIdx,
                          StucCommonAttribList *pCommonAttribList,
                          InFaceArr **ppInFaceTable, float wScale) {
+	StucResult err = STUC_SUCCESS;
 	if (checkIfNoFacesHaveMaskIdx(pMeshIn, maskIdx)) {
 		return STUC_SUCCESS;
 	}
@@ -438,45 +440,37 @@ Result mapToMeshInternal(StucContext pContext, StucMap pMap, Mesh *pMeshIn,
 
 	CLOCK_START;
 	SendOffArgs jobArgs[MAX_THREADS] = {0};
-	int32_t activeJobs = 0;
-	int32_t mapJobsSent = 0;
-	void *pMutex = NULL;
-	pContext->threadPool.pMutexGet(pContext->pThreadPoolHandle, &pMutex);
-	sendOffJobs(pContext, pMap, jobArgs, &activeJobs, &mapJobsSent, pMeshIn, pMutex,
-	            pEdgeVerts, pInVertTable, pCommonAttribList,
-	            ppInFaceTable != NULL, wScale, maskIdx);
-	if (!mapJobsSent) {
+	int32_t jobCount = 0;
+	void **ppJobHandles = NULL;
+	sendOffJobs(pContext, pMap, &jobCount, &ppJobHandles, jobArgs, pMeshIn, pEdgeVerts,
+	            pInVertTable, pCommonAttribList, ppInFaceTable != NULL, wScale, maskIdx);
+	if (!jobCount) {
 		//no jobs sent
 		//implement an STUC_CANCELLED status
 		return STUC_SUCCESS;
 	}
 	CLOCK_STOP("Send Off Time");
 	CLOCK_START;
-	waitForJobs(pContext, &activeJobs, pMutex);
-	pContext->threadPool.pMutexDestroy(pContext->pThreadPoolHandle, pMutex);
+	stucWaitForJobs(pContext->pThreadPoolHandle, jobCount, ppJobHandles);
 	CLOCK_STOP("Waiting Time");
-	Result jobResult = STUC_SUCCESS;
 	bool empty = true;
-	for (int32_t i = 0; i < mapJobsSent; ++i) {
+	for (int32_t i = 0; i < jobCount; ++i) {
 		//STUC_ASSERT("", jobArgs[i].bufSize > 0);
 		//you'll need to handle this properly when you re-enable multithreading
 		if (jobArgs[i].bufSize > 0) {
 			empty = false;
 		}
-		if (jobArgs[i].result != STUC_SUCCESS) {
-			jobResult = STUC_ERROR;
-		}
 	}
-	if (empty || jobResult != STUC_SUCCESS) {
-		printf("returning, empty is %d, jobResult is %d\n", empty, jobResult);
-		return jobResult;
+	err = stucValidateAndDestroyJobs(pContext, jobCount, &ppJobHandles);
+	STUC_THROW_IF(err, true, "", 0);
+	if (empty) {
+		return err;
 	}
-
 	CLOCK_START;
 	Mesh meshOutWrap = {0};
-	stucCombineJobMeshes(pContext, pMap, &meshOutWrap, jobArgs, pEdgeVerts,
-	                     pVertSeamTable, pEdgeSeamTable, ppInFaceTable, wScale,
-	                     pMeshIn, mapJobsSent);
+	err = stucCombineJobMeshes(pContext, pMap, &meshOutWrap, jobArgs, pEdgeVerts,
+	                          pVertSeamTable, pEdgeSeamTable, ppInFaceTable, wScale,
+	                          pMeshIn, jobCount);
 	CLOCK_STOP("Combine time");
 	pContext->alloc.pFree(pEdgeVerts);
 	pContext->alloc.pFree(pInVertTable);
@@ -486,7 +480,8 @@ Result mapToMeshInternal(StucContext pContext, StucMap pMap, Mesh *pMeshIn,
 	reallocMeshToFit(&pContext->alloc, &meshOutWrap);
 	*pMeshOut = meshOutWrap.core;
 	CLOCK_STOP("Realloc time");
-	return STUC_SUCCESS;
+	STUC_CATCH(0, err, ;);
+	return err;
 }
 
 static
@@ -975,6 +970,7 @@ V2_F32 getZBounds(StucMap pMap) {
 }
 
 StucResult stucMapFileGenPreviewImage(StucContext pContext, StucMap pMap, StucImage *pImage) {
+	Result err = STUC_SUCCESS;
 	V2_F32 zBounds = getZBounds(pMap);
 	int32_t pixelCount = pImage->res * pImage->res;
 	int32_t pixelsPerJob = pixelCount / pContext->threadCount;
@@ -999,24 +995,25 @@ StucResult stucMapFileGenPreviewImage(StucContext pContext, StucMap pMap, StucIm
 		args[i].id = i;
 		jobArgPtrs[i] = args + i;
 	}
-	int32_t jobCount = activeJobs;
-	pContext->threadPool.pJobStackPushJobs(pContext->pThreadPoolHandle,
-	                                       activeJobs,
-	                                       stucRenderJob, jobArgPtrs);
-	CLOCK_INIT;
-	CLOCK_START;
-	waitForJobs(pContext, &activeJobs, pMutex);
-	pContext->threadPool.pMutexDestroy(pContext->pThreadPoolHandle, pMutex);
-	CLOCK_STOP("CREATE_IMAGE");
+	void **ppJobHandles = pContext->alloc.pCalloc(activeJobs, sizeof(void *));
+	pContext->threadPool.pJobStackPushJobs(pContext->pThreadPoolHandle, &ppJobHandles,
+	                                       activeJobs, stucRenderJob, jobArgPtrs);
+	stucWaitForJobs(pContext->pThreadPoolHandle, activeJobs, ppJobHandles);
+	err = stucValidateAndDestroyJobs(pContext, activeJobs, &ppJobHandles);
+	STUC_THROW_IF(err, true, "", 0);
 	int32_t pixelSize = getPixelSize(pImage->type);
 	pImage->pData = pContext->alloc.pMalloc(pixelCount * pixelSize);
-	for (int32_t i = 0; i < jobCount; ++i) {
+	for (int32_t i = 0; i < activeJobs; ++i) {
 		void *pImageOffset = offsetImagePtr(pImage, i * pixelsPerJob);
 		int32_t bytesToCopy = pixelSize * args[i].pixelCount;
 		memcpy(pImageOffset, args[i].imageBuf.pData, bytesToCopy);
+	}
+	STUC_CATCH(0, err, ;);
+	pContext->threadPool.pMutexDestroy(pContext->pThreadPoolHandle, pMutex);
+	for (int32_t i = 0; i < activeJobs; ++i) {
 		pContext->alloc.pFree(args[i].imageBuf.pData);
 	}
-	return STUC_SUCCESS;
+	return err;
 }
 
 void stucMapIndexedAttribsGet(StucContext pContext, StucMap pMap,
