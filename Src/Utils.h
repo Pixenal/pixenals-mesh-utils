@@ -70,5 +70,3 @@ int32_t calcFaceOrientation(Mesh *pMesh, FaceRange *pFace, bool useStuc);
 int32_t getBorderFaceMemType(int32_t mapFaceSize, int32_t bufFaceSize);
 int32_t getBorderFaceSize(int32_t memType);
 void getBorderFaceBitArrs(BorderFace *pEntry, BorderFaceBitArrs *pArrs);
-Result stucValidateAndDestroyJobs(StucContext pContext, int32_t jobCount,
-                                  void ***pppJobHandles);

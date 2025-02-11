@@ -862,20 +862,3 @@ void getBorderFaceBitArrs(BorderFace *pEntry, BorderFaceBitArrs *pArrs) {
 		}
 	}
 }
-
-Result stucValidateAndDestroyJobs(StucContext pContext, int32_t jobCount,
-                                  void ***pppJobHandles) {
-	Result err = STUC_SUCCESS;
-	STUC_THROW_IF(err, pContext && pppJobHandles, "", 0);
-	STUC_THROW_IF(err, jobCount > 0, "", 0);
-	for (int32_t i = 0; i < jobCount; ++i) {
-		StucResult jobErr = STUC_NOT_SET;
-		err = stucGetJobErr(pContext->pThreadPoolHandle, (*pppJobHandles)[i], &jobErr);
-		STUC_THROW_IF(err, jobErr == STUC_SUCCESS, "", 0);
-		stucJobHandleDestroy(pContext->pThreadPoolHandle, *pppJobHandles + i);
-	}
-	pContext->alloc.pFree(*pppJobHandles);
-	*pppJobHandles = NULL;
-	STUC_CATCH(0, err, ;);
-	return err;
-}
