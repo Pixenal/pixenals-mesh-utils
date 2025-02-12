@@ -452,7 +452,8 @@ Result mapToMeshInternal(StucContext pContext, StucMap pMap, Mesh *pMeshIn,
 	}
 	CLOCK_STOP("Send Off Time");
 	CLOCK_START;
-	stucWaitForJobsIntern(pContext->pThreadPoolHandle, jobCount, ppJobHandles);
+	pContext->threadPool.pWaitForJobs(pContext->pThreadPoolHandle, jobCount,
+	                                  ppJobHandles, true, NULL);
 	CLOCK_STOP("Waiting Time");
 	bool empty = true;
 	for (int32_t i = 0; i < jobCount; ++i) {
@@ -770,6 +771,7 @@ Result stucMapToMesh(StucContext pContext, StucMapArr *pMapArr,
 	mergeObjArr(pContext, &meshOutWrap, pMapArr->count, pOutObjWrapArr, false);
 	printf("post-merging obj arr\n");
 	*pMeshOut = meshOutWrap.core;
+	printf("----------------------FINISHING IN MESH WITH FACE COUNT %d\n", pMeshIn->faceCount);
 	STUC_CATCH(1, err, stucMeshDestroy(pContext, pMeshOut);)
 	return err;
 }
@@ -1040,7 +1042,7 @@ StucResult stucMapFileGenPreviewImage(StucContext pContext, StucMap pMap, StucIm
 	void **ppJobHandles = pContext->alloc.pCalloc(activeJobs, sizeof(void *));
 	pContext->threadPool.pJobStackPushJobs(pContext->pThreadPoolHandle, &ppJobHandles,
 	                                       activeJobs, stucRenderJob, jobArgPtrs);
-	stucWaitForJobsIntern(pContext->pThreadPoolHandle, activeJobs, ppJobHandles);
+	stucWaitForJobsIntern(pContext->pThreadPoolHandle, activeJobs, ppJobHandles, true, NULL);
 	err = stucJobGetErrs(pContext, activeJobs, &ppJobHandles);
 	err = stucJobDestroyHandles(pContext, activeJobs, &ppJobHandles);
 	pContext->alloc.pFree(ppJobHandles);
@@ -1065,8 +1067,10 @@ void stucMapIndexedAttribsGet(StucContext pContext, StucMap pMap,
 	*pIndexedAttribs = pMap->indexedAttribs;
 }
 
-Result stucWaitForJobs(StucContext pContext, int32_t count, void **ppHandles) {
-	return stucWaitForJobsIntern(pContext->pThreadPoolHandle, count, ppHandles);
+Result stucWaitForJobs(StucContext pContext, int32_t count, void **ppHandles,
+                       bool wait, bool *pDone) {
+	return pContext->threadPool.pWaitForJobs(pContext->pThreadPoolHandle, count,
+	                                         ppHandles, wait, pDone);
 }
 
 Result stucJobGetErrs(StucContext pContext, int32_t jobCount,
@@ -1076,7 +1080,8 @@ Result stucJobGetErrs(StucContext pContext, int32_t jobCount,
 	STUC_THROW_IF(err, jobCount > 0, "", 0);
 	for (int32_t i = 0; i < jobCount; ++i) {
 		StucResult jobErr = STUC_NOT_SET;
-		err = stucGetJobErr(pContext->pThreadPoolHandle, (*pppJobHandles)[i], &jobErr);
+		err = pContext->threadPool.pGetJobErr(pContext->pThreadPoolHandle,
+		                                      (*pppJobHandles)[i], &jobErr);
 		STUC_THROW_IF(err, jobErr == STUC_SUCCESS, "", 0);
 	}
 	STUC_CATCH(0, err, ;);
@@ -1089,7 +1094,8 @@ Result stucJobDestroyHandles(StucContext pContext, int32_t jobCount,
 	STUC_THROW_IF(err, pContext && pppJobHandles, "", 0);
 	STUC_THROW_IF(err, jobCount > 0, "", 0);
 	for (int32_t i = 0; i < jobCount; ++i) {
-		stucJobHandleDestroy(pContext->pThreadPoolHandle, *pppJobHandles + i);
+		pContext->threadPool.pJobHandleDestroy(pContext->pThreadPoolHandle,
+		                                       *pppJobHandles + i);
 	}
 	STUC_CATCH(0, err, ;);
 	return err;
