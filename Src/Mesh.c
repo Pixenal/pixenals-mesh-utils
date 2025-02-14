@@ -10,19 +10,19 @@
 #include <Context.h>
 
 typedef struct {
-	int32_t *pBufSize;
-	int32_t **ppList[2]; //2 so both pCorners and pEdges can be realloced at once
-	int32_t *pCount;
+	I32 *pBufSize;
+	I32 **ppList[2]; //2 so both pCorners and pEdges can be realloced at once
+	I32 *pCount;
 	AttribArray *pAttribArr;
 } MeshDomain;
 
 typedef struct {
 	MeshDomain domain;
-	int32_t *pBorderCount;
+	I32 *pBorderCount;
 } BufMeshDomain;
 
 void stucCreateMesh(StucContext pContext, StucObject *pObj, StucObjectType type) {
-	int32_t size = 0;
+	I32 size = 0;
 	switch (type) {
 		case STUC_OBJECT_DATA_MESH:
 			size = sizeof(StucMesh);
@@ -45,24 +45,24 @@ static
 void reallocBufMesh(const StucAlloc *pAlloc,
                     BufMesh *pMesh, BufMeshDomain *pBufDomain) {
 	MeshDomain *pDomain = (MeshDomain *)pBufDomain;
-	int32_t realBorderEnd = *pDomain->pBufSize - 1 - *pBufDomain->pBorderCount;
-	int32_t oldSize = *pDomain->pBufSize;
+	I32 realBorderEnd = *pDomain->pBufSize - 1 - *pBufDomain->pBorderCount;
+	I32 oldSize = *pDomain->pBufSize;
 	*pDomain->pBufSize *= 2;
-	int32_t diff = *pDomain->pBufSize - oldSize;
+	I32 diff = *pDomain->pBufSize - oldSize;
 	STUC_ASSERT("", *pDomain->pBufSize > oldSize);
-	for (int32_t i = 0; i < 2; ++i) {
+	for (I32 i = 0; i < 2; ++i) {
 		if (!pDomain->ppList[i]) {
 			continue;
 		}
-		int32_t oldFirstElement = (*pDomain->ppList[i])[realBorderEnd + 1];
-		int32_t oldLastElement = (*pDomain->ppList[i])[oldSize - 1];
+		I32 oldFirstElement = (*pDomain->ppList[i])[realBorderEnd + 1];
+		I32 oldLastElement = (*pDomain->ppList[i])[oldSize - 1];
 		*pDomain->ppList[i] =
-			pAlloc->pRealloc(*pDomain->ppList[i], sizeof(int32_t) * *pDomain->pBufSize);
+			pAlloc->pRealloc(*pDomain->ppList[i], sizeof(I32) * *pDomain->pBufSize);
 		if (*pBufDomain->pBorderCount) {
-			int32_t *pStart = *pDomain->ppList[i] + realBorderEnd + 1;
-			memmove(pStart + diff, pStart, sizeof(int32_t) * *pBufDomain->pBorderCount);
-			int32_t newFirstElement = (*pDomain->ppList[i])[realBorderEnd + 1 + diff];
-			int32_t newLastElement = (*pDomain->ppList[i])[*pDomain->pBufSize - 1];
+			I32 *pStart = *pDomain->ppList[i] + realBorderEnd + 1;
+			memmove(pStart + diff, pStart, sizeof(I32) * *pBufDomain->pBorderCount);
+			I32 newFirstElement = (*pDomain->ppList[i])[realBorderEnd + 1 + diff];
+			I32 newLastElement = (*pDomain->ppList[i])[*pDomain->pBufSize - 1];
 			STUC_ASSERT("", newFirstElement == oldFirstElement);
 			STUC_ASSERT("", newLastElement == oldLastElement);
 		}
@@ -76,7 +76,7 @@ BufMeshIdx getNewBufMeshIdx(const StucAlloc *pAlloc, BufMesh *pMesh,
                             BufMeshDomain *pBufDomain, const bool border,
                             DebugAndPerfVars *pDbVars, bool *pRealloced) {
 	MeshDomain *pDomain = (MeshDomain *)pBufDomain;
-	int32_t realBorderEnd = *pDomain->pBufSize - 1 - *pBufDomain->pBorderCount;
+	I32 realBorderEnd = *pDomain->pBufSize - 1 - *pBufDomain->pBorderCount;
 	//TODO assertions like these need to be converted to release exceptions
 	STUC_ASSERT("", *pDomain->pCount <= realBorderEnd);
 	if (*pDomain->pCount == realBorderEnd) {
@@ -140,18 +140,18 @@ void getVertDomain(Mesh *pMesh, MeshDomain *pDomain) {
 static
 void reallocMesh(const StucAlloc *pAlloc, Mesh *pMesh, MeshDomain *pDomain) {
 	*pDomain->pBufSize *= 2;
-	for (int32_t i = 0; i < 2; ++i) {
+	for (I32 i = 0; i < 2; ++i) {
 		if (!pDomain->ppList[i]) {
 			continue;
 		}
 		*pDomain->ppList[i] =
-			pAlloc->pRealloc(*pDomain->ppList[i], sizeof(int32_t) * *pDomain->pBufSize);
+			pAlloc->pRealloc(*pDomain->ppList[i], sizeof(I32) * *pDomain->pBufSize);
 	}
 	stucReallocAttribArr(pAlloc, pMesh, pDomain->pAttribArr, *pDomain->pBufSize);
 }
 
 static
-int32_t getNewMeshIdx(const StucAlloc *pAlloc,
+I32 getNewMeshIdx(const StucAlloc *pAlloc,
                       Mesh *pMesh, MeshDomain *pDomain, bool *pRealloced) {
 	STUC_ASSERT("", *pDomain->pCount >= 0 && *pDomain->pBufSize > 0);
 	STUC_ASSERT("", *pDomain->pCount <= *pDomain->pBufSize);
@@ -162,7 +162,7 @@ int32_t getNewMeshIdx(const StucAlloc *pAlloc,
 	else {
 		*pRealloced = false;
 	}
-	int32_t idx = *pDomain->pCount;
+	I32 idx = *pDomain->pCount;
 	++*pDomain->pCount;
 	return idx;
 }
@@ -211,7 +211,7 @@ BufMeshIdx stucBufMeshAddVert(const StucAlloc *pAlloc, BufMesh *pMesh,
 	return idx;
 }
 
-BufMeshIdx stucConvertBorderFaceIdx(const BufMesh *pMesh, int32_t face) {
+BufMeshIdx stucConvertBorderFaceIdx(const BufMesh *pMesh, I32 face) {
 	STUC_ASSERT("", face >= 0 && face <= pMesh->borderFaceCount);
 	BufMeshIdx idx = {
 		.idx = face,
@@ -219,7 +219,7 @@ BufMeshIdx stucConvertBorderFaceIdx(const BufMesh *pMesh, int32_t face) {
 	};
 	return idx;
 }
-BufMeshIdx stucConvertBorderCornerIdx(const BufMesh *pMesh, int32_t corner) {
+BufMeshIdx stucConvertBorderCornerIdx(const BufMesh *pMesh, I32 corner) {
 	STUC_ASSERT("", corner >= 0 && corner <= pMesh->borderCornerCount);
 	BufMeshIdx idx = {
 		.idx = corner,
@@ -227,7 +227,7 @@ BufMeshIdx stucConvertBorderCornerIdx(const BufMesh *pMesh, int32_t corner) {
 	};
 	return idx;
 }
-BufMeshIdx stucConvertBorderEdgeIdx(const BufMesh *pMesh, int32_t edge) {
+BufMeshIdx stucConvertBorderEdgeIdx(const BufMesh *pMesh, I32 edge) {
 	STUC_ASSERT("", edge >= 0 && edge <= pMesh->borderEdgeCount);
 	BufMeshIdx idx = {
 		.idx = edge,
@@ -235,7 +235,7 @@ BufMeshIdx stucConvertBorderEdgeIdx(const BufMesh *pMesh, int32_t edge) {
 	};
 	return idx;
 }
-BufMeshIdx stucConvertBorderVertIdx(const BufMesh *pMesh, int32_t vert) {
+BufMeshIdx stucConvertBorderVertIdx(const BufMesh *pMesh, I32 vert) {
 	STUC_ASSERT("", vert >= 0 && vert <= pMesh->borderVertCount);
 	BufMeshIdx idx = {
 		.idx = vert,
@@ -244,25 +244,25 @@ BufMeshIdx stucConvertBorderVertIdx(const BufMesh *pMesh, int32_t vert) {
 	return idx;
 }
 
-int32_t stucMeshAddFace(const StucAlloc *pAlloc, Mesh *pMesh, bool *pRealloced) {
+I32 stucMeshAddFace(const StucAlloc *pAlloc, Mesh *pMesh, bool *pRealloced) {
 	MeshDomain domain = {0};
 	getFaceDomain(pMesh, &domain);
 	return getNewMeshIdx(pAlloc, pMesh, &domain, pRealloced);
 }
 
-int32_t stucMeshAddCorner(const StucAlloc *pAlloc, Mesh *pMesh, bool *pRealloced) {
+I32 stucMeshAddCorner(const StucAlloc *pAlloc, Mesh *pMesh, bool *pRealloced) {
 	MeshDomain domain = {0};
 	getCornerDomain(pMesh, &domain);
 	return getNewMeshIdx(pAlloc, pMesh, &domain, pRealloced);
 }
 
-int32_t stucMeshAddEdge(const StucAlloc *pAlloc, Mesh *pMesh, bool *pRealloced) {
+I32 stucMeshAddEdge(const StucAlloc *pAlloc, Mesh *pMesh, bool *pRealloced) {
 	MeshDomain domain = {0};
 	getEdgeDomain(pMesh, &domain);
 	return getNewMeshIdx(pAlloc, pMesh, &domain, pRealloced);
 }
 
-int32_t stucMeshAddVert(const StucAlloc *pAlloc, Mesh *pMesh, bool *pRealloced) {
+I32 stucMeshAddVert(const StucAlloc *pAlloc, Mesh *pMesh, bool *pRealloced) {
 	MeshDomain domain = {0};
 	getVertDomain(pMesh, &domain);
 	return getNewMeshIdx(pAlloc, pMesh, &domain, pRealloced);
@@ -271,10 +271,10 @@ int32_t stucMeshAddVert(const StucAlloc *pAlloc, Mesh *pMesh, bool *pRealloced) 
 void stucReallocMeshToFit(const StucAlloc *pAlloc, Mesh *pMesh) {
 	StucMesh *pCore = &pMesh->core;
 	pMesh->faceBufSize = pCore->faceCount + 1;
-	int32_t newLen = sizeof(int32_t) * pMesh->faceBufSize;
+	I32 newLen = sizeof(I32) * pMesh->faceBufSize;
 	pCore->pFaces = pAlloc->pRealloc(pCore->pFaces, newLen);
 	pMesh->cornerBufSize = pCore->cornerCount;
-	newLen = sizeof(int32_t) * pMesh->cornerBufSize;
+	newLen = sizeof(I32) * pMesh->cornerBufSize;
 	pCore->pCorners = pAlloc->pRealloc(pCore->pCorners, newLen);
 	pCore->pEdges = pAlloc->pRealloc(pCore->pEdges, newLen);
 	stucReallocAttribArr(pAlloc, pMesh, &pCore->faceAttribs, pMesh->faceBufSize);
@@ -287,7 +287,7 @@ void stucReallocMeshToFit(const StucAlloc *pAlloc, Mesh *pMesh) {
 
 void stucMeshSetLastFace(const StucAlloc *pAlloc, Mesh *pMesh) {
 	bool realloced = false;
-	int32_t lastFace = stucMeshAddFace(pAlloc, pMesh, &realloced);
+	I32 lastFace = stucMeshAddFace(pAlloc, pMesh, &realloced);
 	pMesh->core.pFaces[lastFace] = pMesh->core.cornerCount;
 	//meshAddFace() increments this, so we need to undo that
 	pMesh->core.faceCount--; 
@@ -321,15 +321,15 @@ bool stucCheckIfMesh(StucObjectData type) {
 }
 
 static
-void bulkCopyAttribs(AttribArray *pSrc, int32_t SrcOffset,
-                     AttribArray *pDest, int32_t dataLen) {
-	for (int32_t i = 0; i < pDest->count; ++i) {
+void bulkCopyAttribs(AttribArray *pSrc, I32 SrcOffset,
+                     AttribArray *pDest, I32 dataLen) {
+	for (I32 i = 0; i < pDest->count; ++i) {
 		Attrib *pSrcAttrib = stucGetAttribIntern(pDest->pArr[i].core.name, pSrc);
 		if (!pSrcAttrib) {
 			continue;
 		}
 		void *attribDestStart = stucAttribAsVoid(&pDest->pArr[i].core, SrcOffset);
-		int32_t attribTypeSize = stucGetAttribSizeIntern(pDest->pArr[i].core.type);
+		I32 attribTypeSize = stucGetAttribSizeIntern(pDest->pArr[i].core.type);
 		memcpy(attribDestStart, pSrcAttrib->core.pData, attribTypeSize * dataLen);
 	}
 }
@@ -364,34 +364,34 @@ void stucCopyMesh(StucMesh *pDestMesh, StucMesh *pSrcMesh) {
 	}
 	STUC_ASSERT("", stucCheckIfMesh(pDestMesh->type));
 	STUC_ASSERT("", stucCheckIfMesh(pSrcMesh->type));
-	int32_t faceBase = pDestMesh->faceCount;
-	int32_t cornerBase = pDestMesh->cornerCount;
-	int32_t edgeBase = pDestMesh->edgeCount;
-	int32_t vertBase = pDestMesh->vertCount;
-	int32_t *facesStart = pDestMesh->pFaces + faceBase;
-	int32_t *cornersStart = pDestMesh->pCorners + cornerBase;
-	int32_t *edgesStart = pDestMesh->pEdges + cornerBase;
-	memcpy(facesStart, pSrcMesh->pFaces, sizeof(int32_t) * pSrcMesh->faceCount);
+	I32 faceBase = pDestMesh->faceCount;
+	I32 cornerBase = pDestMesh->cornerCount;
+	I32 edgeBase = pDestMesh->edgeCount;
+	I32 vertBase = pDestMesh->vertCount;
+	I32 *facesStart = pDestMesh->pFaces + faceBase;
+	I32 *cornersStart = pDestMesh->pCorners + cornerBase;
+	I32 *edgesStart = pDestMesh->pEdges + cornerBase;
+	memcpy(facesStart, pSrcMesh->pFaces, sizeof(I32) * pSrcMesh->faceCount);
 	bulkCopyAttribs(&pSrcMesh->faceAttribs, pDestMesh->faceCount,
 	                &pDestMesh->faceAttribs, pSrcMesh->faceCount);
 	pDestMesh->faceCount += pSrcMesh->faceCount;
 	pDestMesh->pFaces[pDestMesh->faceCount] = pSrcMesh->pFaces[pSrcMesh->faceCount];
-	memcpy(cornersStart, pSrcMesh->pCorners, sizeof(int32_t) * pSrcMesh->cornerCount);
+	memcpy(cornersStart, pSrcMesh->pCorners, sizeof(I32) * pSrcMesh->cornerCount);
 	bulkCopyAttribs(&pSrcMesh->cornerAttribs, pDestMesh->cornerCount,
 	                &pDestMesh->cornerAttribs, pSrcMesh->cornerCount);
 	pDestMesh->cornerCount += pSrcMesh->cornerCount;
-	memcpy(edgesStart, pSrcMesh->pEdges, sizeof(int32_t) * pSrcMesh->cornerCount);
+	memcpy(edgesStart, pSrcMesh->pEdges, sizeof(I32) * pSrcMesh->cornerCount);
 	bulkCopyAttribs(&pSrcMesh->edgeAttribs, pDestMesh->edgeCount,
 	                &pDestMesh->edgeAttribs, pSrcMesh->edgeCount);
 	pDestMesh->edgeCount += pSrcMesh->edgeCount;
 	bulkCopyAttribs(&pSrcMesh->vertAttribs, pDestMesh->vertCount,
 	                &pDestMesh->vertAttribs, pSrcMesh->vertCount);
 	pDestMesh->vertCount += pSrcMesh->vertCount;
-	for (int32_t i = faceBase; i < pDestMesh->faceCount; ++i) {
+	for (I32 i = faceBase; i < pDestMesh->faceCount; ++i) {
 		pDestMesh->pFaces[i] += cornerBase;
 	}
 	pDestMesh->pFaces[pDestMesh->faceCount] += cornerBase;
-	for (int32_t i = cornerBase; i < pDestMesh->cornerCount; ++i) {
+	for (I32 i = cornerBase; i < pDestMesh->cornerCount; ++i) {
 		pDestMesh->pCorners[i] += vertBase;
 		pDestMesh->pEdges[i] += edgeBase;
 	}
@@ -401,13 +401,13 @@ void stucCopyMesh(StucMesh *pDestMesh, StucMesh *pSrcMesh) {
 
 void stucApplyObjTransform(StucObject *pObj) {
 	Mesh *pMesh = (Mesh *)pObj->pData;
-	for (int32_t i = 0; i < pMesh->core.vertCount; ++i) {
+	for (I32 i = 0; i < pMesh->core.vertCount; ++i) {
 		V3_F32 *pV3 = pMesh->pVerts + i;
 		V4_F32 v4 = {pV3->d[0], pV3->d[1], pV3->d[2], 1.0f};
 		_(&v4 V4MULEQLM4X4 &pObj->transform);
 		*pV3 = *(V3_F32 *)&v4;
 	}
-	for (int32_t i = 0; i < pMesh->core.cornerCount; ++i) {
+	for (I32 i = 0; i < pMesh->core.cornerCount; ++i) {
 		Mat3x3 mat3x3 = Mat3x3FromMat4x4(&pObj->transform);
 		V3_F32 *pNormal = pMesh->pNormals + i;
 		_(pNormal V3MULEQLM3X3 &mat3x3);
@@ -417,10 +417,10 @@ void stucApplyObjTransform(StucObject *pObj) {
 }
 
 void stucMergeObjArr(StucContext pContext, Mesh *pMesh,
-                     int32_t objCount, StucObject *pObjArr, bool setCommon) {
+                     I32 objCount, StucObject *pObjArr, bool setCommon) {
 	Mesh **ppSrcs = pContext->alloc.pCalloc(objCount, sizeof(void *));
 	MeshCounts totalCount = {0};
-	for (int32_t i = 0; i < objCount; ++i) {
+	for (I32 i = 0; i < objCount; ++i) {
 		ppSrcs[i] = (Mesh *)pObjArr[i].pData;
 		stucAddToMeshCounts(pContext, &totalCount, NULL, (Mesh *)pObjArr[i].pData);
 	}
@@ -429,20 +429,20 @@ void stucMergeObjArr(StucContext pContext, Mesh *pMesh,
 	pMesh->edgeBufSize = totalCount.edges;
 	pMesh->vertBufSize = totalCount.verts;
 	pMesh->core.pFaces =
-		pContext->alloc.pMalloc(sizeof(int32_t) * pMesh->faceBufSize);
+		pContext->alloc.pMalloc(sizeof(I32) * pMesh->faceBufSize);
 	pMesh->core.pCorners =
-		pContext->alloc.pMalloc(sizeof(int32_t) * pMesh->cornerBufSize);
+		pContext->alloc.pMalloc(sizeof(I32) * pMesh->cornerBufSize);
 	pMesh->core.pEdges =
-		pContext->alloc.pMalloc(sizeof(int32_t) * pMesh->cornerBufSize);
+		pContext->alloc.pMalloc(sizeof(I32) * pMesh->cornerBufSize);
 	stucAllocAttribsFromMeshArr(&pContext->alloc, pMesh, objCount, ppSrcs, setCommon);
-	for (int32_t i = 0; i < objCount; ++i) {
+	for (I32 i = 0; i < objCount; ++i) {
 		stucCopyMesh(&pMesh->core, (StucMesh *)pObjArr[i].pData);
 	}
 }
 
-Result stucDestroyObjArr(StucContext pContext, int32_t objCount, StucObject *pObjArr) {
+Result stucDestroyObjArr(StucContext pContext, I32 objCount, StucObject *pObjArr) {
 	StucResult err = STUC_NOT_SET;
-	for (int32_t i = 0; i < objCount; ++i) {
+	for (I32 i = 0; i < objCount; ++i) {
 		err = stucMeshDestroy(pContext, (StucMesh *)pObjArr[i].pData);
 		STUC_THROW_IF(err, true, "", 0);
 		pContext->alloc.pFree(pObjArr[i].pData);
@@ -453,10 +453,10 @@ Result stucDestroyObjArr(StucContext pContext, int32_t objCount, StucObject *pOb
 }
 
 FaceRange stucGetFaceRange(const StucMesh *pMesh,
-                           const int32_t idx, const bool border) {
+                           const I32 idx, const bool border) {
 	STUC_ASSERT("", border % 2 == border);
-	int32_t realIdx;
-	int32_t direction;
+	I32 realIdx;
+	I32 direction;
 	if (!border) {
 		realIdx = idx;
 		direction = 1;
@@ -507,16 +507,16 @@ int mikktGetNumVertsOfFace(const SMikkTSpaceContext *pContext, const int iFace) 
 }
 
 static
-void mikktGetPos(const SMikkTSpaceContext *pContext, float *pFvPosOut,
+void mikktGetPos(const SMikkTSpaceContext *pContext, F32 *pFvPosOut,
                  const int iFace, const int iVert) {
 	Mesh *pMesh = pContext->m_pUserData;
 	FaceRange face = stucGetFaceRange(&pMesh->core, iFace, false);
-	int32_t vertIdx = pMesh->core.pCorners[face.start + iVert];
+	I32 vertIdx = pMesh->core.pCorners[face.start + iVert];
 	*(V3_F32 *)pFvPosOut = pMesh->pVerts[vertIdx];
 }
 
 static
-void mikktGetNormal(const SMikkTSpaceContext *pContext, float *pFvNormOut,
+void mikktGetNormal(const SMikkTSpaceContext *pContext, F32 *pFvNormOut,
                     const int iFace, const int iVert) {
 	Mesh *pMesh = pContext->m_pUserData;
 	FaceRange face = stucGetFaceRange(&pMesh->core, iFace, false);
@@ -524,7 +524,7 @@ void mikktGetNormal(const SMikkTSpaceContext *pContext, float *pFvNormOut,
 }
 
 static
-void mikktGetTexCoord(const SMikkTSpaceContext *pContext, float *pFvTexcOut,
+void mikktGetTexCoord(const SMikkTSpaceContext *pContext, F32 *pFvTexcOut,
                       const int iFace, const int iVert) {
 	Mesh *pMesh = pContext->m_pUserData;
 	FaceRange face = stucGetFaceRange(&pMesh->core, iFace, false);
@@ -532,11 +532,11 @@ void mikktGetTexCoord(const SMikkTSpaceContext *pContext, float *pFvTexcOut,
 }
 
 static
-void mikktSetTSpaceBasic(const SMikkTSpaceContext *pContext, const float *pFvTangent,
-                         const float fSign, const int iFace, const int iVert) {
+void mikktSetTSpaceBasic(const SMikkTSpaceContext *pContext, const F32 *pFvTangent,
+                         const F32 fSign, const int iFace, const int iVert) {
 	Mesh *pMesh = pContext->m_pUserData;
 	FaceRange face = stucGetFaceRange(&pMesh->core, iFace, false);
-	int32_t corner = face.start + iVert;
+	I32 corner = face.start + iVert;
 	pMesh->pTangents[corner] = *(V3_F32 *)pFvTangent;
 	pMesh->pTSigns[corner] = fSign;
 }

@@ -11,7 +11,7 @@
 #include <Error.h>
 #include <ThreadPool.h>
 
-int32_t stucCheckFaceIsInBounds(V2_F32 min, V2_F32 max, FaceRange face, Mesh *pMesh) {
+I32 stucCheckFaceIsInBounds(V2_F32 min, V2_F32 max, FaceRange face, Mesh *pMesh) {
 	STUC_ASSERT("", pMesh && pMesh->pVerts && pMesh->core.pCorners);
 	STUC_ASSERT("", face.size >= 3 && face.start >= 0 && face.end >= 0 && face.idx >= 0);
 	STUC_ASSERT("", v2IsFinite(min) && v2IsFinite(max));
@@ -19,8 +19,8 @@ int32_t stucCheckFaceIsInBounds(V2_F32 min, V2_F32 max, FaceRange face, Mesh *pM
 	V2_F32 faceMax = {0};
 	faceMin.d[0] = faceMin.d[1] = FLT_MAX;
 	faceMax.d[0] = faceMax.d[1] = 0;
-	for (int32_t i = 0; i < face.size; ++i) {
-		int32_t vertIdx = pMesh->core.pCorners[face.start + i];
+	for (I32 i = 0; i < face.size; ++i) {
+		I32 vertIdx = pMesh->core.pCorners[face.start + i];
 		V3_F32 *pVert = pMesh->pVerts + vertIdx;
 		STUC_ASSERT("", pVert && v3IsFinite(*pVert));
 		if (pVert->d[0] < faceMin.d[0]) {
@@ -48,10 +48,10 @@ int32_t stucCheckFaceIsInBounds(V2_F32 min, V2_F32 max, FaceRange face, Mesh *pM
 	return inside.d[0] && inside.d[1];
 }
 
-uint32_t stucFnvHash(uint8_t *value, int32_t valueSize, uint32_t size) {
+U32 stucFnvHash(U8 *value, I32 valueSize, U32 size) {
 	STUC_ASSERT("", value && valueSize > 0 && size > 0);
-	uint32_t hash = 2166136261;
-	for (int32_t i = 0; i < valueSize; ++i) {
+	U32 hash = 2166136261;
+	for (I32 i = 0; i < valueSize; ++i) {
 		hash ^= value[i];
 		hash *= 16777619;
 	}
@@ -66,7 +66,7 @@ void stucGetFaceBounds(FaceBounds *pBounds, V2_F32 *pStuc, FaceRange face) {
 	STUC_ASSERT("", face.end >= 0 && face.idx >= 0);
 	pBounds->fMin.d[0] = pBounds->fMin.d[1] = FLT_MAX;
 	pBounds->fMax.d[0] = pBounds->fMax.d[1] = -FLT_MAX;
-	for (int32_t i = 0; i < face.size; ++i) {
+	for (I32 i = 0; i < face.size; ++i) {
 		V2_F32 *uv = pStuc + face.start + i;
 		STUC_ASSERT("", uv && v2IsFinite(*uv));
 		pBounds->fMin.d[0] = uv->d[0] < pBounds->fMin.d[0] ?
@@ -90,7 +90,7 @@ void getFaceBoundsVert(FaceBounds* pBounds, V3_F32* pVerts, FaceRange face) {
 	STUC_ASSERT("", face.end >= 0 && face.idx >= 0);
 	pBounds->fMin.d[0] = pBounds->fMin.d[1] = FLT_MAX;
 	pBounds->fMax.d[0] = pBounds->fMax.d[1] = .0f;
-	for (int32_t i = 0; i < face.size; ++i) {
+	for (I32 i = 0; i < face.size; ++i) {
 		V3_F32* vert = pVerts + face.start + i;
 		STUC_ASSERT("", vert && v3IsFinite(*vert));
 		pBounds->fMin.d[0] = vert->d[0] < pBounds->fMin.d[0] ?
@@ -106,26 +106,26 @@ void getFaceBoundsVert(FaceBounds* pBounds, V3_F32* pVerts, FaceRange face) {
 	STUC_ASSERT("", _(pBounds->fMax V2GREATEQL pBounds->fMin));
 }
 
-int32_t stucCheckIfEdgeIsSeam(int32_t edgeIdx, FaceRange face, int32_t corner,
+I32 stucCheckIfEdgeIsSeam(I32 edgeIdx, FaceRange face, I32 corner,
                               Mesh *pMesh, EdgeVerts *pEdgeVerts) {
 	STUC_ASSERT("", pMesh && pEdgeVerts);
 	STUC_ASSERT("", face.size >= 3 && face.start >= 0 && face.end >= 0 && face.size >= 0);
 	STUC_ASSERT("", edgeIdx >= 0 && corner >= 0 && corner < face.size);
-	int32_t *pVerts = pEdgeVerts[edgeIdx].verts;
+	I32 *pVerts = pEdgeVerts[edgeIdx].verts;
 	STUC_ASSERT("", pVerts);
 	if (pVerts[1] < 0) {
 		return 2;
 	}
 	else {
 		STUC_ASSERT("", pVerts[0] == face.start + corner || pVerts[1] == face.start + corner);
-		int32_t whichCorner = pVerts[0] == face.start + corner;
-		int32_t otherCorner = pVerts[whichCorner];
-		int32_t iNext = (corner + 1) % face.size;
-		int32_t nextBaseCorner = face.start + iNext;
+		I32 whichCorner = pVerts[0] == face.start + corner;
+		I32 otherCorner = pVerts[whichCorner];
+		I32 iNext = (corner + 1) % face.size;
+		I32 nextBaseCorner = face.start + iNext;
 		V2_F32 uv = pMesh->pUvs[nextBaseCorner];
 		V2_F32 uvOther = pMesh->pUvs[otherCorner];
 		STUC_ASSERT("", v2IsFinite(uv) && v2IsFinite(uvOther));
-		int32_t isSeam = !_(uv V2APROXEQL uvOther);
+		I32 isSeam = !_(uv V2APROXEQL uvOther);
 		if (isSeam) {
 			return 1;
 		}
@@ -133,7 +133,7 @@ int32_t stucCheckIfEdgeIsSeam(int32_t edgeIdx, FaceRange face, int32_t corner,
 	return 0;
 }
 
-bool stucCheckIfEdgeIsPreserve(Mesh* pMesh, int32_t edge) {
+bool stucCheckIfEdgeIsPreserve(Mesh* pMesh, I32 edge) {
 	STUC_ASSERT("", pMesh && edge >= 0);
 	if (pMesh->pEdgePreserve) {
 		STUC_ASSERT("", pMesh->pEdgePreserve[edge] % 2 == pMesh->pEdgePreserve[edge]);
@@ -141,7 +141,7 @@ bool stucCheckIfEdgeIsPreserve(Mesh* pMesh, int32_t edge) {
 	return pMesh->pEdgePreserve ? pMesh->pEdgePreserve[edge] : false;
 }
 
-bool stucCheckIfVertIsPreserve(Mesh* pMesh, int32_t vert) {
+bool stucCheckIfVertIsPreserve(Mesh* pMesh, I32 vert) {
 	STUC_ASSERT("", pMesh && vert >= 0);
 	if (pMesh->pVertPreserve) {
 		STUC_ASSERT("", pMesh->pVertPreserve[vert] % 2 == pMesh->pVertPreserve[vert]);
@@ -149,7 +149,7 @@ bool stucCheckIfVertIsPreserve(Mesh* pMesh, int32_t vert) {
 	return pMesh->pVertPreserve ? pMesh->pVertPreserve[vert] : false;
 }
 
-int32_t stucCheckIfEdgeIsReceive(Mesh* pMesh, int32_t edge) {
+I32 stucCheckIfEdgeIsReceive(Mesh* pMesh, I32 edge) {
 	STUC_ASSERT("", pMesh && edge >= 0);
 	if (pMesh->pEdgeReceive) {
 		STUC_ASSERT("", pMesh->pEdgeReceive[edge] == 0 || pMesh->pEdgeReceive[edge] == 1);
@@ -158,13 +158,13 @@ int32_t stucCheckIfEdgeIsReceive(Mesh* pMesh, int32_t edge) {
 }
 
 static
-int32_t getOtherVert(int32_t i, int32_t faceSize, int8_t *pVertsRemoved) {
+I32 getOtherVert(I32 i, I32 faceSize, I8 *pVertsRemoved) {
 	STUC_ASSERT("", i >= 0 && faceSize >= 3 && i < faceSize && pVertsRemoved);
-	int32_t ib = (i + 1) % faceSize;
+	I32 ib = (i + 1) % faceSize;
 	//search from i + 1 to facesize, and if non found,
 	//then run again from 0 to facesize. If non found then,
 	//return error
-	int32_t attempts = 0;
+	I32 attempts = 0;
 	do {
 		attempts++;
 		for (; ib < faceSize; ++ib) {
@@ -180,13 +180,13 @@ int32_t getOtherVert(int32_t i, int32_t faceSize, int8_t *pVertsRemoved) {
 
 typedef struct TriEdge {
 	struct TriEdge* pNext;
-	int32_t tris[2];
-	int32_t verts[2];
+	I32 tris[2];
+	I32 verts[2];
 	bool valid;
 } TriEdge;
 
 static
-void initTriEdgeEntry(TriEdge* pEntry, int32_t verta, int32_t vertb, int32_t tri) {
+void initTriEdgeEntry(TriEdge* pEntry, I32 verta, I32 vertb, I32 tri) {
 	pEntry->tris[0] = tri;
 	pEntry->verts[0] = verta;
 	pEntry->verts[1] = vertb;
@@ -194,10 +194,10 @@ void initTriEdgeEntry(TriEdge* pEntry, int32_t verta, int32_t vertb, int32_t tri
 }
 
 static
-void addTriEdgeToTable(StucAlloc *pAlloc, int32_t tableSize, TriEdge *pEdgeTable,
-                       int32_t verta, int32_t vertb, int32_t tri) {
-	uint32_t sum = verta + vertb;
-	int32_t hash = stucFnvHash((uint8_t *)&sum, 4, tableSize);
+void addTriEdgeToTable(StucAlloc *pAlloc, I32 tableSize, TriEdge *pEdgeTable,
+                       I32 verta, I32 vertb, I32 tri) {
+	U32 sum = verta + vertb;
+	I32 hash = stucFnvHash((U8 *)&sum, 4, tableSize);
 	TriEdge *pEntry = pEdgeTable + hash;
 	if (!pEntry->valid) {
 		initTriEdgeEntry(pEntry, verta, vertb, tri);
@@ -223,31 +223,31 @@ void addTriEdgeToTable(StucAlloc *pAlloc, int32_t tableSize, TriEdge *pEdgeTable
 //This gives really long tris, where short tris are possible.
 //Re-add search to find short tris, and prefer those.
 FaceTriangulated stucTriangulateFace(StucAlloc alloc, FaceRange *pInFace, void *pVerts,
-                                     int32_t *pCorners, int32_t useStuc) {
+                                     I32 *pCorners, I32 useStuc) {
 	FaceTriangulated outMesh = {0};
 	outMesh.triCount = pInFace->size - 2;
-	int32_t cornerCount = outMesh.triCount * 3;
-	outMesh.pCorners = alloc.pMalloc(sizeof(int32_t) * cornerCount);
+	I32 cornerCount = outMesh.triCount * 3;
+	outMesh.pCorners = alloc.pMalloc(sizeof(I32) * cornerCount);
 	TriEdge *pEdgeTable = alloc.pCalloc(pInFace->size, sizeof(TriEdge));
-	int8_t *pVertsRemoved = alloc.pCalloc(pInFace->size, 1);
-	int32_t cornersLeft = pInFace->size;
-	int32_t start = 0;
-	int32_t end = pInFace->size;
+	I8 *pVertsRemoved = alloc.pCalloc(pInFace->size, 1);
+	I32 cornersLeft = pInFace->size;
+	I32 start = 0;
+	I32 end = pInFace->size;
 	do {
-		int32_t ear[3] = {0};
+		I32 ear[3] = {0};
 		bool earIsValid = false;
-		int32_t earFallback[3] = {0};
+		I32 earFallback[3] = {0};
 		bool fallback = false;
-		float shortestLen = FLT_MAX;
-		for (int32_t i = 0; i < pInFace->size; ++i) {
+		F32 shortestLen = FLT_MAX;
+		for (I32 i = 0; i < pInFace->size; ++i) {
 			//i %= pInFace->size;
 			if (pVertsRemoved[i]) {
 				continue;
 			}
-			int32_t ib = getOtherVert(i, pInFace->size, pVertsRemoved);
-			int32_t ic = getOtherVert(ib, pInFace->size, pVertsRemoved);
-			float height;
-			float len;
+			I32 ib = getOtherVert(i, pInFace->size, pVertsRemoved);
+			I32 ic = getOtherVert(ib, pInFace->size, pVertsRemoved);
+			F32 height;
+			F32 len;
 			if (useStuc) {
 				V2_F32 *pStuc = pVerts;
 				V2_F32 verta = pStuc[pInFace->start + i];
@@ -296,7 +296,7 @@ FaceTriangulated stucTriangulateFace(StucAlloc alloc, FaceRange *pInFace, void *
 		                  outMesh.cornerCount);
 		addTriEdgeToTable(&alloc, pInFace->size, pEdgeTable, ear[2], ear[0],
 		                  outMesh.cornerCount);
-		for (int32_t i = 0; i < 3; ++i) {
+		for (I32 i = 0; i < 3; ++i) {
 			outMesh.pCorners[outMesh.cornerCount] = ear[i];
 			outMesh.cornerCount++;
 		}
@@ -309,7 +309,7 @@ FaceTriangulated stucTriangulateFace(StucAlloc alloc, FaceRange *pInFace, void *
 	//spin
 
 	//free tri edge table
-	for (int32_t i = 0; i < pInFace->size; ++i) {
+	for (I32 i = 0; i < pInFace->size; ++i) {
 		TriEdge* pEntry = pEdgeTable[i].pNext;
 		while (pEntry) {
 			TriEdge *pNext = pEntry->pNext;
@@ -322,8 +322,8 @@ FaceTriangulated stucTriangulateFace(StucAlloc alloc, FaceRange *pInFace, void *
 }
 
 //Caller must check for nan in return value
-V3_F32 stucGetBarycentricInFace(V2_F32 *pTriStuc, int8_t *pTriCorners,
-                                int32_t cornerCount, V2_F32 vert) {
+V3_F32 stucGetBarycentricInFace(V2_F32 *pTriStuc, I8 *pTriCorners,
+                                I32 cornerCount, V2_F32 vert) {
 	STUC_ASSERT("", pTriStuc && v2IsFinite(*pTriStuc) && v2IsFinite(vert));
 	STUC_ASSERT("", cornerCount >= 3 && pTriCorners);
 	V3_F32 vertBc = cartesianToBarycentric(pTriStuc, &vert);
@@ -346,7 +346,7 @@ V3_F32 stucGetBarycentricInFace(V2_F32 *pTriStuc, int8_t *pTriCorners,
 		pTriCorners[1] = 3;
 	}
 	else {
-		for (int32_t k = 0; k < 3; ++k) {
+		for (I32 k = 0; k < 3; ++k) {
 			pTriCorners[k] = k;
 		}
 	}
@@ -354,22 +354,22 @@ V3_F32 stucGetBarycentricInFace(V2_F32 *pTriStuc, int8_t *pTriCorners,
 }
 
 typedef struct {
-	int32_t face;
-	int32_t corner;
+	I32 face;
+	I32 corner;
 } AdjEntry;
 
 typedef struct {
 	AdjEntry* pArr;
-	int32_t count;
-	int32_t size;
+	I32 count;
+	I32 size;
 } AdjBucket;
 
 static
 Result buildCornerAdjTable(StucAlloc *pAlloc, Mesh* pMesh, AdjBucket *pAdjTable) {
 	Result err = STUC_SUCCESS;
-	for (int32_t i = 0; i < pMesh->core.faceCount; ++i) {
+	for (I32 i = 0; i < pMesh->core.faceCount; ++i) {
 		FaceRange face = stucGetFaceRange(&pMesh->core, i, false);
-		for (int32_t j = 0; j < face.size; ++j) {
+		for (I32 j = 0; j < face.size; ++j) {
 			AdjBucket* pBucket = pAdjTable + pMesh->core.pCorners[face.start + j];
 			STUC_ASSERT("", pBucket->count <= pBucket->size);
 			if (!pBucket->pArr) {
@@ -396,18 +396,18 @@ Result buildCornerAdjTable(StucAlloc *pAlloc, Mesh* pMesh, AdjBucket *pAdjTable)
 }
 
 static
-void findEdgesForFace(Mesh* pMesh, AdjBucket* pAdjTable, int32_t idx) {
+void findEdgesForFace(Mesh* pMesh, AdjBucket* pAdjTable, I32 idx) {
 	FaceRange face = stucGetFaceRange(&pMesh->core, idx, false);
-	for (int32_t j = 0; j < face.size; ++j) {
+	for (I32 j = 0; j < face.size; ++j) {
 		if (pMesh->core.pEdges[face.start + j] >= 0) {
 			continue; //Already set
 		}
-		int32_t edge = pMesh->core.edgeCount;
+		I32 edge = pMesh->core.edgeCount;
 		pMesh->core.edgeCount++;
 		AdjBucket* pBucket = pAdjTable + pMesh->core.pCorners[face.start + j];
 		STUC_ASSERT("", pBucket->count > 0 &&
 			pBucket->size >= pBucket->count);
-		for (int32_t k = 0; k < pBucket->count; ++k) {
+		for (I32 k = 0; k < pBucket->count; ++k) {
 			AdjEntry* pEntry = pBucket->pArr + k;
 			if (pEntry->face == idx) {
 				STUC_ASSERT("Invalid mesh, 2 corners in this face share 1 vert",
@@ -415,8 +415,8 @@ void findEdgesForFace(Mesh* pMesh, AdjBucket* pAdjTable, int32_t idx) {
 				continue;
 			}
 			FaceRange otherFace = stucGetFaceRange(&pMesh->core, pEntry->face, false);
-			int32_t nextCorner = (j + 1) % face.size;
-			int32_t otherPrevCorner = pEntry->corner ?
+			I32 nextCorner = (j + 1) % face.size;
+			I32 otherPrevCorner = pEntry->corner ?
 				pEntry->corner - 1 : otherFace.size - 1;
 			if (pMesh->core.pEdges[otherFace.start + otherPrevCorner] >= 0) {
 				continue; //Already set
@@ -434,7 +434,7 @@ void findEdgesForFace(Mesh* pMesh, AdjBucket* pAdjTable, int32_t idx) {
 
 static
 void findEdges(Mesh* pMesh, AdjBucket* pAdjTable) {
-	for (int32_t i = 0; i < pMesh->core.faceCount; ++i) {
+	for (I32 i = 0; i < pMesh->core.faceCount; ++i) {
 		findEdgesForFace(pMesh, pAdjTable, i);
 	}
 }
@@ -448,19 +448,19 @@ void stucBuildEdgeList(StucContext pContext, Mesh* pMesh) {
 	buildCornerAdjTable(pAlloc, pMesh, pAdjTable);
 
 	STUC_ASSERT("", pMesh->core.cornerCount);
-	int32_t dataSize = sizeof(int32_t) * pMesh->core.cornerCount;
+	I32 dataSize = sizeof(I32) * pMesh->core.cornerCount;
 	pMesh->core.pEdges = pAlloc->pMalloc(dataSize);
 	memset(pMesh->core.pEdges, -1, dataSize);
 	findEdges(pMesh, pAdjTable);
 
-	for (int32_t i = 0; i < pMesh->core.vertCount; ++i) {
+	for (I32 i = 0; i < pMesh->core.vertCount; ++i) {
 		pAlloc->pFree(pAdjTable[i].pArr);
 	}
 	pAlloc->pFree(pAdjTable);
 }
 
 bool stucIsMeshInvalid(Mesh* pMesh) {
-	for (int32_t i = 0; i < pMesh->core.faceCount; ++i) {
+	for (I32 i = 0; i < pMesh->core.faceCount; ++i) {
 		FaceRange face = stucGetFaceRange(&pMesh->core, i, false);
 		if (face.size < 3) {
 			return true;
@@ -475,9 +475,9 @@ void stucProgressBarClear() {
 	printf("\x1b[2K");
 }
 
-void stucProgressBarPrint(StucContext pContext, int32_t progress) {
+void stucProgressBarPrint(StucContext pContext, I32 progress) {
 	printf("	");
-	for (int32_t i = 0u; i < pContext->stageReport.outOf; ++i) {
+	for (I32 i = 0u; i < pContext->stageReport.outOf; ++i) {
 		char character;
 		if (i < progress) {
 			character = '#';
@@ -493,7 +493,7 @@ void stucStageBegin(void *pContext, StucStageReport *pReport, const char* pName)
 	return;
 	setStageName(pContext, pName);
 }
-void stucStageProgress(void *pContext, StucStageReport *pReport, int32_t progress) {
+void stucStageProgress(void *pContext, StucStageReport *pReport, I32 progress) {
 	return;
 	if (progress) {
 		progressBarClear();
@@ -507,7 +507,7 @@ void stucStageEnd(void *pContext, StucStageReport *pReport) {
 	progressBarClear();
 }
 
-void stucStageBeginWrap(StucContext pContext, const char* pName, int32_t max) {
+void stucStageBeginWrap(StucContext pContext, const char* pName, I32 max) {
 	pContext->stageReport.pBegin(pContext, &pContext->stageReport, pName);
 	//Only needed if using default stage report functions,
 	//it's just used for the progress bar
@@ -515,12 +515,12 @@ void stucStageBeginWrap(StucContext pContext, const char* pName, int32_t max) {
 		1 : max / pContext->stageReport.outOf;
 }
 
-void stucStageProgressWrap(StucContext pContext, int32_t progress) {
+void stucStageProgressWrap(StucContext pContext, I32 progress) {
 	if (pContext->stageInterval != 1 && progress % pContext->stageInterval) {
 		return;
 	}
 	//Normalize progress within stageReport.outOf
-	int32_t normProgress = progress / pContext->stageInterval;
+	I32 normProgress = progress / pContext->stageInterval;
 	pContext->stageReport.pProgress(pContext, &pContext->stageReport, normProgress);
 }
 
@@ -532,17 +532,17 @@ void stucSetStageName(StucContext pContext, const char* pName) {
 	strncpy(pContext->stageReport.stage, pName, STUC_STAGE_NAME_LEN);
 }
 
-Mat3x3 stucBuildFaceTbn(FaceRange face, Mesh *pMesh, int32_t *pCornerOveride) {
-	int32_t corner = pCornerOveride ? face.start + pCornerOveride[1] : face.start;
-	int32_t vertIdx = pMesh->core.pCorners[corner];
+Mat3x3 stucBuildFaceTbn(FaceRange face, Mesh *pMesh, I32 *pCornerOveride) {
+	I32 corner = pCornerOveride ? face.start + pCornerOveride[1] : face.start;
+	I32 vertIdx = pMesh->core.pCorners[corner];
 	V2_F32 uv = pMesh->pUvs[corner];
 	V3_F32 vert = pMesh->pVerts[vertIdx];
-	int32_t next = pCornerOveride ? face.start + pCornerOveride[2] : face.start + 1;
-	int32_t vertIdxNext = pMesh->core.pCorners[next];
+	I32 next = pCornerOveride ? face.start + pCornerOveride[2] : face.start + 1;
+	I32 vertIdxNext = pMesh->core.pCorners[next];
 	V2_F32 uvNext = pMesh->pUvs[next];
 	V3_F32 vertNext = pMesh->pVerts[vertIdxNext];
-	int32_t prev = pCornerOveride ? face.start + pCornerOveride[0] : face.end - 1;
-	int32_t vertIdxPrev = pMesh->core.pCorners[prev];
+	I32 prev = pCornerOveride ? face.start + pCornerOveride[0] : face.end - 1;
+	I32 vertIdxPrev = pMesh->core.pCorners[prev];
 	V2_F32 uvPrev = pMesh->pUvs[prev];
 	V3_F32 vertPrev = pMesh->pVerts[vertIdxPrev];
 	//uv space direction vectors,
@@ -567,12 +567,12 @@ Mat3x3 stucBuildFaceTbn(FaceRange face, Mesh *pMesh, int32_t *pCornerOveride) {
 	return tbn;
 }
 
-void stucGetTriScale(int32_t size, BaseTriVerts *pTri) {
-	for (int32_t i = 0; i < size; ++i) {
-		int32_t iLast = i == 0 ? size - 1 : i - 1;
-		int32_t iNext = (i + 1) % size;
-		float uvArea = v2TriArea(pTri->uv[iLast], pTri->uv[i], pTri->uv[iNext]);
-		float xyzArea = v3TriArea(pTri->xyz[iLast], pTri->xyz[i], pTri->xyz[iNext]);
+void stucGetTriScale(I32 size, BaseTriVerts *pTri) {
+	for (I32 i = 0; i < size; ++i) {
+		I32 iLast = i == 0 ? size - 1 : i - 1;
+		I32 iNext = (i + 1) % size;
+		F32 uvArea = v2TriArea(pTri->uv[iLast], pTri->uv[i], pTri->uv[iNext]);
+		F32 xyzArea = v3TriArea(pTri->xyz[iLast], pTri->xyz[i], pTri->xyz[iNext]);
 		pTri->scale[i] = xyzArea / uvArea;
 	}
 }
@@ -581,15 +581,15 @@ void stucGetTriScale(int32_t size, BaseTriVerts *pTri) {
 //a and b are v3, while and d are v2.
 //cd is also taken as a param, while ab is calced
 bool stucCalcIntersection(V3_F32 a, V3_F32 b, V2_F32 c, V2_F32 cd,
-                          V3_F32 *pPoint, float *pt, float *pt2) {
+                          V3_F32 *pPoint, F32 *pt, F32 *pt2) {
 	V3_F32 ab = _(b V3SUB a);
 	V2_F32 ac = _(c V2SUB *(V2_F32 *)&a);
-	float det2 = _(*(V2_F32 *)&ab V2DET cd);
+	F32 det2 = _(*(V2_F32 *)&ab V2DET cd);
 	if (det2 == .0f) {
 		return false;
 	}
 	STUC_ASSERT("", det2 != .0f);
-	float t = _(ac V2DET cd) / det2;
+	F32 t = _(ac V2DET cd) / det2;
 	if (pPoint) {
 		*pPoint = _(a V3ADD _(ab V3MULS t));
 	}
@@ -608,11 +608,11 @@ bool stucCalcIntersection(V3_F32 a, V3_F32 b, V2_F32 c, V2_F32 cd,
 }
 
 //does not bounds check
-int32_t stucIdxBitArray(UBitField8 *pArr, int32_t idx, int32_t len) {
+I32 stucIdxBitArray(UBitField8 *pArr, I32 idx, I32 len) {
 	idx *= len;
-	int32_t byte = idx / 8;
-	int32_t bit = idx % 8;
-	int32_t mask = (0x1 << len) - 1;
+	I32 byte = idx / 8;
+	I32 bit = idx % 8;
+	I32 mask = (0x1 << len) - 1;
 	if (bit + len > 8) {
 		//bit spans byte boundary
 		return *(UBitField16 *)&pArr[byte] >> bit & mask;
@@ -624,11 +624,11 @@ int32_t stucIdxBitArray(UBitField8 *pArr, int32_t idx, int32_t len) {
 
 //does not bounds check.
 //Also, if value is 0, only 1 bit will be set, len is ignored
-void stucSetBitArr(UBitField8 *pArr, int32_t idx, int32_t value, int32_t len) {
+void stucSetBitArr(UBitField8 *pArr, I32 idx, I32 value, I32 len) {
 	STUC_ASSERT("", (value & (0x1 << len) - 1) == value);
 	idx *= len;
-	int32_t byte = idx / 8;
-	int32_t bit = idx % 8;
+	I32 byte = idx / 8;
+	I32 bit = idx % 8;
 	if (value) {
 		if (bit + len > 8) {
 			//cast to 16 bit as value spans across byte boundary
@@ -644,17 +644,17 @@ void stucSetBitArr(UBitField8 *pArr, int32_t idx, int32_t value, int32_t len) {
 	}
 }
 
-void stucInsertionSort(int32_t *pIdxTable, int32_t count, int32_t *pSort) {
+void stucInsertionSort(I32 *pIdxTable, I32 count, I32 *pSort) {
 	//insertion sort
-	int32_t a = pSort[0];
-	int32_t b = pSort[1];
-	int32_t order = a < b;
+	I32 a = pSort[0];
+	I32 b = pSort[1];
+	I32 order = a < b;
 	pIdxTable[0] = !order;
 	pIdxTable[1] = order;
-	int32_t bufSize = 2;
-	for (int32_t i = bufSize; i < count; ++i) {
+	I32 bufSize = 2;
+	for (I32 i = bufSize; i < count; ++i) {
 		bool insert;
-		int32_t j;
+		I32 j;
 		for (j = bufSize - 1; j >= 0; --j) {
 			insert = pSort[i] < pSort[pIdxTable[j]] &&
 				pSort[i] > pSort[pIdxTable[j - 1]];
@@ -667,7 +667,7 @@ void stucInsertionSort(int32_t *pIdxTable, int32_t count, int32_t *pSort) {
 			pIdxTable[bufSize] = i;
 		}
 		else {
-			for (int32_t m = bufSize; m > j; --m) {
+			for (I32 m = bufSize; m > j; --m) {
 				pIdxTable[m] = pIdxTable[m - 1];
 				STUC_ASSERT("", m <= bufSize && m > j);
 			}
@@ -678,17 +678,17 @@ void stucInsertionSort(int32_t *pIdxTable, int32_t count, int32_t *pSort) {
 	}
 }
 
-void stucFInsertionSort(int32_t *pIdxTable, int32_t count, float *pSort) {
+void stucFInsertionSort(I32 *pIdxTable, I32 count, F32 *pSort) {
 	//insertion sort
-	float a = pSort[0];
-	float b = pSort[1];
-	int32_t order = a < b;
+	F32 a = pSort[0];
+	F32 b = pSort[1];
+	I32 order = a < b;
 	pIdxTable[0] = !order;
 	pIdxTable[1] = order;
-	int32_t bufSize = 2;
-	for (int32_t i = bufSize; i < count; ++i) {
+	I32 bufSize = 2;
+	for (I32 i = bufSize; i < count; ++i) {
 		bool insert;
-		int32_t j;
+		I32 j;
 		for (j = bufSize - 1; j >= 0; --j) {
 			insert = pSort[i] < pSort[pIdxTable[j]] &&
 			         pSort[i] > pSort[pIdxTable[j - 1]];
@@ -701,7 +701,7 @@ void stucFInsertionSort(int32_t *pIdxTable, int32_t count, float *pSort) {
 			pIdxTable[bufSize] = i;
 		}
 		else {
-			for (int32_t m = bufSize; m > j; --m) {
+			for (I32 m = bufSize; m > j; --m) {
 				pIdxTable[m] = pIdxTable[m - 1];
 				STUC_ASSERT("", m <= bufSize && m > j);
 			}
@@ -713,7 +713,7 @@ void stucFInsertionSort(int32_t *pIdxTable, int32_t count, float *pSort) {
 }
 
 Mat3x3 stucGetInterpolatedTbn(Mesh *pMesh, FaceRange *pFace,
-                              int8_t *pTriCorners, V3_F32 bc) {
+                              I8 *pTriCorners, V3_F32 bc) {
 	//TODO replace interpolation in this func with the attrib
 	//     interpolation funcions or macros
 	V3_F32 *pNormals = pMesh->pNormals;
@@ -727,7 +727,7 @@ Mat3x3 stucGetInterpolatedTbn(Mesh *pMesh, FaceRange *pFace,
 	_(&tangent V3ADDEQL _(pTangents[pFace->start + pTriCorners[2]] V3MULS bc.d[2]));
 	_(&tangent V3DIVEQLS bc.d[0] + bc.d[1] + bc.d[2]);
 	//TODO should this be interpolated? Or are such edge cases invalid?
-	float tSign = pMesh->pTSigns[pFace->start + pTriCorners[0]];
+	F32 tSign = pMesh->pTSigns[pFace->start + pTriCorners[0]];
 	V3_F32 bitangent = _(_(normal V3CROSS tangent) V3MULS tSign);
 	Mat3x3 tbn = {0};
 	*(V3_F32 *)&tbn.d[0] = tangent;
@@ -737,8 +737,8 @@ Mat3x3 stucGetInterpolatedTbn(Mesh *pMesh, FaceRange *pFace,
 }
 
 static
-bool isMarkedSkip(int32_t *pSkip, int32_t skipCount, int32_t idx) {
-	for (int32_t i = 0; i < skipCount; ++i) {
+bool isMarkedSkip(I32 *pSkip, I32 skipCount, I32 idx) {
+	for (I32 i = 0; i < skipCount; ++i) {
 		if (idx == pSkip[i]) {
 			return true;
 		}
@@ -747,24 +747,24 @@ bool isMarkedSkip(int32_t *pSkip, int32_t skipCount, int32_t idx) {
 }
 
 //0 for clockwise, returns 1 for counterclockwise, & 2 if degenerate
-int32_t stucCalcFaceOrientation(Mesh *pMesh, FaceRange *pFace, bool useStuc) {
+I32 stucCalcFaceOrientation(Mesh *pMesh, FaceRange *pFace, bool useStuc) {
 	STUC_ASSERT("", pFace->start >= 0 && pFace->size >= 3);
-	int32_t skip[16] = {0};
-	int32_t skipCount = 0;
+	I32 skip[16] = {0};
+	I32 skipCount = 0;
 	do {
-		int32_t lowestCorner = 0;
+		I32 lowestCorner = 0;
 		V2_F32 lowestCoord = { FLT_MAX, FLT_MAX };
-		for (int32_t i = 0; i < pFace->size; ++i) {
+		for (I32 i = 0; i < pFace->size; ++i) {
 			if (isMarkedSkip(skip, skipCount, i)) {
 				continue;
 			}
-			int32_t corner = pFace->start + i;
+			I32 corner = pFace->start + i;
 			V2_F32 pos;
 			if (useStuc) {
 				pos = pMesh->pUvs[corner];
 			}
 			else {
-				int32_t vert = pMesh->core.pCorners[corner];
+				I32 vert = pMesh->core.pCorners[corner];
 				pos = *(V2_F32 *)&pMesh->pVerts[vert];
 			}
 			if (pos.d[0] > lowestCoord.d[0]) {
@@ -777,8 +777,8 @@ int32_t stucCalcFaceOrientation(Mesh *pMesh, FaceRange *pFace, bool useStuc) {
 			lowestCorner = i;
 			lowestCoord = pos;
 		}
-		int32_t prev = lowestCorner == 0 ? pFace->size - 1 : lowestCorner - 1;
-		int32_t next = (lowestCorner + 1) % pFace->size;
+		I32 prev = lowestCorner == 0 ? pFace->size - 1 : lowestCorner - 1;
+		I32 next = (lowestCorner + 1) % pFace->size;
 		V2_F32 a;
 		V2_F32 b;
 		V2_F32 c;
@@ -788,16 +788,16 @@ int32_t stucCalcFaceOrientation(Mesh *pMesh, FaceRange *pFace, bool useStuc) {
 			c = pMesh->pUvs[pFace->start + next];
 		}
 		else {
-			int32_t vertPrev = pMesh->core.pCorners[pFace->start + prev];
-			int32_t vert = pMesh->core.pCorners[pFace->start + lowestCorner];
-			int32_t vertNext = pMesh->core.pCorners[pFace->start + next];
+			I32 vertPrev = pMesh->core.pCorners[pFace->start + prev];
+			I32 vert = pMesh->core.pCorners[pFace->start + lowestCorner];
+			I32 vertNext = pMesh->core.pCorners[pFace->start + next];
 			a = *(V2_F32 *)&pMesh->pVerts[vertPrev];
 			b = *(V2_F32 *)&pMesh->pVerts[vert];
 			c = *(V2_F32 *)&pMesh->pVerts[vertNext];
 		}
 		//alt formula for determinate,
 		//shorter and less likely to cause numerical error
-		float det = (b.d[0] - a.d[0]) * (c.d[1] - a.d[1]) -
+		F32 det = (b.d[0] - a.d[0]) * (c.d[1] - a.d[1]) -
 		            (c.d[0] - a.d[0]) * (b.d[1] - a.d[1]);
 		if (det) {
 			return det > .0f;
@@ -810,7 +810,7 @@ int32_t stucCalcFaceOrientation(Mesh *pMesh, FaceRange *pFace, bool useStuc) {
 	return 2;
 }
 
-int32_t stucGetBorderFaceMemType(int32_t mapFaceSize, int32_t bufFaceSize) {
+I32 stucGetBorderFaceMemType(I32 mapFaceSize, I32 bufFaceSize) {
 	STUC_ASSERT("", bufFaceSize >= 0);
 	if (bufFaceSize <= 14 && mapFaceSize <= 8) {
 		return 0;
@@ -825,7 +825,7 @@ int32_t stucGetBorderFaceMemType(int32_t mapFaceSize, int32_t bufFaceSize) {
 	return 0;
 }
 
-int32_t stucGetBorderFaceSize(int32_t memType) {
+I32 stucGetBorderFaceSize(I32 memType) {
 	STUC_ASSERT("", memType >= 0 && memType <= 3);
 	switch (memType) {
 	case 0:
