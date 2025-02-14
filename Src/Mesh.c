@@ -105,7 +105,7 @@ BufMeshIdx getNewBufMeshIdx(const StucAlloc *pAlloc, BufMesh *pMesh,
 }
 
 static
-void getFaceDomain(Mesh *pMesh, MeshDomain *pDomain) {
+void getFaceDomain(const Mesh *pMesh, MeshDomain *pDomain) {
 	pDomain->pBufSize = &pMesh->faceBufSize;
 	pDomain->ppList[0] = &pMesh->core.pFaces;
 	pDomain->pCount = &pMesh->core.faceCount;
@@ -113,7 +113,7 @@ void getFaceDomain(Mesh *pMesh, MeshDomain *pDomain) {
 }
 
 static
-void getCornerDomain(Mesh *pMesh, MeshDomain *pDomain) {
+void getCornerDomain(const Mesh *pMesh, MeshDomain *pDomain) {
 	pDomain->pBufSize = &pMesh->cornerBufSize;
 	pDomain->ppList[0] = &pMesh->core.pCorners;
 	pDomain->ppList[1] = &pMesh->core.pEdges;
@@ -122,7 +122,7 @@ void getCornerDomain(Mesh *pMesh, MeshDomain *pDomain) {
 }
 
 static
-void getEdgeDomain(Mesh *pMesh, MeshDomain *pDomain) {
+void getEdgeDomain(const Mesh *pMesh, MeshDomain *pDomain) {
 	pDomain->pBufSize = &pMesh->edgeBufSize;
 	pDomain->ppList[0] = NULL;
 	pDomain->pCount = &pMesh->core.edgeCount;
@@ -130,7 +130,7 @@ void getEdgeDomain(Mesh *pMesh, MeshDomain *pDomain) {
 }
 
 static
-void getVertDomain(Mesh *pMesh, MeshDomain *pDomain) {
+void getVertDomain(const Mesh *pMesh, MeshDomain *pDomain) {
 	pDomain->pBufSize = &pMesh->vertBufSize;
 	pDomain->ppList[0] = NULL;
 	pDomain->pCount = &pMesh->core.vertCount;
@@ -152,7 +152,7 @@ void reallocMesh(const StucAlloc *pAlloc, Mesh *pMesh, MeshDomain *pDomain) {
 
 static
 I32 getNewMeshIdx(const StucAlloc *pAlloc,
-                      Mesh *pMesh, MeshDomain *pDomain, bool *pRealloced) {
+                  Mesh *pMesh, MeshDomain *pDomain, bool *pRealloced) {
 	STUC_ASSERT("", *pDomain->pCount >= 0 && *pDomain->pBufSize > 0);
 	STUC_ASSERT("", *pDomain->pCount <= *pDomain->pBufSize);
 	if (*pDomain->pCount == *pDomain->pBufSize) {
@@ -321,7 +321,7 @@ bool stucCheckIfMesh(StucObjectData type) {
 }
 
 static
-void bulkCopyAttribs(AttribArray *pSrc, I32 SrcOffset,
+void bulkCopyAttribs(const AttribArray *pSrc, I32 SrcOffset,
                      AttribArray *pDest, I32 dataLen) {
 	for (I32 i = 0; i < pDest->count; ++i) {
 		Attrib *pSrcAttrib = stucGetAttribIntern(pDest->pArr[i].core.name, pSrc);
@@ -335,7 +335,7 @@ void bulkCopyAttribs(AttribArray *pSrc, I32 SrcOffset,
 }
 
 void stucAddToMeshCounts(StucContext pContext, MeshCounts *pCounts,
-                         MeshCounts *pBoundsCounts, Mesh *pMeshSrc) {
+                         MeshCounts *pBoundsCounts, const Mesh *pMeshSrc) {
 	//TODO maybe replace *Counts vars in Mesh to use MeshCounts,
 	//     so we can just do:
 	//     meshCountsAdd(totalCount, pBufMesh->mesh.meshCounts);
@@ -353,7 +353,7 @@ void stucAddToMeshCounts(StucContext pContext, MeshCounts *pCounts,
 	}
 }
 
-void stucCopyMesh(StucMesh *pDestMesh, StucMesh *pSrcMesh) {
+void stucCopyMesh(StucMesh *pDestMesh, const StucMesh *pSrcMesh) {
 	printf("pSrcMesh->type.type			%d\n", pSrcMesh->type.type);
 	printf("pSrcMesh->faceCount			%d\n", pSrcMesh->faceCount);
 	printf("pSrcMesh->cornerCount		%d\n", pSrcMesh->cornerCount);
@@ -417,7 +417,7 @@ void stucApplyObjTransform(StucObject *pObj) {
 }
 
 void stucMergeObjArr(StucContext pContext, Mesh *pMesh,
-                     I32 objCount, StucObject *pObjArr, bool setCommon) {
+                     I32 objCount, const StucObject *pObjArr, bool setCommon) {
 	Mesh **ppSrcs = pContext->alloc.pCalloc(objCount, sizeof(void *));
 	MeshCounts totalCount = {0};
 	for (I32 i = 0; i < objCount; ++i) {
