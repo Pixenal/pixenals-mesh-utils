@@ -48,7 +48,7 @@ void setDefaultStageReport(StucContext pContext) {
 
 StucResult stucContextInit(StucContext *pContext, StucAlloc *pAlloc,
                            StucThreadPool *pThreadPool, StucIo *pIo,
-					       StucTypeDefaultConfig *pTypeDefaultConfig,
+                           StucTypeDefaultConfig *pTypeDefaultConfig,
                            StucStageReport *pStageReport) {
 	StucAlloc alloc;
 	if (pAlloc) {
@@ -125,8 +125,8 @@ StucResult stucMapFileLoad(StucContext pContext, StucMap *pMapHandle,
 	int32_t flatCutoffCount = 0;
 	StucObject *pFlatCutoffArr = NULL;
 	err = stucLoadStucFile(pContext, filePath, &objCount, &pObjArr,
-	                          &pMap->usgArr.count, &pUsgArr, &flatCutoffCount,
-	                          &pFlatCutoffArr, false, &pMap->indexedAttribs);
+	                       &pMap->usgArr.count, &pUsgArr, &flatCutoffCount,
+	                       &pFlatCutoffArr, false, &pMap->indexedAttribs);
 	//TODO validate meshes, ensure pMatIdx is within mat range, faces are within max corner limit,
 	//float values are valid, etc.
 	STUC_THROW_IF(err, true, "failed to load file from disk", 0);
@@ -218,9 +218,9 @@ void initCommonAttrib(StucContext pContext, StucCommonAttrib *pEntry,
 
 static
 void getCommonAttribs(StucContext pContext, AttribArray *pMapAttribs,
-					  AttribArray *pMeshAttribs,
-					  int32_t *pCommonAttribCount,
-					  StucCommonAttrib **ppCommonAttribs) {
+                      AttribArray *pMeshAttribs,
+                      int32_t *pCommonAttribCount,
+                      StucCommonAttrib **ppCommonAttribs) {
 	//TODO ignore special attribs like StucTangent or StucTSign
 	if (!pMeshAttribs || !pMapAttribs) {
 		return;
@@ -257,20 +257,20 @@ void getCommonAttribs(StucContext pContext, AttribArray *pMapAttribs,
 StucResult stucQueryCommonAttribs(StucContext pContext, StucMap pMap, StucMesh *pMesh,
                             StucCommonAttribList *pCommonAttribs) {
 	getCommonAttribs(pContext, &pMap->mesh.core.meshAttribs, &pMesh->meshAttribs,
-					 &pCommonAttribs->meshCount, &pCommonAttribs->pMesh);
+	                 &pCommonAttribs->meshCount, &pCommonAttribs->pMesh);
 	getCommonAttribs(pContext, &pMap->mesh.core.faceAttribs, &pMesh->faceAttribs,
-					 &pCommonAttribs->faceCount, &pCommonAttribs->pFace);
+	                 &pCommonAttribs->faceCount, &pCommonAttribs->pFace);
 	getCommonAttribs(pContext, &pMap->mesh.core.cornerAttribs, &pMesh->cornerAttribs,
-					 &pCommonAttribs->cornerCount, &pCommonAttribs->pCorner);
+	                 &pCommonAttribs->cornerCount, &pCommonAttribs->pCorner);
 	getCommonAttribs(pContext, &pMap->mesh.core.edgeAttribs, &pMesh->edgeAttribs,
 	                 &pCommonAttribs->edgeCount, &pCommonAttribs->pEdge);
 	getCommonAttribs(pContext, &pMap->mesh.core.vertAttribs, &pMesh->vertAttribs,
-					 &pCommonAttribs->vertCount, &pCommonAttribs->pVert);
+	                 &pCommonAttribs->vertCount, &pCommonAttribs->pVert);
 	return STUC_SUCCESS;
 }
 
 StucResult stucDestroyCommonAttribs(StucContext pContext,
-                              StucCommonAttribList *pCommonAttribs) {
+                                    StucCommonAttribList *pCommonAttribs) {
 	if (pCommonAttribs->pMesh) {
 		pContext->alloc.pFree(pCommonAttribs->pMesh);
 	}
@@ -302,7 +302,7 @@ void sendOffJobs(StucContext pContext, StucMap pMap, int32_t *pJobCount,
 	int32_t facesPerThread = pMesh->core.faceCount / *pJobCount;
 	bool singleThread = !facesPerThread;
 	*pJobCount = singleThread ? 1 : *pJobCount;
-	void *jobArgPtrs[MAX_THREADS];
+	void *jobArgPtrs[MAX_THREADS] = {0};
 	int32_t borderTableSize = pMap->mesh.core.faceCount / 5 + 2; //+ 2 incase is 0
 	*ppJobArgs = pContext->alloc.pCalloc(*pJobCount, sizeof(SendOffArgs));
 	printf("fromjobsendoff: BorderTableSize: %d\n", borderTableSize);
@@ -353,11 +353,10 @@ typedef struct {
 static
 void addVertToTableEntry(Mesh *pMesh, FaceRange face, int32_t localCorner,
                          int32_t vert, int32_t edge, EdgeVerts *pEdgeVerts,
-						 int8_t *pVertSeamTable, int8_t *pInVertTable,
-						 EdgeCache *pEdgeCache, bool *pEdgeSeamTable) {
+                         int8_t *pVertSeamTable, int8_t *pInVertTable,
+                         EdgeCache *pEdgeCache, bool *pEdgeSeamTable) {
 	//isSeam returns 2 if mesh border, and 1 if uv seam
-	int32_t isSeam = checkIfEdgeIsSeam(edge, face, localCorner, pMesh,
-									   pEdgeVerts);
+	int32_t isSeam = checkIfEdgeIsSeam(edge, face, localCorner, pMesh, pEdgeVerts);
 	if (isSeam) {
 		pVertSeamTable[vert] = isSeam;
 		pEdgeSeamTable[edge] = true;
@@ -375,8 +374,8 @@ void addVertToTableEntry(Mesh *pMesh, FaceRange face, int32_t localCorner,
 
 static
 void buildVertTables(StucContext pContext, Mesh *pMesh,
-					 int8_t **ppInVertTable, int8_t **ppVertSeamTable,
-					 EdgeVerts *pEdgeVerts, bool **ppEdgeSeamTable) {
+                     int8_t **ppInVertTable, int8_t **ppVertSeamTable,
+                     EdgeVerts *pEdgeVerts, bool **ppEdgeSeamTable) {
 	*ppInVertTable = pContext->alloc.pCalloc(pMesh->core.vertCount, 1);
 	*ppVertSeamTable = pContext->alloc.pCalloc(pMesh->core.vertCount, 1);
 	*ppEdgeSeamTable = pContext->alloc.pCalloc(pMesh->core.edgeCount, 1);
@@ -473,8 +472,8 @@ Result mapToMeshInternal(StucContext pContext, StucMap pMap, Mesh *pMeshIn,
 	CLOCK_START;
 	Mesh meshOutWrap = {0};
 	err = stucCombineJobMeshes(pContext, pMap, &meshOutWrap, pJobArgs, pEdgeVerts,
-	                          pVertSeamTable, pEdgeSeamTable, ppInFaceTable, wScale,
-	                          pMeshIn, jobCount);
+	                           pVertSeamTable, pEdgeSeamTable, ppInFaceTable, wScale,
+	                           pMeshIn, jobCount);
 	CLOCK_STOP("Combine time");
 	CLOCK_START;
 	reallocMeshToFit(&pContext->alloc, &meshOutWrap);
@@ -490,6 +489,28 @@ Result mapToMeshInternal(StucContext pContext, StucMap pMap, Mesh *pMeshIn,
 }
 
 static
+void addEntryToInFaceTable(StucAlloc *pAlloc, UsgInFace **ppHashTable, StucMap pMap,
+                           InFaceArr *pInFaceTable, int32_t squareIdx, int32_t inFaceIdx) {
+	uint32_t sum = pInFaceTable[squareIdx].usg + pInFaceTable[squareIdx].pArr[inFaceIdx];
+	int32_t hash = stucFnvHash((uint8_t *)&sum, 4, pMap->usgArr.tableSize);
+	UsgInFace *pEntry = *ppHashTable + hash;
+	if (!pEntry->pEntry) {
+		pEntry->pEntry = pInFaceTable + squareIdx;
+		pEntry->face = pInFaceTable[squareIdx].pArr[inFaceIdx];
+		return;
+	}
+	do {
+		if (!pEntry->pNext) {
+			pEntry = pEntry->pNext = pAlloc->pCalloc(1, sizeof(UsgInFace));
+			pEntry->pEntry = pInFaceTable + squareIdx;
+			pEntry->face = pInFaceTable[squareIdx].pArr[inFaceIdx];
+			break;
+		}
+		pEntry = pEntry->pNext;
+	} while(true);
+}
+
+static
 void InFaceTableToHashTable(StucAlloc *pAlloc,
                             StucMap pMap, int32_t count, InFaceArr *pInFaceTable) {
 	UsgInFace **ppHashTable = &pMap->usgArr.pInFaceTable;
@@ -497,23 +518,7 @@ void InFaceTableToHashTable(StucAlloc *pAlloc,
 	*ppHashTable = pAlloc->pCalloc(pMap->usgArr.tableSize, sizeof(UsgInFace));
 	for (int32_t i = 0; i < count; ++i) {
 		for (int32_t j = 0; j < pInFaceTable[i].count; ++j) {
-			uint32_t sum = pInFaceTable[i].usg + pInFaceTable[i].pArr[j];
-			int32_t hash = stucFnvHash((uint8_t *)&sum, 4, pMap->usgArr.tableSize);
-			UsgInFace *pEntry = *ppHashTable + hash;
-			if (!pEntry->pEntry) {
-				pEntry->pEntry = pInFaceTable + i;
-				pEntry->face = pInFaceTable[i].pArr[j];
-				continue;
-			}
-			do {
-				if (!pEntry->pNext) {
-					pEntry = pEntry->pNext = pAlloc->pCalloc(1, sizeof(UsgInFace));
-					pEntry->pEntry = pInFaceTable + i;
-					pEntry->face = pInFaceTable[i].pArr[j];
-					break;
-				}
-				pEntry = pEntry->pNext;
-			} while(true);
+			addEntryToInFaceTable(pAlloc, ppHashTable, pMap, pInFaceTable, i, j);
 		}
 	}
 }
@@ -525,8 +530,8 @@ Result getMatsToAdd(StucContext pContext, StucMapArr *pMapArr, int32_t mapIdx,
 	AttribIndexedArr *pMapAttribArr = &pMapArr->ppArr[mapIdx]->indexedAttribs;
 	CommonAttribList *pMapCommon = pCommonAttribs + mapIdx;
 	char *pAttribName = pContext->spAttribs[STUC_ATTRIB_SP_MAT_IDX];
-	CommonAttrib *pCommonAttrib = getCommonAttrib(pMapCommon->pFace, pMapCommon->faceCount,
-	                                              pAttribName);
+	CommonAttrib *pCommonAttrib =
+		getCommonAttrib(pMapCommon->pFace, pMapCommon->faceCount, pAttribName);
 	BlendConfig *pConfig = {0};
 	if (pCommonAttrib) {
 		pConfig = &pCommonAttrib->blendConfig;
@@ -559,7 +564,7 @@ void appendToOutMatsBuf(StucAlloc *pAlloc, Mesh *pMesh,
 		reallocAttrib(pAlloc, pMesh, &pOutMats->core, pOutMats->size);
 	}
 	memcpy(attribAsStr(&pOutMats->core, pOutMats->count), pMatName,
-			STUC_ATTRIB_STRING_MAX_LEN);
+	       STUC_ATTRIB_STRING_MAX_LEN);
 	pOutMats->count++;
 }
 
@@ -577,6 +582,34 @@ void appendToOutMats(AttribIndexed *pOutMats, char *pOutMatBuf,
 	memcpy(pDest, pSrc, STUC_ATTRIB_STRING_MAX_LEN);
 	pEntry->idx = pOutMats->count;
 	pOutMats->count++;
+}
+
+static
+Result iterFacesAndCorrectMats(StucAlloc *pAlloc, int32_t i, Mesh *pMesh,
+                               AttribIndexed *pOutMats, MatTableEntry **ppMatTable,
+                               AttribIndexed *pMatsToAdd) {
+	Result err = STUC_SUCCESS;
+	for (int32_t j = 0; j < pMesh->core.faceCount; ++j) {
+		int32_t matIdx = pMesh->pMatIdx[j];
+		STUC_THROW_IF(err, matIdx >= 0 && matIdx < pMatsToAdd->count, "", 0);
+		MatTableEntry *pEntry = ppMatTable[i] + matIdx;
+		if (!pEntry->hasRef) {
+			pEntry->hasRef = true;
+			//We're just through material slots, so linear search should be fine for now
+			char *pMatName = attribAsStr(&pMatsToAdd->core, matIdx);
+			int32_t idx = stucGetStrIdxInIndexedAttrib(pOutMats, pMatName);
+			if (idx >= 0) {
+				pEntry->idx = idx;
+			}
+			else {
+				pEntry->idx = pOutMats->count;
+				appendToOutMatsBuf(pAlloc, pMesh, pOutMats, pMatName);
+			}
+		}
+		pMesh->pMatIdx[j] = pEntry->idx;
+	}
+	STUC_CATCH(0, err, ;);
+	return err;
 }
 
 static
@@ -610,31 +643,7 @@ Result correctMatIndices(StucContext pContext, Mesh *pMeshArr, StucMapArr *pMapA
 		STUC_THROW_IF(err, true, "", 0);
 		ppMatTable[i] = pAlloc->pCalloc(pMatsToAdd->count, sizeof(MatTableEntry));
 
-		for (int32_t j = 0; j < pMesh->core.faceCount; ++j) {
-			int32_t matIdx = pMesh->pMatIdx[j];
-			STUC_THROW_IF(err, matIdx >= 0 && matIdx < pMatsToAdd->count, "", 0);
-			MatTableEntry *pEntry = ppMatTable[i] + matIdx;
-			if (!pEntry->hasRef) {
-				pEntry->hasRef = true;
-				//We're just through material slots, so linear search should be fine for now
-				char *pMatName = attribAsStr(&pMatsToAdd->core, matIdx);
-				int32_t idx = -1;
-				for (int32_t k = 0; k < pOutMats->count; ++k) {
-					if (!strncmp(attribAsStr(&pOutMats->core, k), pMatName, STUC_ATTRIB_STRING_MAX_LEN)) {
-						idx = k;
-						break;
-					}
-				}
-				if (idx >= 0) {
-					pEntry->idx = idx;
-				}
-				else {
-					pEntry->idx = pOutMats->count;
-					appendToOutMatsBuf(pAlloc, pMesh, pOutMats, pMatName);
-				}
-			}
-			pMesh->pMatIdx[j] = pEntry->idx;
-		}
+		iterFacesAndCorrectMats(pAlloc, i, pMesh, pOutMats, ppMatTable, pMatsToAdd);
 		STUC_CATCH(0, err, ;)
 		pAlloc->pFree(ppMatTable[i]);
 		ppMatTable[i] = NULL;
@@ -750,7 +759,7 @@ Result stucMapToMesh(StucContext pContext, StucMapArr *pMapArr,
 		err = mapToMeshInternal(pContext, pMap, &meshInWrap, &pOutBufArr[i].core, matIdx,
 		                        pCommonAttribList + i, NULL, wScale);
 		STUC_THROW_IF(err, true, "map to mesh failed", 0);
-		STUC_CATCH(0, err, stucMeshDestroy(pContext, pOutBufArr + i);)
+		STUC_CATCH(0, err, stucMeshDestroy(pContext, &pOutBufArr[i].core);)
 		if (pMap->usgArr.count) {
 			pContext->alloc.pFree(pMap->usgArr.pInFaceTable);
 			pMap->usgArr.pInFaceTable = NULL;
@@ -874,9 +883,11 @@ typedef struct {
 	V2_F32 zBounds;
 } RenderArgs;
 
-static void testPixelAgainstFace(RenderArgs *pVars, V2_F32 *pPos, FaceRange *pFace, Color *pColor) {
+static
+void testPixelAgainstFace(RenderArgs *pVars, V2_F32 *pPos, FaceRange *pFace,
+                          Color *pColor) {
 	Mesh* pMesh = &pVars->pMap->mesh;
-	V2_F32 verts[4];
+	V2_F32 verts[4] = {0};
 	for (int32_t i = 0; i < pFace->size; ++i) {
 		verts[i] = *(V2_F32 *)(pMesh->pVerts + pMesh->core.pCorners[pFace->start + i]);
 	}
@@ -886,7 +897,7 @@ static void testPixelAgainstFace(RenderArgs *pVars, V2_F32 *pPos, FaceRange *pFa
 		!v3IsFinite(bc)) {
 		return;
 	}
-	V3_F32 vertsXyz[3];
+	V3_F32 vertsXyz[3] = {0};
 	for (int32_t i = 0; i < 3; ++i) {
 		int32_t vertIdx = pMesh->core.pCorners[pFace->start + triCorners[i]];
 		vertsXyz[i] = pMesh->pVerts[vertIdx];
@@ -919,7 +930,56 @@ static void testPixelAgainstFace(RenderArgs *pVars, V2_F32 *pPos, FaceRange *pFa
 	pColor->d[3] = wsPos.d[2];
 }
 
-static void stucRenderJob(void *pArgs) {
+static
+void testPixelAgainstCellFaces(RenderArgs *pVars, Mesh *pMesh, Cell *pLeaf,
+                               int32_t j, FaceCells *pFaceCells, V2_F32 *pPos,
+                               Color *pColor) {
+	int32_t cellIdx = pFaceCells->pCells[j];
+	Cell *pCell = pVars->pMap->quadTree.cellTable.pArr + cellIdx;
+	int32_t* pCellFaces;
+	Range cellFaceRange = {0};
+	if (pFaceCells->pCellType[j]) {
+		pCellFaces = pCell->pEdgeFaces;
+		cellFaceRange = pLeaf->pLinkEdgeRanges[j];
+	}
+	else if (pFaceCells->pCellType[j] != 1) {
+		pCellFaces = pCell->pFaces;
+		cellFaceRange.start = 0;
+		cellFaceRange.end = pCell->faceSize;
+	}
+	else {
+		return;
+	}
+	for (int32_t k = cellFaceRange.start; k < cellFaceRange.end; ++k) {
+		FaceRange face = {0};
+		face.idx = pCellFaces[k];
+		face.start = pMesh->core.pFaces[face.idx];
+		face.end = pMesh->core.pFaces[face.idx + 1];
+		face.size = face.end - face.start;
+		FaceTriangulated faceTris = {0};
+		if (face.size > 4) {
+			faceTris = triangulateFace(pVars->pContext->alloc, &face, pMesh->pVerts,
+			                           pMesh->core.pCorners, 0);
+			for (int32_t l = 0; l < faceTris.triCount; ++l) {
+				FaceRange tri = {0};
+				tri.idx = face.idx;
+				tri.start = l * 3;
+				tri.end = tri.start + 3;
+				tri.size = tri.end - tri.start;
+				tri.start += face.start;
+				tri.end += face.start;
+				testPixelAgainstFace(pVars, pPos, &tri, pColor);
+			}
+		}
+		else {
+			testPixelAgainstFace(pVars, pPos, &face, pColor);
+		}
+	}
+}
+
+static
+Result stucRenderJob(void *pArgs) {
+	Result err = STUC_SUCCESS;
 	RenderArgs vars = *(RenderArgs *)pArgs;
 	int32_t dataLen = vars.pixelCount * getPixelSize(vars.imageBuf.type);
 	vars.imageBuf.pData = vars.pContext->alloc.pMalloc(dataLen);
@@ -933,7 +993,7 @@ static void stucRenderJob(void *pArgs) {
 	for (int32_t i = 0; i < vars.pixelCount; ++i) {
 		int32_t iOffset = vars.bufOffset + i;
 		V2_F32 idx = {iOffset % vars.imageBuf.res,
-		                iOffset / vars.imageBuf.res};
+		              iOffset / vars.imageBuf.res};
 		V2_F32 pos = {pixelScale * idx.d[0] + pixelHalfScale,
 		              pixelScale * idx.d[1] + pixelHalfScale};
 		Color color = { 0 };
@@ -944,48 +1004,7 @@ static void stucRenderJob(void *pArgs) {
 		int32_t leafIdx = faceCells.pCells[faceCells.cellSize - 1];
 		Cell *pLeaf = vars.pMap->quadTree.cellTable.pArr + leafIdx;
 		for (int32_t j = 0; j < faceCells.cellSize; ++j) {
-			int32_t cellIdx = faceCells.pCells[j];
-			Cell *pCell = vars.pMap->quadTree.cellTable.pArr + cellIdx;
-			int32_t* pCellFaces;
-			Range cellFaceRange = {0};
-			if (faceCells.pCellType[j]) {
-				pCellFaces = pCell->pEdgeFaces;
-				cellFaceRange = pLeaf->pLinkEdgeRanges[j];
-			}
-			else if (faceCells.pCellType[j] != 1) {
-				pCellFaces = pCell->pFaces;
-				cellFaceRange.start = 0;
-				cellFaceRange.end = pCell->faceSize;
-			}
-			else {
-				continue;
-			}
-			for (int32_t k = cellFaceRange.start; k < cellFaceRange.end; ++k) {
-				FaceRange face = {0};
-				face.idx = pCellFaces[k];
-				face.start = pMesh->core.pFaces[face.idx];
-				face.end = pMesh->core.pFaces[face.idx + 1];
-				face.size = face.end - face.start;
-				FaceTriangulated faceTris = {0};
-				if (face.size > 4) {
-					faceTris = triangulateFace(vars.pContext->alloc, face,
-					                           pMesh->pVerts,
-					                           pMesh->core.pCorners, 0);
-					for (int32_t l = 0; l < faceTris.triCount; ++l) {
-						FaceRange tri = {0};
-						tri.idx = face.idx;
-						tri.start = l * 3;
-						tri.end = tri.start + 3;
-						tri.size = tri.end - tri.start;
-						tri.start += face.start;
-						tri.end += face.start;
-						testPixelAgainstFace(&vars, &pos, &tri, &color);
-					}
-				}
-				else {
-					testPixelAgainstFace(&vars, &pos, &face, &color);
-				}
-			}
+			testPixelAgainstCellFaces(&vars, pMesh, pLeaf, j, &faceCells, &pos, &color);
 		}
 		color.d[3] = color.d[3] != FLT_MAX * -1.0f;
 		setPixelColor(&vars.imageBuf, i, &color);
@@ -996,6 +1015,7 @@ static void stucRenderJob(void *pArgs) {
 	pThreadPool->pMutexLock(vars.pContext->pThreadPoolHandle, vars.pMutex);
 	--*vars.pActiveJobs;
 	pThreadPool->pMutexUnlock(vars.pContext->pThreadPoolHandle, vars.pMutex);
+	return err;
 }
 
 static
@@ -1022,8 +1042,8 @@ StucResult stucMapFileGenPreviewImage(StucContext pContext, StucMap pMap, StucIm
 	void *pMutex = NULL;
 	pContext->threadPool.pMutexGet(pContext->pThreadPoolHandle, &pMutex);
 	int32_t activeJobs = 0;
-	void *jobArgPtrs[MAX_THREADS];
-	RenderArgs args[MAX_THREADS];
+	void *jobArgPtrs[MAX_THREADS] = {0};
+	RenderArgs args[MAX_THREADS] = {0};
 	activeJobs = singleThread ? 1 : pContext->threadCount;
 	for (int32_t i = 0; i < activeJobs; ++i) {
 		args[i].bufOffset = i * pixelsPerJob;
@@ -1040,8 +1060,8 @@ StucResult stucMapFileGenPreviewImage(StucContext pContext, StucMap pMap, StucIm
 		jobArgPtrs[i] = args + i;
 	}
 	void **ppJobHandles = pContext->alloc.pCalloc(activeJobs, sizeof(void *));
-	pContext->threadPool.pJobStackPushJobs(pContext->pThreadPoolHandle, &ppJobHandles,
-	                                       activeJobs, stucRenderJob, jobArgPtrs);
+	pContext->threadPool.pJobStackPushJobs(pContext->pThreadPoolHandle, activeJobs,
+	                                       ppJobHandles, stucRenderJob, jobArgPtrs);
 	stucWaitForJobsIntern(pContext->pThreadPoolHandle, activeJobs, ppJobHandles, true, NULL);
 	err = stucJobGetErrs(pContext, activeJobs, &ppJobHandles);
 	err = stucJobDestroyHandles(pContext, activeJobs, &ppJobHandles);
@@ -1073,8 +1093,7 @@ Result stucWaitForJobs(StucContext pContext, int32_t count, void **ppHandles,
 	                                         ppHandles, wait, pDone);
 }
 
-Result stucJobGetErrs(StucContext pContext, int32_t jobCount,
-                                  void ***pppJobHandles) {
+Result stucJobGetErrs(StucContext pContext, int32_t jobCount, void ***pppJobHandles) {
 	Result err = STUC_SUCCESS;
 	STUC_THROW_IF(err, pContext && pppJobHandles, "", 0);
 	STUC_THROW_IF(err, jobCount > 0, "", 0);

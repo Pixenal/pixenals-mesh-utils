@@ -41,7 +41,7 @@ uint32_t stucFnvHash(uint8_t *value, int32_t valueSize, uint32_t size);
 bool checkIfEdgeIsPreserve(Mesh* pMesh, int32_t edge);
 bool checkIfVertIsPreserve(Mesh* pMesh, int32_t vert);
 int32_t checkIfEdgeIsReceive(Mesh* pMesh, int32_t edge);
-FaceTriangulated triangulateFace(StucAlloc alloc, FaceRange baseFace, void *pVerts,
+FaceTriangulated triangulateFace(StucAlloc alloc, FaceRange *pInFace, void *pVerts,
                                  int32_t *pCorners, int32_t useStuc);
 V3_F32 getBarycentricInFace(V2_F32 *pTriStuc, int8_t *pTriCorners,
                             int32_t cornerCount, V2_F32 vert);

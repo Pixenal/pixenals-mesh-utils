@@ -80,13 +80,13 @@ typedef struct {
 
 void createMesh(StucContext pContext, StucObject *pObj, StucObjectType type);
 BufMeshIdx bufMeshAddFace(const StucAlloc *pAlloc, BufMesh *pMesh, bool border,
-                            DebugAndPerfVars *pDpVars, bool *pRealloced);
+                          DebugAndPerfVars *pDpVars, bool *pRealloced);
 BufMeshIdx bufMeshAddCorner(const StucAlloc *pAlloc, BufMesh *pMesh, bool border,
                             DebugAndPerfVars *pDpVars, bool *pRealloced);
 BufMeshIdx bufMeshAddEdge(const StucAlloc *pAlloc, BufMesh *pMesh, bool border,
-                            DebugAndPerfVars *pDpVars, bool *pRealloced);
+                          DebugAndPerfVars *pDpVars, bool *pRealloced);
 BufMeshIdx bufMeshAddVert(const StucAlloc *pAlloc, BufMesh *pMesh, bool border,
-                            DebugAndPerfVars *pDpVars, bool *pRealloced);
+                          DebugAndPerfVars *pDpVars, bool *pRealloced);
 BufMeshIdx convertBorderFaceIdx(const BufMesh *pMesh, int32_t face);
 BufMeshIdx convertBorderCornerIdx(const BufMesh *pMesh, int32_t corner);
 BufMeshIdx convertBorderEdgeIdx(const BufMesh *pMesh, int32_t edge);

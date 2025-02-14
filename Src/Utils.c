@@ -15,7 +15,8 @@ int32_t checkFaceIsInBounds(V2_F32 min, V2_F32 max, FaceRange face, Mesh *pMesh)
 	STUC_ASSERT("", pMesh && pMesh->pVerts && pMesh->core.pCorners);
 	STUC_ASSERT("", face.size >= 3 && face.start >= 0 && face.end >= 0 && face.idx >= 0);
 	STUC_ASSERT("", v2IsFinite(min) && v2IsFinite(max));
-	V2_F32 faceMin, faceMax;
+	V2_F32 faceMin = {0};
+	V2_F32 faceMax = {0};
 	faceMin.d[0] = faceMin.d[1] = FLT_MAX;
 	faceMax.d[0] = faceMax.d[1] = 0;
 	for (int32_t i = 0; i < face.size; ++i) {
@@ -37,13 +38,13 @@ int32_t checkFaceIsInBounds(V2_F32 min, V2_F32 max, FaceRange face, Mesh *pMesh)
 	}
 	//Faces can be flat (they may be facing sideways in a map for instance)
 	STUC_ASSERT("", _(faceMax V2GREATEQL faceMin));
-	V2_I32 inside;
+	V2_I32 inside = {0};
 	inside.d[0] = (faceMin.d[0] >= min.d[0] && faceMin.d[0] < max.d[0]) ||
-	           (faceMax.d[0] >= min.d[0] && faceMax.d[0] < max.d[0]) ||
-			   (faceMin.d[0] < min.d[0] && faceMax.d[0] >= max.d[0]);
+	              (faceMax.d[0] >= min.d[0] && faceMax.d[0] < max.d[0]) ||
+	              (faceMin.d[0] < min.d[0] && faceMax.d[0] >= max.d[0]);
 	inside.d[1] = (faceMin.d[1] >= min.d[1] && faceMin.d[1] < max.d[1]) ||
-	           (faceMax.d[1] >= min.d[1] && faceMax.d[1] < max.d[1]) ||
-			   (faceMin.d[1] < min.d[1] && faceMax.d[1] >= max.d[1]);
+	              (faceMax.d[1] >= min.d[1] && faceMax.d[1] < max.d[1]) ||
+	              (faceMin.d[1] < min.d[1] && faceMax.d[1] >= max.d[1]);
 	return inside.d[0] && inside.d[1];
 }
 
@@ -81,6 +82,7 @@ void getFaceBounds(FaceBounds *pBounds, V2_F32 *pStuc, FaceRange face) {
 	STUC_ASSERT("", _(pBounds->fMax V2GREATEQL pBounds->fMin));
 }
 
+static
 void getFaceBoundsVert(FaceBounds* pBounds, V3_F32* pVerts, FaceRange face) {
 	STUC_ASSERT("", pBounds && v2IsFinite(pBounds->fMin) && v2IsFinite(pBounds->fMax));
 	STUC_ASSERT("", pVerts && v3IsFinite(*pVerts));
@@ -219,46 +221,46 @@ void addTriEdgeToTable(StucAlloc *pAlloc, int32_t tableSize, TriEdge *pEdgeTable
 
 //This gives really long tris, where short tris are possible.
 //Re-add search to find short tris, and prefer those.
-FaceTriangulated triangulateFace(StucAlloc alloc, FaceRange baseFace, void *pVerts,
+FaceTriangulated triangulateFace(StucAlloc alloc, FaceRange *pInFace, void *pVerts,
                                  int32_t *pCorners, int32_t useStuc) {
 	FaceTriangulated outMesh = {0};
-	outMesh.triCount = baseFace.size - 2;
+	outMesh.triCount = pInFace->size - 2;
 	int32_t cornerCount = outMesh.triCount * 3;
 	outMesh.pCorners = alloc.pMalloc(sizeof(int32_t) * cornerCount);
-	TriEdge *pEdgeTable = alloc.pCalloc(baseFace.size, sizeof(TriEdge));
-	int8_t *pVertsRemoved = alloc.pCalloc(baseFace.size, 1);
-	int32_t cornersLeft = baseFace.size;
+	TriEdge *pEdgeTable = alloc.pCalloc(pInFace->size, sizeof(TriEdge));
+	int8_t *pVertsRemoved = alloc.pCalloc(pInFace->size, 1);
+	int32_t cornersLeft = pInFace->size;
 	int32_t start = 0;
-	int32_t end = baseFace.size;
+	int32_t end = pInFace->size;
 	do {
 		int32_t ear[3] = {0};
 		bool earIsValid = false;
 		int32_t earFallback[3] = {0};
 		bool fallback = false;
 		float shortestLen = FLT_MAX;
-		for (int32_t i = 0; i < baseFace.size; ++i) {
-			//i %= baseFace.size;
+		for (int32_t i = 0; i < pInFace->size; ++i) {
+			//i %= pInFace->size;
 			if (pVertsRemoved[i]) {
 				continue;
 			}
-			int32_t ib = getOtherVert(i, baseFace.size, pVertsRemoved);
-			int32_t ic = getOtherVert(ib, baseFace.size, pVertsRemoved);
+			int32_t ib = getOtherVert(i, pInFace->size, pVertsRemoved);
+			int32_t ic = getOtherVert(ib, pInFace->size, pVertsRemoved);
 			float height;
 			float len;
 			if (useStuc) {
 				V2_F32 *pStuc = pVerts;
-				V2_F32 verta = pStuc[baseFace.start + i];
-				V2_F32 vertb = pStuc[baseFace.start + ib];
-				V2_F32 vertc = pStuc[baseFace.start + ic];
+				V2_F32 verta = pStuc[pInFace->start + i];
+				V2_F32 vertb = pStuc[pInFace->start + ib];
+				V2_F32 vertc = pStuc[pInFace->start + ic];
 				height = v2TriHeight(verta, vertb, vertc);
 				V2_F32 ac = _(vertc V2SUB verta);
 				len = v2Len(ac);
 			}
 			else {
 				V3_F32 *pVertsCast = pVerts;
-				V3_F32 verta = pVertsCast[pCorners[baseFace.start + i]];
-				V3_F32 vertb = pVertsCast[pCorners[baseFace.start + ib]];
-				V3_F32 vertc = pVertsCast[pCorners[baseFace.start + ic]];
+				V3_F32 verta = pVertsCast[pCorners[pInFace->start + i]];
+				V3_F32 vertb = pVertsCast[pCorners[pInFace->start + ib]];
+				V3_F32 vertc = pVertsCast[pCorners[pInFace->start + ic]];
 				height = v3TriHeight(verta, vertb, vertc);
 				V3_F32 ac = _(vertc V3SUB verta);
 				len = v3Len(ac);
@@ -287,11 +289,11 @@ FaceTriangulated triangulateFace(StucAlloc alloc, FaceRange baseFace, void *pVer
 			ear[1] = earFallback[1];
 			ear[2] = earFallback[2];
 		}
-		addTriEdgeToTable(&alloc, baseFace.size, pEdgeTable, ear[0], ear[1],
+		addTriEdgeToTable(&alloc, pInFace->size, pEdgeTable, ear[0], ear[1],
 		                  outMesh.cornerCount);
-		addTriEdgeToTable(&alloc, baseFace.size, pEdgeTable, ear[1], ear[2],
+		addTriEdgeToTable(&alloc, pInFace->size, pEdgeTable, ear[1], ear[2],
 		                  outMesh.cornerCount);
-		addTriEdgeToTable(&alloc, baseFace.size, pEdgeTable, ear[2], ear[0],
+		addTriEdgeToTable(&alloc, pInFace->size, pEdgeTable, ear[2], ear[0],
 		                  outMesh.cornerCount);
 		for (int32_t i = 0; i < 3; ++i) {
 			outMesh.pCorners[outMesh.cornerCount] = ear[i];
@@ -306,7 +308,7 @@ FaceTriangulated triangulateFace(StucAlloc alloc, FaceRange baseFace, void *pVer
 	//spin
 
 	//free tri edge table
-	for (int32_t i = 0; i < baseFace.size; ++i) {
+	for (int32_t i = 0; i < pInFace->size; ++i) {
 		TriEdge* pEntry = pEdgeTable[i].pNext;
 		while (pEntry) {
 			TriEdge *pNext = pEntry->pNext;
@@ -317,8 +319,6 @@ FaceTriangulated triangulateFace(StucAlloc alloc, FaceRange baseFace, void *pVer
 	alloc.pFree(pEdgeTable);
 	return outMesh;
 }
-
-
 
 //Caller must check for nan in return value
 V3_F32 getBarycentricInFace(V2_F32 *pTriStuc, int8_t *pTriCorners,
@@ -364,8 +364,8 @@ typedef struct {
 } AdjBucket;
 
 static
-void buildCornerAdjTable(StucAlloc *pAlloc,
-                       Mesh* pMesh, AdjBucket *pAdjTable) {
+Result buildCornerAdjTable(StucAlloc *pAlloc, Mesh* pMesh, AdjBucket *pAdjTable) {
+	Result err = STUC_SUCCESS;
 	for (int32_t i = 0; i < pMesh->core.faceCount; ++i) {
 		FaceRange face = getFaceRange(&pMesh->core, i, false);
 		for (int32_t j = 0; j < face.size; ++j) {
@@ -377,54 +377,64 @@ void buildCornerAdjTable(StucAlloc *pAlloc,
 					pAlloc->pMalloc(sizeof(AdjEntry) * pBucket->size);
 			}
 			else if (pBucket->count == pBucket->size) {
+				STUC_THROW_IF(err, pBucket->pArr, "tried to realloc null arr", 0);
 				pBucket->size *= 2;
-				pBucket->pArr =
-					pAlloc->pRealloc(pBucket->pArr, sizeof(AdjEntry) *
-						pBucket->size);
+				pBucket->pArr = pAlloc->pRealloc(pBucket->pArr, sizeof(AdjEntry) *
+				                                 pBucket->size);
+			}
+			else {
+				STUC_THROW(err, "", 0);
 			}
 			pBucket->pArr[pBucket->count].face = i;
 			pBucket->pArr[pBucket->count].corner = j;
 			pBucket->count++;
 		}
 	}
+	STUC_CATCH(0, err, ;);
+	return err;
+}
+
+static
+void findEdgesForFace(Mesh* pMesh, AdjBucket* pAdjTable, int32_t idx) {
+	FaceRange face = getFaceRange(&pMesh->core, idx, false);
+	for (int32_t j = 0; j < face.size; ++j) {
+		if (pMesh->core.pEdges[face.start + j] >= 0) {
+			continue; //Already set
+		}
+		int32_t edge = pMesh->core.edgeCount;
+		pMesh->core.edgeCount++;
+		AdjBucket* pBucket = pAdjTable + pMesh->core.pCorners[face.start + j];
+		STUC_ASSERT("", pBucket->count > 0 &&
+			pBucket->size >= pBucket->count);
+		for (int32_t k = 0; k < pBucket->count; ++k) {
+			AdjEntry* pEntry = pBucket->pArr + k;
+			if (pEntry->face == idx) {
+				STUC_ASSERT("Invalid mesh, 2 corners in this face share 1 vert",
+					pEntry->corner == j);
+				continue;
+			}
+			FaceRange otherFace = getFaceRange(&pMesh->core, pEntry->face, false);
+			int32_t nextCorner = (j + 1) % face.size;
+			int32_t otherPrevCorner = pEntry->corner ?
+				pEntry->corner - 1 : otherFace.size - 1;
+			if (pMesh->core.pEdges[otherFace.start + otherPrevCorner] >= 0) {
+				continue; //Already set
+			}
+			if (pMesh->core.pCorners[face.start + nextCorner] !=
+				pMesh->core.pCorners[otherFace.start + otherPrevCorner]) {
+				continue; //Not connected
+			}
+			pMesh->core.pEdges[otherFace.start + otherPrevCorner] = edge;
+			break;
+		}
+		pMesh->core.pEdges[face.start + j] = edge;
+	}
 }
 
 static
 void findEdges(Mesh* pMesh, AdjBucket* pAdjTable) {
 	for (int32_t i = 0; i < pMesh->core.faceCount; ++i) {
-		FaceRange face = getFaceRange(&pMesh->core, i, false);
-		for (int32_t j = 0; j < face.size; ++j) {
-			if (pMesh->core.pEdges[face.start + j] >= 0) {
-				continue; //Already set
-			}
-			int32_t edge = pMesh->core.edgeCount;
-			pMesh->core.edgeCount++;
-			AdjBucket* pBucket = pAdjTable + pMesh->core.pCorners[face.start + j];
-			STUC_ASSERT("", pBucket->count > 0 &&
-				pBucket->size >= pBucket->count);
-			for (int32_t k = 0; k < pBucket->count; ++k) {
-				AdjEntry* pEntry = pBucket->pArr + k;
-				if (pEntry->face == i) {
-					STUC_ASSERT("Invalid mesh, 2 corners in this face share 1 vert",
-						pEntry->corner == j);
-					continue;
-				}
-				FaceRange otherFace = getFaceRange(&pMesh->core, pEntry->face, false);
-				int32_t nextCorner = (j + 1) % face.size;
-				int32_t otherPrevCorner = pEntry->corner ?
-					pEntry->corner - 1 : otherFace.size - 1;
-				if (pMesh->core.pEdges[otherFace.start + otherPrevCorner] >= 0) {
-					continue; //Already set
-				}
-				if (pMesh->core.pCorners[face.start + nextCorner] !=
-					pMesh->core.pCorners[otherFace.start + otherPrevCorner]) {
-					continue; //Not connected
-				}
-				pMesh->core.pEdges[otherFace.start + otherPrevCorner] = edge;
-				break;
-			}
-			pMesh->core.pEdges[face.start + j] = edge;
-		}
+		findEdgesForFace(pMesh, pAdjTable, i);
 	}
 }
 
@@ -536,19 +546,19 @@ Mat3x3 buildFaceTbn(FaceRange face, Mesh *pMesh, int32_t *pCornerOveride) {
 	V3_F32 vertPrev = pMesh->pVerts[vertIdxPrev];
 	//uv space direction vectors,
 	//forming the coefficient matrix
-	Mat2x2 coeffMat;
+	Mat2x2 coeffMat = {0};
 	*(V2_F32 *)&coeffMat.d[0] = _(uvNext V2SUB uv);
 	*(V2_F32 *)&coeffMat.d[1] = _(uvPrev V2SUB uv);
 	//object space direction vectors,
 	//forming the variable matrix
-	Mat2x3 varMat;
+	Mat2x3 varMat = {0};
 	V3_F32 osDirA = _(vertNext V3SUB vert);
 	V3_F32 osDirB = _(vertPrev V3SUB vert);
 	*(V3_F32 *)&varMat.d[0] = osDirA;
 	*(V3_F32 *)&varMat.d[1] = osDirB;
 	Mat2x2 coeffMatInv = mat2x2Invert(coeffMat);
 	Mat2x3 tb = mat2x2MultiplyMat2x3(coeffMatInv, varMat);
-	Mat3x3 tbn;
+	Mat3x3 tbn = {0};
 	*(V3_F32 *)&tbn.d[0] = v3Normalize(*(V3_F32 *)&tb.d[0]);
 	*(V3_F32 *)&tbn.d[1] = v3Normalize(*(V3_F32 *)&tb.d[1]);
 	V3_F32 normal = _(osDirA V3CROSS osDirB);
@@ -718,7 +728,7 @@ Mat3x3 getInterpolatedTbn(Mesh *pMesh, FaceRange *pFace,
 	//TODO should this be interpolated? Or are such edge cases invalid?
 	float tSign = pMesh->pTSigns[pFace->start + pTriCorners[0]];
 	V3_F32 bitangent = _(_(normal V3CROSS tangent) V3MULS tSign);
-	Mat3x3 tbn;
+	Mat3x3 tbn = {0};
 	*(V3_F32 *)&tbn.d[0] = tangent;
 	*(V3_F32 *)&tbn.d[1] = bitangent;
 	*(V3_F32 *)&tbn.d[2] = normal;
