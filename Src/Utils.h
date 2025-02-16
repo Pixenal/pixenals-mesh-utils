@@ -93,4 +93,5 @@ Mat3x3 stucGetInterpolatedTbn(
 I32 stucCalcFaceOrientation(const Mesh *pMesh, const FaceRange *pFace, bool useStuc);
 I32 stucGetBorderFaceMemType(I32 mapFaceSize, I32 bufFaceSize);
 I32 stucGetBorderFaceSize(I32 memType);
+Result stucAllocBorderFace(I32 memType, BorderTableAlloc *pHandles, void **ppOut);
 void stucGetBorderFaceBitArrs(BorderFace *pEntry, BorderFaceBitArrs *pArrs);

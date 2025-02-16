@@ -867,6 +867,29 @@ I32 stucGetBorderFaceSize(I32 memType) {
 	return 0;
 }
 
+Result stucAllocBorderFace(I32 memType, BorderTableAlloc *pHandles, void **ppOut) {
+	Result err = STUC_SUCCESS;
+	void *pHandle = NULL;
+	switch (memType) {
+		case 0:
+			pHandle = pHandles->pSmall;
+			break;
+		case 1:
+			pHandle = pHandles->pMid;
+			break;
+		case 2:
+			pHandle = pHandles->pLarge;
+			break;
+		default:
+			STUC_THROW(err, "invalid memtype", 0);
+			break;
+	}
+	err = stucLinAlloc(pHandle, ppOut, 1);
+	STUC_THROW_IF(err, true, "error allocating border face entry", 0);
+	STUC_CATCH(0, err, ;);
+	return err;
+}
+
 void stucGetBorderFaceBitArrs(BorderFace *pEntry, BorderFaceBitArrs *pArrs) {
 	switch (pEntry->memType) {
 		case 0: {

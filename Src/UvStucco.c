@@ -569,6 +569,17 @@ Result mapToMeshInternal(
 	}
 	CLOCK_START;
 	err = stucCombineJobMeshes(&basic, pJobArgs, jobCount);
+	for (I32 i = 0; i < jobCount; ++i) {
+		if (pJobArgs[i].borderTableAlloc.pSmall) {
+			stucLinAllocDestroy(pJobArgs[i].borderTableAlloc.pSmall);
+		}
+		if (pJobArgs[i].borderTableAlloc.pMid) {
+			stucLinAllocDestroy(pJobArgs[i].borderTableAlloc.pMid);
+		}
+		if (pJobArgs[i].borderTableAlloc.pLarge) {
+			stucLinAllocDestroy(pJobArgs[i].borderTableAlloc.pLarge);
+		}
+	}
 	CLOCK_STOP("Combine time");
 	CLOCK_START;
 	stucReallocMeshToFit(&pCtx->alloc, &basic.outMesh);
