@@ -58,8 +58,7 @@ V3_F32 stucGetBarycentricInFace(
 	I32 cornerCount,
 	V2_F32 vert
 );
-void stucBuildEdgeList(StucContext pCtx, Mesh *pMesh);
-bool stucIsMeshInvalid(const Mesh *pMesh);
+StucResult stucBuildEdgeList(StucContext pCtx, Mesh *pMesh);
 void stucProgressBarClear();
 void stucProgressBarPrint(StucContext pCtx, I32 progress);
 void stucStageBegin(void *pCtx, StucStageReport *pReport, const char *pName);
@@ -95,3 +94,4 @@ I32 stucGetBorderFaceMemType(I32 mapFaceSize, I32 bufFaceSize);
 I32 stucGetBorderFaceSize(I32 memType);
 Result stucAllocBorderFace(I32 memType, BorderTableAlloc *pHandles, void **ppOut);
 void stucGetBorderFaceBitArrs(BorderFace *pEntry, BorderFaceBitArrs *pArrs);
+void stucBorderTableDestroyAlloc(BorderTableAlloc *pTableAlloc);

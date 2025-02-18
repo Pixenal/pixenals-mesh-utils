@@ -4,7 +4,6 @@
 #include <mikktspace.h>
 
 #include <Error.h>
-#include <Clock.h>
 #include <AttribUtils.h>
 #include <Mesh.h>
 #include <Context.h>
@@ -95,11 +94,7 @@ BufMeshIdx getNewBufMeshIdx(
 	//TODO assertions like these need to be converted to release exceptions
 	STUC_ASSERT("", *pDomain->pCount <= realBorderEnd);
 	if (*pDomain->pCount == realBorderEnd) {
-		CLOCK_INIT;
-		CLOCK_START;
 		reallocBufMesh(pAlloc, pMesh, pBufDomain);
-		CLOCK_STOP_NO_PRINT;
-		pDbVars->reallocTime += CLOCK_TIME_DIFF(start, stop);
 		*pRealloced = true;
 	}
 	else {
@@ -399,17 +394,14 @@ void stucAddToMeshCounts(
 	}
 }
 
-void stucCopyMesh(StucMesh *pDestMesh, const StucMesh *pSrcMesh) {
-	printf("pSrcMesh->type.type			%d\n", pSrcMesh->type.type);
-	printf("pSrcMesh->faceCount			%d\n", pSrcMesh->faceCount);
-	printf("pSrcMesh->cornerCount		%d\n", pSrcMesh->cornerCount);
-	printf("pSrcMesh->vertCount			%d\n", pSrcMesh->vertCount);
-	printf("pSrcMesh->pFaces			%p\n", pSrcMesh->pFaces);
+Result stucCopyMesh(StucMesh *pDestMesh, const StucMesh *pSrcMesh) {
+	Result err = STUC_SUCCESS;
 	if (pSrcMesh->type.type == STUC_OBJECT_DATA_NULL) {
-		return;
+		//TODO why doesn't this return STUC_ERROR?
+		return err;
 	}
-	STUC_ASSERT("", stucCheckIfMesh(pDestMesh->type));
-	STUC_ASSERT("", stucCheckIfMesh(pSrcMesh->type));
+	STUC_RETURN_ERR_IFNOT_COND(err, stucCheckIfMesh(pDestMesh->type), "");
+	STUC_RETURN_ERR_IFNOT_COND(err, stucCheckIfMesh(pSrcMesh->type), "");
 	I32 faceBase = pDestMesh->faceCount;
 	I32 cornerBase = pDestMesh->cornerCount;
 	I32 edgeBase = pDestMesh->edgeCount;
@@ -457,6 +449,7 @@ void stucCopyMesh(StucMesh *pDestMesh, const StucMesh *pSrcMesh) {
 		pDestMesh->pCorners[i] += vertBase;
 		pDestMesh->pEdges[i] += edgeBase;
 	}
+	return err;
 }
 
 //move these to a separate Obj.c if more functions are made?
@@ -469,11 +462,13 @@ void stucApplyObjTransform(StucObject *pObj) {
 		_(&v4 V4MULEQLM4X4 &pObj->transform);
 		*pV3 = *(V3_F32 *)&v4;
 	}
-	for (I32 i = 0; i < pMesh->core.cornerCount; ++i) {
-		Mat3x3 mat3x3 = Mat3x3FromMat4x4(&pObj->transform);
-		V3_F32 *pNormal = pMesh->pNormals + i;
-		_(pNormal V3MULEQLM3X3 &mat3x3);
-		*pNormal = v3Normalize(*pNormal);
+	if (pMesh->pNormals) {
+		for (I32 i = 0; i < pMesh->core.cornerCount; ++i) {
+			Mat3x3 mat3x3 = Mat3x3FromMat4x4(&pObj->transform);
+			V3_F32 *pNormal = pMesh->pNormals + i;
+			_(pNormal V3MULEQLM3X3 & mat3x3);
+			*pNormal = v3Normalize(*pNormal);
+		}
 	}
 	pObj->transform = identM4x4;
 }
@@ -511,7 +506,7 @@ Result stucDestroyObjArr(StucContext pCtx, I32 objCount, StucObject *pObjArr) {
 	StucResult err = STUC_NOT_SET;
 	for (I32 i = 0; i < objCount; ++i) {
 		err = stucMeshDestroy(pCtx, (StucMesh *)pObjArr[i].pData);
-		STUC_THROW_IF(err, true, "", 0);
+		STUC_THROW_IFNOT(err, "", 0);
 		pCtx->alloc.pFree(pObjArr[i].pData);
 	}
 	pCtx->alloc.pFree(pObjArr);
@@ -630,7 +625,8 @@ void mikktSetTSpaceBasic(
 	pMesh->pTSigns[corner] = fSign;
 }
 
-void stucBuildTangents(Mesh *pMesh) {
+Result stucBuildTangents(Mesh *pMesh) {
+	Result err = STUC_SUCCESS;
 	SMikkTSpaceInterface mikktInterface = {
 		.m_getNumFaces = mikktGetNumFaces,
 		.m_getNumVerticesOfFace = mikktGetNumVertsOfFace,
@@ -643,5 +639,54 @@ void stucBuildTangents(Mesh *pMesh) {
 		.m_pInterface = &mikktInterface,
 		.m_pUserData = pMesh
 	};
-	genTangSpaceDefault(&mikktContext);
+	if (!genTangSpaceDefault(&mikktContext)) {
+		STUC_RETURN_ERR(err, "mikktspace func 'genTangSpaceDefault' returned error");
+	}
+	return err;
+}
+
+Result stucValidateMesh(StucMesh *pMesh, bool checkEdges) {
+	Result err = STUC_SUCCESS;
+	STUC_RETURN_ERR_IFNOT_COND(err, pMesh->faceCount && pMesh->pFaces, "");
+	STUC_RETURN_ERR_IFNOT_COND(err, pMesh->cornerCount && pMesh->pCorners, "");
+	STUC_RETURN_ERR_IFNOT_COND(err, !checkEdges || (pMesh->edgeCount && pMesh->pEdges), "");
+	STUC_RETURN_ERR_IFNOT_COND(err, pMesh->vertCount, "");
+	STUC_RETURN_ERR_IFNOT_COND(
+		err,
+		(pMesh->meshAttribs.pArr && pMesh->meshAttribs.count) ||
+		!pMesh->meshAttribs.count,
+		""
+	);
+	STUC_RETURN_ERR_IFNOT_COND(
+		err,
+		(pMesh->faceAttribs.pArr && pMesh->faceAttribs.count) ||
+		!pMesh->faceAttribs.count,
+		""
+	);
+	STUC_RETURN_ERR_IFNOT_COND(
+		err,
+		pMesh->cornerAttribs.pArr && pMesh->cornerAttribs.count,
+		""
+	);
+	STUC_RETURN_ERR_IFNOT_COND(
+		err,
+		(pMesh->edgeAttribs.pArr && pMesh->edgeAttribs.count) ||
+		!pMesh->edgeAttribs.count,
+		""
+	);
+	STUC_RETURN_ERR_IFNOT_COND(
+		err,
+		pMesh->vertAttribs.pArr && pMesh->vertAttribs.count,
+		""
+	);
+	for (I32 i = 0; i < pMesh->faceCount; ++i) {
+		FaceRange face = stucGetFaceRange(pMesh, i, false);
+		STUC_RETURN_ERR_IFNOT_COND(err, face.size >= 3, "");
+		for (I32 j = 0; j < face.size; ++j) {
+			I32 corner = face.start + j;
+			STUC_RETURN_ERR_IFNOT_COND(err, corner < pMesh->cornerCount, "");
+			STUC_RETURN_ERR_IFNOT_COND(err, pMesh->pCorners[corner] < pMesh->vertCount, "");
+		}
+	}
+	return err;
 }

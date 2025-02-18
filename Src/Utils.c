@@ -7,7 +7,6 @@
 #include <MathUtils.h>
 #include <Context.h>
 #include <AttribUtils.h>
-#include <Clock.h>
 #include <Error.h>
 #include <ThreadPool.h>
 
@@ -80,7 +79,6 @@ void stucGetFaceBounds(FaceBounds *pBounds, const V2_F32 *pUvs, FaceRange face) 
 		pBounds->fMax.d[1] = uv->d[1] > pBounds->fMax.d[1] ?
 			uv->d[1] : pBounds->fMax.d[1];
 	}
-	//Faces can be flat (they may be facing sideways in a map for instance)
 	STUC_ASSERT("", _(pBounds->fMax V2GREATEQL pBounds->fMin));
 }
 
@@ -376,12 +374,22 @@ typedef struct {
 } AdjBucket;
 
 static
+void adjTableDestroyBuckets(const StucAlloc *pAlloc, I32 count, AdjBucket *pAdjTable) {
+	for (I32 i = 0; i < count; ++i) {
+		if (pAdjTable[i].pArr) {
+			pAlloc->pFree(pAdjTable[i].pArr);
+		}
+	}
+}
+
+static
 Result buildCornerAdjTable(
 	const StucAlloc *pAlloc,
 	const Mesh* pMesh,
 	AdjBucket *pAdjTable
 ) {
 	Result err = STUC_SUCCESS;
+	STUC_ASSERT("", pAdjTable);
 	for (I32 i = 0; i < pMesh->core.faceCount; ++i) {
 		FaceRange face = stucGetFaceRange(&pMesh->core, i, false);
 		for (I32 j = 0; j < face.size; ++j) {
@@ -393,7 +401,7 @@ Result buildCornerAdjTable(
 					pAlloc->pMalloc(sizeof(AdjEntry) * pBucket->size);
 			}
 			else if (pBucket->count == pBucket->size) {
-				STUC_THROW_IF(err, pBucket->pArr, "tried to realloc null arr", 0);
+				STUC_ASSERT("tried to realloc null arr", pBucket->pArr);
 				pBucket->size *= 2;
 				pBucket->pArr = pAlloc->pRealloc(
 					pBucket->pArr,
@@ -401,19 +409,22 @@ Result buildCornerAdjTable(
 				);
 			}
 			else {
-				STUC_THROW(err, "", 0);
+				STUC_THROW(err, "invalid bucket", 0);
 			}
 			pBucket->pArr[pBucket->count].face = i;
 			pBucket->pArr[pBucket->count].corner = j;
 			pBucket->count++;
 		}
 	}
-	STUC_CATCH(0, err, ;);
+	STUC_CATCH(0, err,
+		adjTableDestroyBuckets(pAlloc, pMesh->core.vertCount, pAdjTable);
+	;);
 	return err;
 }
 
 static
-void findEdgesForFace(Mesh* pMesh, AdjBucket* pAdjTable, I32 idx) {
+Result findEdgesForFace(Mesh* pMesh, AdjBucket* pAdjTable, I32 idx) {
+	Result err = STUC_SUCCESS;
 	FaceRange face = stucGetFaceRange(&pMesh->core, idx, false);
 	for (I32 j = 0; j < face.size; ++j) {
 		if (pMesh->core.pEdges[face.start + j] >= 0) {
@@ -426,8 +437,11 @@ void findEdgesForFace(Mesh* pMesh, AdjBucket* pAdjTable, I32 idx) {
 		for (I32 k = 0; k < pBucket->count; ++k) {
 			AdjEntry* pEntry = pBucket->pArr + k;
 			if (pEntry->face == idx) {
-				STUC_ASSERT("Invalid mesh, 2 corners in this face share 1 vert",
-					pEntry->corner == j);
+				STUC_RETURN_ERR_IFNOT_COND(
+					err,
+					pEntry->corner == j,
+					"Invalid mesh, 2 corners in this face share 1 vert"
+				);
 				continue;
 			}
 			FaceRange otherFace = stucGetFaceRange(&pMesh->core, pEntry->face, false);
@@ -446,43 +460,43 @@ void findEdgesForFace(Mesh* pMesh, AdjBucket* pAdjTable, I32 idx) {
 		}
 		pMesh->core.pEdges[face.start + j] = edge;
 	}
+	return err;
 }
 
 static
-void findEdges(Mesh* pMesh, AdjBucket* pAdjTable) {
+Result findEdges(Mesh* pMesh, AdjBucket* pAdjTable) {
+	Result err = STUC_SUCCESS;
 	for (I32 i = 0; i < pMesh->core.faceCount; ++i) {
-		findEdgesForFace(pMesh, pAdjTable, i);
+		err = findEdgesForFace(pMesh, pAdjTable, i);
+		STUC_RETURN_ERR_IFNOT(err, "");
 	}
+	return err;
 }
 
-void stucBuildEdgeList(StucContext pCtx, Mesh* pMesh) {
-	STUC_ASSERT("", !pMesh->core.pEdges);
+Result stucBuildEdgeList(StucContext pCtx, Mesh* pMesh) {
+	Result err = STUC_SUCCESS;
+	STUC_RETURN_ERR_IFNOT_COND(err, !pMesh->core.pEdges, "");
 	const StucAlloc *pAlloc = &pCtx->alloc;
 	STUC_ASSERT("", pMesh->core.vertCount);
 	AdjBucket* pAdjTable =
 		pAlloc->pCalloc(pMesh->core.vertCount, sizeof(AdjBucket));
-	buildCornerAdjTable(pAlloc, pMesh, pAdjTable);
-
-	STUC_ASSERT("", pMesh->core.cornerCount);
-	I32 dataSize = sizeof(I32) * pMesh->core.cornerCount;
-	pMesh->core.pEdges = pAlloc->pMalloc(dataSize);
-	memset(pMesh->core.pEdges, -1, dataSize);
-	findEdges(pMesh, pAdjTable);
-
-	for (I32 i = 0; i < pMesh->core.vertCount; ++i) {
-		pAlloc->pFree(pAdjTable[i].pArr);
+	err = buildCornerAdjTable(pAlloc, pMesh, pAdjTable);
+	STUC_THROW_IFNOT(err, "", 0);
+	{
+		STUC_ASSERT("", pMesh->core.cornerCount);
+		I32 dataSize = sizeof(I32) * pMesh->core.cornerCount;
+		pMesh->core.pEdges = pAlloc->pMalloc(dataSize);
+		memset(pMesh->core.pEdges, -1, dataSize);
+		err = findEdges(pMesh, pAdjTable);
+		STUC_THROW_IFNOT(err, "'findEdges' returned error", 1);
+		STUC_CATCH(1, err,
+			pAlloc->pFree(pMesh->core.pEdges);
+		);
 	}
+	STUC_CATCH(0, err, ;);
+	adjTableDestroyBuckets(pAlloc, pMesh->core.vertCount, pAdjTable);
 	pAlloc->pFree(pAdjTable);
-}
-
-bool stucIsMeshInvalid(const Mesh* pMesh) {
-	for (I32 i = 0; i < pMesh->core.faceCount; ++i) {
-		FaceRange face = stucGetFaceRange(&pMesh->core, i, false);
-		if (face.size < 3) {
-			return true;
-		}
-	}
-	return false;
+	return err;
 }
 
 void stucProgressBarClear() {
@@ -834,7 +848,6 @@ I32 stucCalcFaceOrientation(const Mesh *pMesh, const FaceRange *pFace, bool useS
 		skip[skipCount] = lowestCorner;
 		skipCount++;
 	} while(skipCount < pFace->size);
-	STUC_ASSERT("face is degenerate", skipCount == pFace->size);
 	return 2;
 }
 
@@ -885,7 +898,7 @@ Result stucAllocBorderFace(I32 memType, BorderTableAlloc *pHandles, void **ppOut
 			break;
 	}
 	err = stucLinAlloc(pHandle, ppOut, 1);
-	STUC_THROW_IF(err, true, "error allocating border face entry", 0);
+	STUC_THROW_IFNOT(err, "error allocating border face entry", 0);
 	STUC_CATCH(0, err, ;);
 	return err;
 }
@@ -922,5 +935,17 @@ void stucGetBorderFaceBitArrs(BorderFace *pEntry, BorderFaceBitArrs *pArrs) {
 			pArrs->pOnInVert = pCast->onInVert;
 			return;
 		}
+	}
+}
+
+void stucBorderTableDestroyAlloc(BorderTableAlloc *pTableAlloc) {
+	if (pTableAlloc->pSmall) {
+		stucLinAllocDestroy(pTableAlloc->pSmall);
+	}
+	if (pTableAlloc->pMid) {
+		stucLinAllocDestroy(pTableAlloc->pMid);
+	}
+	if (pTableAlloc->pLarge) {
+		stucLinAllocDestroy(pTableAlloc->pLarge);
 	}
 }

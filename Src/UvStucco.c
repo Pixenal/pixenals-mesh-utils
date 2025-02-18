@@ -11,7 +11,6 @@
 #include <Alloc.h>
 #include <ThreadPool.h>
 #include <UvStucco.h>
-#include <Clock.h>
 #include <AttribUtils.h>
 #include <Utils.h>
 #include <ImageUtils.h>
@@ -170,10 +169,11 @@ StucResult stucMapFileLoad(StucContext pCtx, StucMap *pMapHandle, char *filePath
 	);
 	//TODO validate meshes, ensure pMatIdx is within mat range, faces are within max corner limit,
 	//F32 values are valid, etc.
-	STUC_THROW_IF(err, true, "failed to load file from disk", 0);
+	STUC_THROW_IFNOT(err, "failed to load file from disk", 0);
 
 	for (I32 i = 0; i < objCount; ++i) {
-		stucSetSpecialAttribs(pCtx, (Mesh *)pObjArr[i].pData, 0x8ae); //10101110 - all except for preserve
+		err = stucSetSpecialAttribs(pCtx, (Mesh *)pObjArr[i].pData, 0x8ae); //10101110 - all except for preserve
+		STUC_THROW_IFNOT(err, "", 0);
 		stucApplyObjTransform(pObjArr + i);
 	}
 	pMap->mesh.core.type.type = STUC_OBJECT_DATA_MESH_INTERN;
@@ -186,7 +186,8 @@ StucResult stucMapFileLoad(StucContext pCtx, StucMap *pMapHandle, char *filePath
 	stucSetAttribOrigins(&pMap->mesh.core.vertAttribs, STUC_ATTRIB_ORIGIN_MAP);
 	stucSetAttribToDontCopy(pCtx, &pMap->mesh, 0x7f0);
 
-	stucSetSpecialAttribs(pCtx, &pMap->mesh, 0x8ae);
+	err = stucSetSpecialAttribs(pCtx, &pMap->mesh, 0x8ae);
+	STUC_THROW_IFNOT(err, "", 0);
 
 	//TODO some form of heap corruption when many objects
 	//test with address sanitizer on CircuitPieces.stuc
@@ -211,18 +212,20 @@ StucResult stucMapFileLoad(StucContext pCtx, StucMap *pMapHandle, char *filePath
 	//as the tree's used to speed up the process
 	printf("File loaded. Creating quad tree\n");
 	err = stucCreateQuadTree(pCtx, pMap);
-	STUC_THROW_IF(err, true, "failed to create quadtree", 0);
+	STUC_THROW_IFNOT(err, "failed to create quadtree", 0);
 
 	if (pMap->usgArr.count) {
 		pMap->usgArr.pArr = pCtx->alloc.pCalloc(pMap->usgArr.count, sizeof(Usg));
 		for (I32 i = 0; i < pMap->usgArr.count; ++i) {
-			stucSetSpecialAttribs(pCtx, (Mesh *)pUsgArr[i].obj.pData, 0x02); //000010 - set only vert pos
+			err = stucSetSpecialAttribs(pCtx, (Mesh *)pUsgArr[i].obj.pData, 0x02); //000010 - set only vert pos
+			STUC_THROW_IFNOT(err, "", 0);
 			pMap->usgArr.pArr[i].origin = *(V2_F32 *)&pUsgArr[i].obj.transform.d[3];
 			pMap->usgArr.pArr[i].pMesh = (Mesh *)pUsgArr[i].obj.pData;
 			stucApplyObjTransform(&pUsgArr[i].obj);
 			if (pUsgArr[i].pFlatCutoff) {
 				pMap->usgArr.pArr[i].pFlatCutoff = (Mesh *)pUsgArr[i].pFlatCutoff->pData;
-				stucSetSpecialAttribs(pCtx, (Mesh *)pUsgArr[i].pFlatCutoff->pData, 0x02); //000010 - set only vert pos
+				err = stucSetSpecialAttribs(pCtx, (Mesh *)pUsgArr[i].pFlatCutoff->pData, 0x02); //000010 - set only vert pos
+				STUC_THROW_IFNOT(err, "", 0);
 				stucApplyObjTransform(pUsgArr[i].pFlatCutoff);
 			}
 		}
@@ -371,14 +374,13 @@ StucResult stucDestroyCommonAttribs(
 }
 
 static
-void sendOffMappingJobs(
+Result sendOffMappingJobs(
 	MapToMeshBasic *pBasic,
 	I32 *pJobCount,
 	void ***pppJobHandles,
 	SendOffArgs **ppJobArgs
 ) {
-	//struct timeval start, stop;
-	//CLOCK_START;
+	Result err = STUC_SUCCESS;
 	*pJobCount = MAX_SUB_MAPPING_JOBS;
 	*pJobCount += *pJobCount == 0;
 	I32 facesPerThread = pBasic->pInMesh->core.faceCount / *pJobCount;
@@ -402,14 +404,15 @@ void sendOffMappingJobs(
 		jobArgPtrs[i] = *ppJobArgs + i;
 	}
 	*pppJobHandles = pBasic->pCtx->alloc.pCalloc(*pJobCount, sizeof(void *));
-	pBasic->pCtx->threadPool.pJobStackPushJobs(
+	err = pBasic->pCtx->threadPool.pJobStackPushJobs(
 		pBasic->pCtx->pThreadPoolHandle,
 		*pJobCount,
 		*pppJobHandles,
 		stucMapToJobMesh,
 		jobArgPtrs
 	);
-	//CLOCK_STOP("send off jobs");
+	STUC_RETURN_ERR_IFNOT(err, "");
+	return err;
 }
 
 static
@@ -504,6 +507,54 @@ bool checkIfNoFacesHaveMaskIdx(Mesh *pMesh, I8 maskIdx) {
 }
 
 static
+Result mapToFaces( MapToMeshBasic *pBasic, I32 *pJobCount, SendOffArgs **ppJobArgs, bool *pEmpty) {
+	Result err = STUC_SUCCESS;
+	void **ppJobHandles = NULL;
+	err = sendOffMappingJobs(pBasic, pJobCount, &ppJobHandles, ppJobArgs);
+	STUC_THROW_IFNOT(err, "", 0);
+	if (!*pJobCount) {
+		//no jobs sent
+		//implement an STUC_CANCELLED status
+		return err;
+	}
+	err = pBasic->pCtx->threadPool.pWaitForJobs(
+		pBasic->pCtx->pThreadPoolHandle,
+		*pJobCount,
+		ppJobHandles,
+		true,
+		NULL
+	);
+	STUC_THROW_IFNOT(err, "", 0);
+	*pEmpty = true;
+	for (I32 i = 0; i < *pJobCount; ++i) {
+		if ((*ppJobArgs)[i].bufSize > 0) {
+			*pEmpty = false;
+			break;
+		}
+	}
+	err = stucJobGetErrs(pBasic->pCtx, *pJobCount, &ppJobHandles);
+	STUC_THROW_IFNOT(err, "", 0);
+	STUC_CATCH(0, err, ;);
+	if (ppJobHandles) {
+		stucJobDestroyHandles(pBasic->pCtx, *pJobCount, ppJobHandles);
+		pBasic->pCtx->alloc.pFree(ppJobHandles);
+	}
+	return err;
+}
+
+static
+void mappingJobArgsDestroy(MapToMeshBasic *pBasic, I32 jobCount, SendOffArgs *pJobArgs) {
+	for (I32 i = 0; i < jobCount; ++i) {
+		BufMesh *pBufMesh = &pJobArgs[i].bufMesh;
+		stucMeshDestroy(pBasic->pCtx, &pBufMesh->mesh.core);
+		if (pJobArgs[i].borderTable.pTable) {
+			pBasic->pCtx->alloc.pFree(pJobArgs[i].borderTable.pTable);
+		}
+		stucBorderTableDestroyAlloc(&pJobArgs[i].borderTableAlloc);
+	}
+}
+
+static
 Result mapToMeshInternal(
 	StucContext pCtx,
 	StucMap pMap,
@@ -516,7 +567,7 @@ Result mapToMeshInternal(
 ) {
 	StucResult err = STUC_SUCCESS;
 	if (checkIfNoFacesHaveMaskIdx(pMeshIn, maskIdx)) {
-		return STUC_SUCCESS;
+		return err;
 	}
 	MapToMeshBasic basic = {
 		.pCtx = pCtx,
@@ -527,70 +578,27 @@ Result mapToMeshInternal(
 		.maskIdx = maskIdx,
 		.ppInFaceTable = ppInFaceTable
 	};
-	CLOCK_INIT;
-	CLOCK_START;
-	printf("EdgeCount: %d\n", pMeshIn->core.edgeCount);
 	buildEdgeVertsTable(&basic);
 	buildVertTables(&basic);
-	CLOCK_STOP("Edge Table Time");
-
-	CLOCK_START;
 	I32 jobCount = 0;
 	SendOffArgs *pJobArgs = NULL;
-	void **ppJobHandles = NULL;
-	sendOffMappingJobs(&basic, &jobCount, &ppJobHandles, &pJobArgs);
-	if (!jobCount) {
-		//no jobs sent
-		//implement an STUC_CANCELLED status
-		return STUC_SUCCESS;
-	}
-	CLOCK_STOP("Send Off Time");
-	CLOCK_START;
-	pCtx->threadPool.pWaitForJobs(
-		pCtx->pThreadPoolHandle,
-		jobCount,
-		ppJobHandles,
-		true,
-		NULL
-	);
-	CLOCK_STOP("Waiting Time");
+
 	bool empty = true;
-	for (I32 i = 0; i < jobCount; ++i) {
-		if (pJobArgs[i].bufSize > 0) {
-			empty = false;
-		}
+	err = mapToFaces(&basic, &jobCount, &pJobArgs, &empty);
+	STUC_THROW_IFNOT(err, "", 0);
+	if (!empty) {
+		err = stucCombineJobMeshes(&basic, pJobArgs, jobCount);
+		STUC_THROW_IFNOT(err, "", 0);
+		stucReallocMeshToFit(&pCtx->alloc, &basic.outMesh);
+		*pOutMesh = basic.outMesh.core;
 	}
-	err = stucJobGetErrs(pCtx, jobCount, &ppJobHandles);
-	err = stucJobDestroyHandles(pCtx, jobCount, &ppJobHandles);
-	pCtx->alloc.pFree(ppJobHandles);
-	STUC_THROW_IF(err, true, "", 0);
-	if (empty) {
-		return err;
-	}
-	CLOCK_START;
-	err = stucCombineJobMeshes(&basic, pJobArgs, jobCount);
-	for (I32 i = 0; i < jobCount; ++i) {
-		if (pJobArgs[i].borderTableAlloc.pSmall) {
-			stucLinAllocDestroy(pJobArgs[i].borderTableAlloc.pSmall);
-		}
-		if (pJobArgs[i].borderTableAlloc.pMid) {
-			stucLinAllocDestroy(pJobArgs[i].borderTableAlloc.pMid);
-		}
-		if (pJobArgs[i].borderTableAlloc.pLarge) {
-			stucLinAllocDestroy(pJobArgs[i].borderTableAlloc.pLarge);
-		}
-	}
-	CLOCK_STOP("Combine time");
-	CLOCK_START;
-	stucReallocMeshToFit(&pCtx->alloc, &basic.outMesh);
-	*pOutMesh = basic.outMesh.core;
-	CLOCK_STOP("Realloc time");
 	STUC_CATCH(0, err, ;);
+	mappingJobArgsDestroy(&basic, jobCount, pJobArgs);
+	pCtx->alloc.pFree(pJobArgs);
 	pCtx->alloc.pFree(basic.pEdgeVerts);
 	pCtx->alloc.pFree(basic.pInVertTable);
 	pCtx->alloc.pFree(basic.pVertSeamTable);
 	pCtx->alloc.pFree(basic.pEdgeSeamTable);
-	pCtx->alloc.pFree(pJobArgs);
 	return err;
 }
 
@@ -724,7 +732,7 @@ Result iterFacesAndCorrectMats(
 	Result err = STUC_SUCCESS;
 	for (I32 j = 0; j < pMesh->core.faceCount; ++j) {
 		I32 matIdx = pMesh->pMatIdx[j];
-		STUC_THROW_IF(err, matIdx >= 0 && matIdx < pMatsToAdd->count, "", 0);
+		STUC_THROW_IFNOT_COND(err, matIdx >= 0 && matIdx < pMatsToAdd->count, "", 0);
 		MatTableEntry *pEntry = ppMatTable[i] + matIdx;
 		if (!pEntry->hasRef) {
 			pEntry->hasRef = true;
@@ -773,7 +781,8 @@ Result correctMatIndices(
 
 	for (I32 i = 0; i < pMapArr->count; ++i) {
 		Mesh *pMesh = pMeshArr + i;
-		stucSetSpecialAttribs(pCtx, pMesh, 0x800);//only set mat indices
+		err = stucSetSpecialAttribs(pCtx, pMesh, 0x800);//only set mat indices
+		STUC_THROW_IFNOT(err, "", 0);
 		if (!pMesh->pMatIdx) {
 			continue;
 		}
@@ -789,14 +798,14 @@ Result correctMatIndices(
 		STUC_ASSERT("mesh faces have mat indices, but map has no materials?",
 			pMatsToAdd && pMatsToAdd->count
 		);
-		STUC_THROW_IF(err, true, "", 0);
+		STUC_THROW_IFNOT(err, "", 0);
 		ppMatTable[i] = pAlloc->pCalloc(pMatsToAdd->count, sizeof(MatTableEntry));
 
 		iterFacesAndCorrectMats(pAlloc, i, pMesh, pOutMats, ppMatTable, pMatsToAdd);
 		STUC_CATCH(0, err, ;)
 		pAlloc->pFree(ppMatTable[i]);
 		ppMatTable[i] = NULL;
-		STUC_THROW_IF(err, true, "", 1);
+		STUC_THROW_IFNOT(err, "", 1);
 	}
 	STUC_CATCH(1, err, ;)
 	pAlloc->pFree(ppMatTable);
@@ -859,52 +868,18 @@ Result stucQueueMapToMesh(
 	return STUC_SUCCESS;
 }
 
-Result stucMapToMesh(
+static
+Result mapMapArrToMesh(
 	StucContext pCtx,
 	StucMapArr *pMapArr,
-	StucMesh *pMeshIn,
+	Mesh *pMeshIn,
 	StucAttribIndexedArr *pInIndexedAttribs,
 	StucMesh *pMeshOut,
 	StucAttribIndexedArr *pOutIndexedAttribs,
 	StucCommonAttribList *pCommonAttribList,
 	F32 wScale
 ) {
-	//TODO replace vars called 'result' with 'err'
-	StucResult err = STUC_NOT_SET;
-	if (!pMeshIn) {
-		printf("Stuc map to mesh failed, pMeshIn was null\n");
-		return STUC_ERROR;
-	}
-	if (!pMapArr) {
-		printf("Stuc map to mesh failed, pMap was null\n");
-		return STUC_ERROR;
-	}
-	Mesh meshInWrap = {.core = *pMeshIn};
-
-	stucSetSpecialAttribs(pCtx, &meshInWrap, 0xf0e); //don't set preserve yet
-
-	stucSetAttribOrigins(&meshInWrap.core.meshAttribs, STUC_ATTRIB_ORIGIN_MESH_IN);
-	stucSetAttribOrigins(&meshInWrap.core.faceAttribs, STUC_ATTRIB_ORIGIN_MESH_IN);
-	stucSetAttribOrigins(&meshInWrap.core.cornerAttribs, STUC_ATTRIB_ORIGIN_MESH_IN);
-	stucSetAttribOrigins(&meshInWrap.core.edgeAttribs, STUC_ATTRIB_ORIGIN_MESH_IN);
-	stucSetAttribOrigins(&meshInWrap.core.vertAttribs, STUC_ATTRIB_ORIGIN_MESH_IN);
-
-	stucSetAttribToDontCopy(pCtx, &meshInWrap, 0x3f0);
-
-	if (stucIsMeshInvalid(&meshInWrap)) {
-		return STUC_ERROR;
-	}
-
-	stucBuildTangents(&meshInWrap);
-
-	if (!meshInWrap.core.edgeCount) {
-		STUC_ASSERT("", !meshInWrap.core.edgeAttribs.count);
-		STUC_ASSERT("", !meshInWrap.core.edgeAttribs.pArr);
-		stucBuildEdgeList(pCtx, &meshInWrap);
-	}
-
-	printf("meshInWrap.pMatIdx[5] = %d\n", meshInWrap.pMatIdx[5]);
-
+	Result err = STUC_SUCCESS;
 	Mesh *pOutBufArr = pCtx->alloc.pCalloc(pMapArr->count, sizeof(Mesh));
 	StucObject *pOutObjWrapArr =
 		pCtx->alloc.pCalloc(pMapArr->count, sizeof(StucObject));
@@ -916,39 +891,47 @@ Result stucMapToMesh(
 		if (pMap->usgArr.count) {
 			MapFile squares = { .mesh = pMap->usgArr.squares };
 			err = stucCreateQuadTree(pCtx, &squares);
-			STUC_THROW_IF(err, true, "failed to create quadtree", 0);
+			STUC_THROW_IFNOT(err, "failed to create usg quadtree", 0);
 			StucMesh squaresOut = {0};
 			err = mapToMeshInternal(
 				pCtx,
 				&squares,
-				&meshInWrap,
+				pMeshIn,
 				&squaresOut,
 				matIdx,
 				pCommonAttribList + i,
 				&pInFaceTable,
 				1.0f
 			);
-			STUC_THROW_IF(err, true, "map to mesh usg failed", 0);
-			stucSampleInAttribsAtUsgOrigins(pCtx, pMap, &meshInWrap, &squaresOut, pInFaceTable);
+			STUC_THROW_IFNOT(err, "map to mesh usg failed", 1);
+			err = stucSampleInAttribsAtUsgOrigins(
+				pCtx,
+				pMap,
+				pMeshIn,
+				&squaresOut,
+				pInFaceTable
+			);
+			STUC_THROW_IFNOT(err, "", 1);
 			InFaceTableToHashTable(&pCtx->alloc, pMap, squaresOut.faceCount, pInFaceTable);
 			//*pMeshOut = squaresOut;
 			//return STUC_SUCCESS;
 			stucMeshDestroy(pCtx, &squaresOut);
 		}
-		stucSetSpecialAttribs(pCtx, &meshInWrap, 0x50); //set perserve if present
+		err = stucSetSpecialAttribs(pCtx, pMeshIn, 0x50); //set perserve if present
+		STUC_THROW_IFNOT(err, "", 1);
 
 		err = mapToMeshInternal(
 			pCtx,
 			pMap,
-			&meshInWrap,
+			pMeshIn,
 			&pOutBufArr[i].core,
 			matIdx,
 			pCommonAttribList + i,
 			NULL,
 			wScale
 		);
-		STUC_THROW_IF(err, true, "map to mesh failed", 0);
-		STUC_CATCH(0, err, stucMeshDestroy(pCtx, &pOutBufArr[i].core);)
+		STUC_THROW_IFNOT(err, "map to mesh failed", 1);
+		STUC_CATCH(1, err, ;);
 		if (pMap->usgArr.count) {
 			pCtx->alloc.pFree(pMap->usgArr.pInFaceTable);
 			pMap->usgArr.pInFaceTable = NULL;
@@ -958,11 +941,10 @@ Result stucMapToMesh(
 			}
 			pCtx->alloc.pFree(pInFaceTable);
 		}
-		STUC_THROW_IF(err, true, "", 1);
+		STUC_THROW_IFNOT(err, "", 0);
 	}
 	pMeshOut->type.type = STUC_OBJECT_DATA_MESH;
 	Mesh meshOutWrap = {.core = *pMeshOut};
-	printf("merging obj arr\n");
 	err = correctMatIndices(
 		pCtx,
 		pOutBufArr,
@@ -971,12 +953,81 @@ Result stucMapToMesh(
 		pInIndexedAttribs,
 		pOutIndexedAttribs
 	);
-	STUC_THROW_IF(err, true, "", 1);
+	STUC_THROW_IFNOT(err, "", 0);
 	stucMergeObjArr(pCtx, &meshOutWrap, pMapArr->count, pOutObjWrapArr, false);
-	printf("post-merging obj arr\n");
 	*pMeshOut = meshOutWrap.core;
-	printf("----------------------FINISHING IN MESH WITH FACE COUNT %d\n", pMeshIn->faceCount);
-	STUC_CATCH(1, err, stucMeshDestroy(pCtx, pMeshOut);)
+	STUC_CATCH(0, err,
+		stucMeshDestroy(pCtx, pMeshOut);
+	);
+	//meshes are stored on an arr buf, which we can't call stucObjArrDestroy
+	for (I32 i = 0; i < pMapArr->count; ++i) {
+		stucMeshDestroy(pCtx, &pOutBufArr[i].core);
+	}
+	pCtx->alloc.pFree(pOutBufArr);
+	pCtx->alloc.pFree(pOutObjWrapArr);
+	return err;
+}
+
+Result stucMapToMesh(
+	StucContext pCtx,
+	StucMapArr *pMapArr,
+	StucMesh *pMeshIn,
+	StucAttribIndexedArr *pInIndexedAttribs,
+	StucMesh *pMeshOut,
+	StucAttribIndexedArr *pOutIndexedAttribs,
+	StucCommonAttribList *pCommonAttribList,
+	F32 wScale
+) {
+	//TODO replace vars called 'result' with 'err'
+	StucResult err = STUC_SUCCESS;
+	STUC_THROW_IFNOT_COND(err, pMeshIn, "", 0);
+	err = stucValidateMesh(pMeshIn, false);
+	STUC_THROW_IFNOT(err, "invalid in-mesh", 0);
+	Mesh meshInWrap = {.core = *pMeshIn};
+
+	STUC_THROW_IFNOT_COND(
+		err,
+		pMapArr && pMapArr->count && pMapArr->pMatArr && pMapArr->ppArr,
+		"", 0
+	);
+
+	err = stucSetSpecialAttribs(pCtx, &meshInWrap, 0xf0e); //don't set preserve yet
+	STUC_THROW_IFNOT(err, "", 0);
+
+	stucSetAttribOrigins(&pMeshIn->meshAttribs, STUC_ATTRIB_ORIGIN_MESH_IN);
+	stucSetAttribOrigins(&pMeshIn->faceAttribs, STUC_ATTRIB_ORIGIN_MESH_IN);
+	stucSetAttribOrigins(&pMeshIn->cornerAttribs, STUC_ATTRIB_ORIGIN_MESH_IN);
+	stucSetAttribOrigins(&pMeshIn->edgeAttribs, STUC_ATTRIB_ORIGIN_MESH_IN);
+	stucSetAttribOrigins(&pMeshIn->vertAttribs, STUC_ATTRIB_ORIGIN_MESH_IN);
+
+	stucSetAttribToDontCopy(pCtx, &meshInWrap, 0x3f0);
+
+	err = stucBuildTangents(&meshInWrap);
+	STUC_THROW_IFNOT(err, "failed to build tangents", 0);
+
+	if (!pMeshIn->edgeCount) {
+		STUC_THROW_IFNOT_COND(
+			err,
+			!pMeshIn->edgeAttribs.count,
+			"in-mesh has edge attribs, yet no edge list",
+			0
+		);
+		err = stucBuildEdgeList(pCtx, &meshInWrap);
+		STUC_THROW_IFNOT(err, "failed to build edge list", 0);
+	}
+	err = mapMapArrToMesh(
+		pCtx,
+		pMapArr,
+		&meshInWrap,
+		pInIndexedAttribs,
+		pMeshOut,
+		pOutIndexedAttribs,
+		pCommonAttribList,
+		wScale
+	);
+	STUC_THROW_IFNOT(err, "mapMapArrToMesh returned error", 0);
+	printf("----------------------FINISHING IN-MESH WITH FACE COUNT %d\n", pMeshIn->faceCount);
+	STUC_CATCH(0, err, ;);
 	return err;
 }
 
@@ -992,7 +1043,7 @@ Result stucUsgArrDestroy(StucContext pCtx, I32 count, StucUsg *pUsgArr) {
 	Result err = STUC_NOT_SET;
 	for (I32 i = 0; i < count; ++i) {
 		err = stucMeshDestroy(pCtx, (StucMesh *)pUsgArr[i].obj.pData);
-		STUC_THROW_IF(err, true, "", 0);
+		STUC_THROW_IFNOT(err, "", 0);
 	}
 	pCtx->alloc.pFree(pUsgArr);
 	STUC_CATCH(0, err, ;)
@@ -1299,9 +1350,9 @@ StucResult stucMapFileGenPreviewImage(
 	);
 	stucWaitForJobsIntern(pCtx->pThreadPoolHandle, activeJobs, ppJobHandles, true, NULL);
 	err = stucJobGetErrs(pCtx, activeJobs, &ppJobHandles);
-	err = stucJobDestroyHandles(pCtx, activeJobs, &ppJobHandles);
+	stucJobDestroyHandles(pCtx, activeJobs, ppJobHandles);
 	pCtx->alloc.pFree(ppJobHandles);
-	STUC_THROW_IF(err, true, "", 0);
+	STUC_THROW_IFNOT(err, "", 0);
 	I32 pixelSize = getPixelSize(pImage->type);
 	pImage->pData = pCtx->alloc.pMalloc(pixelCount * pixelSize);
 	for (I32 i = 0; i < activeJobs; ++i) {
@@ -1347,8 +1398,8 @@ Result stucJobGetErrs(
 	void ***pppJobHandles
 ) {
 	Result err = STUC_SUCCESS;
-	STUC_THROW_IF(err, pCtx && pppJobHandles, "", 0);
-	STUC_THROW_IF(err, jobCount > 0, "", 0);
+	STUC_ASSERT("", pCtx && pppJobHandles);
+	STUC_ASSERT("", jobCount > 0);
 	for (I32 i = 0; i < jobCount; ++i) {
 		StucResult jobErr = STUC_NOT_SET;
 		err = pCtx->threadPool.pGetJobErr(
@@ -1356,26 +1407,23 @@ Result stucJobGetErrs(
 			(*pppJobHandles)[i],
 			&jobErr
 		);
-		STUC_THROW_IF(err, jobErr == STUC_SUCCESS, "", 0);
+		STUC_THROW_IFNOT_COND(err, jobErr == STUC_SUCCESS, "", 0);
 	}
 	STUC_CATCH(0, err, ;);
 	return err;
 }
 
-Result stucJobDestroyHandles(
+void stucJobDestroyHandles(
 	StucContext pCtx,
 	I32 jobCount,
-	void ***pppJobHandles
+	void **ppJobHandles
 ) {
-	Result err = STUC_SUCCESS;
-	STUC_THROW_IF(err, pCtx && pppJobHandles, "", 0);
-	STUC_THROW_IF(err, jobCount > 0, "", 0);
+	STUC_ASSERT("", pCtx && ppJobHandles);
+	STUC_ASSERT("", jobCount > 0);
 	for (I32 i = 0; i < jobCount; ++i) {
 		pCtx->threadPool.pJobHandleDestroy(
 			pCtx->pThreadPoolHandle,
-			*pppJobHandles + i
+			ppJobHandles + i
 		);
 	}
-	STUC_CATCH(0, err, ;);
-	return err;
 }

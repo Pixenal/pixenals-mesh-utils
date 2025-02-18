@@ -129,7 +129,7 @@ void stucAddToMeshCounts(
 	MeshCounts *pBoundsCounts,
 	const Mesh *pMeshSrc
 );
-void stucCopyMesh(StucMesh *pDestMesh, const StucMesh *pSrcMesh);
+StucResult stucCopyMesh(StucMesh *pDestMesh, const StucMesh *pSrcMesh);
 void stucApplyObjTransform(StucObject *pObj);
 void stucMergeObjArr(
 	StucContext pCtx,
@@ -140,4 +140,5 @@ void stucMergeObjArr(
 );
 StucResult stucDestroyObjArr(StucContext pCtx, I32 objCount, StucObject *pObjArr);
 FaceRange stucGetFaceRange(const StucMesh *pMesh, I32 idx, bool border);
-void stucBuildTangents(Mesh *pMesh);
+StucResult stucBuildTangents(Mesh *pMesh);
+StucResult stucValidateMesh(StucMesh *pMesh, bool checkEdges);
