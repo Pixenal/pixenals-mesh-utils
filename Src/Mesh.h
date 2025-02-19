@@ -49,10 +49,6 @@ typedef struct {
 
 typedef struct {
 	Mesh mesh;
-	I32 borderVertCount;
-	I32 borderCornerCount;
-	I32 borderEdgeCount;
-	I32 borderFaceCount;
 	StucAttrib *pWAttrib;
 	StucAttrib *pInNormalAttrib;
 	StucAttrib *pInTangentAttrib;
@@ -63,6 +59,10 @@ typedef struct {
 	Stuc_V3_F32 *pInTangent;
 	F32 *pAlpha;
 	F32 *pInTSign;
+	I32 borderVertCount;
+	I32 borderCornerCount;
+	I32 borderEdgeCount;
+	I32 borderFaceCount;
 } BufMesh;
 
 typedef struct {

@@ -18,8 +18,8 @@ typedef struct {
 } FaceBounds;
 
 typedef struct {
-	V2_F32 uv[4];
 	V3_F32 xyz[4];
+	V2_F32 uv[4];
 	F32 scale[4];
 } BaseTriVerts;
 
