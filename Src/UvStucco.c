@@ -378,7 +378,7 @@ Result sendOffMappingJobs(
 	MapToMeshBasic *pBasic,
 	I32 *pJobCount,
 	void ***pppJobHandles,
-	SendOffArgs **ppJobArgs
+	MappingJobArgs **ppJobArgs
 ) {
 	Result err = STUC_SUCCESS;
 	*pJobCount = MAX_SUB_MAPPING_JOBS;
@@ -388,14 +388,13 @@ Result sendOffMappingJobs(
 	*pJobCount = singleThread ? 1 : *pJobCount;
 	void *jobArgPtrs[MAX_THREADS] = {0};
 	I32 borderTableSize = pBasic->pMap->mesh.core.faceCount / 5 + 2; //+ 2 incase is 0
-	*ppJobArgs = pBasic->pCtx->alloc.pCalloc(*pJobCount, sizeof(SendOffArgs));
+	*ppJobArgs = pBasic->pCtx->alloc.pCalloc(*pJobCount, sizeof(MappingJobArgs));
 	printf("fromjobsendoff: BorderTableSize: %d\n", borderTableSize);
 	for (I32 i = 0; i < *pJobCount; ++i) {
 		I32 meshStart = facesPerThread * i;
 		I32 meshEnd = i == *pJobCount - 1 ?
 			pBasic->pInMesh->core.faceCount : meshStart + facesPerThread;
 		(*ppJobArgs)[i].pBasic = pBasic;
-		(*ppJobArgs)[i].inFaceOffset = meshStart;
 		(*ppJobArgs)[i].borderTable.size = borderTableSize;
 		(*ppJobArgs)[i].inFaceRange.start = meshStart;
 		(*ppJobArgs)[i].inFaceRange.end = meshEnd;
@@ -507,7 +506,7 @@ bool checkIfNoFacesHaveMaskIdx(Mesh *pMesh, I8 maskIdx) {
 }
 
 static
-Result mapToFaces( MapToMeshBasic *pBasic, I32 *pJobCount, SendOffArgs **ppJobArgs, bool *pEmpty) {
+Result mapToFaces( MapToMeshBasic *pBasic, I32 *pJobCount, MappingJobArgs **ppJobArgs, bool *pEmpty) {
 	Result err = STUC_SUCCESS;
 	void **ppJobHandles = NULL;
 	err = sendOffMappingJobs(pBasic, pJobCount, &ppJobHandles, ppJobArgs);
@@ -543,7 +542,7 @@ Result mapToFaces( MapToMeshBasic *pBasic, I32 *pJobCount, SendOffArgs **ppJobAr
 }
 
 static
-void mappingJobArgsDestroy(MapToMeshBasic *pBasic, I32 jobCount, SendOffArgs *pJobArgs) {
+void mappingJobArgsDestroy(MapToMeshBasic *pBasic, I32 jobCount, MappingJobArgs *pJobArgs) {
 	for (I32 i = 0; i < jobCount; ++i) {
 		BufMesh *pBufMesh = &pJobArgs[i].bufMesh;
 		stucMeshDestroy(pBasic->pCtx, &pBufMesh->mesh.core);
@@ -581,20 +580,20 @@ Result mapToMeshInternal(
 	buildEdgeVertsTable(&basic);
 	buildVertTables(&basic);
 	I32 jobCount = 0;
-	SendOffArgs *pJobArgs = NULL;
+	MappingJobArgs *pMappingJobArgs = NULL;
 
 	bool empty = true;
-	err = mapToFaces(&basic, &jobCount, &pJobArgs, &empty);
+	err = mapToFaces(&basic, &jobCount, &pMappingJobArgs, &empty);
 	STUC_THROW_IFNOT(err, "", 0);
 	if (!empty) {
-		err = stucCombineJobMeshes(&basic, pJobArgs, jobCount);
+		err = stucCombineJobMeshes(&basic, pMappingJobArgs, jobCount);
 		STUC_THROW_IFNOT(err, "", 0);
 		stucReallocMeshToFit(&pCtx->alloc, &basic.outMesh);
 		*pOutMesh = basic.outMesh.core;
 	}
 	STUC_CATCH(0, err, ;);
-	mappingJobArgsDestroy(&basic, jobCount, pJobArgs);
-	pCtx->alloc.pFree(pJobArgs);
+	mappingJobArgsDestroy(&basic, jobCount, pMappingJobArgs);
+	pCtx->alloc.pFree(pMappingJobArgs);
 	pCtx->alloc.pFree(basic.pEdgeVerts);
 	pCtx->alloc.pFree(basic.pInVertTable);
 	pCtx->alloc.pFree(basic.pVertSeamTable);
@@ -978,7 +977,6 @@ Result stucMapToMesh(
 	StucCommonAttribList *pCommonAttribList,
 	F32 wScale
 ) {
-	//TODO replace vars called 'result' with 'err'
 	StucResult err = STUC_SUCCESS;
 	STUC_THROW_IFNOT_COND(err, pMeshIn, "", 0);
 	err = stucValidateMesh(pMeshIn, false);
@@ -1136,12 +1134,12 @@ typedef struct {
 
 static
 void testPixelAgainstFace(
-	RenderArgs *pVars,
+	RenderArgs *pArgs,
 	V2_F32 *pPos,
 	FaceRange *pFace,
 	Color *pColor
 ) {
-	Mesh* pMesh = &pVars->pMap->mesh;
+	Mesh* pMesh = &pArgs->pMap->mesh;
 	V2_F32 verts[4] = {0};
 	for (I32 i = 0; i < pFace->size; ++i) {
 		verts[i] = *(V2_F32 *)(pMesh->pVerts + pMesh->core.pCorners[pFace->start + i]);
@@ -1176,7 +1174,7 @@ void testPixelAgainstFace(
 	if (dotUp < .0f) {
 		return;
 	}
-	F32 depth = (wsPos.d[2] - pVars->zBounds.d[0]) / pVars->zBounds.d[1];
+	F32 depth = (wsPos.d[2] - pArgs->zBounds.d[0]) / pArgs->zBounds.d[1];
 	F32 value = dotUp;
 	value *= 1.0f - (1.0f - depth) * .5f;
 	value *= .75;
@@ -1188,7 +1186,7 @@ void testPixelAgainstFace(
 
 static
 void testPixelAgainstCellFaces(
-	RenderArgs *pVars,
+	RenderArgs *pArgs,
 	Mesh *pMesh,
 	Cell *pLeaf,
 	I32 j,
@@ -1197,7 +1195,7 @@ void testPixelAgainstCellFaces(
 	Color *pColor
 ) {
 	I32 cellIdx = pFaceCells->pCells[j];
-	Cell *pCell = pVars->pMap->quadTree.cellTable.pArr + cellIdx;
+	Cell *pCell = pArgs->pMap->quadTree.cellTable.pArr + cellIdx;
 	I32* pCellFaces;
 	Range cellFaceRange = {0};
 	if (pFaceCells->pCellType[j]) {
@@ -1221,7 +1219,7 @@ void testPixelAgainstCellFaces(
 		FaceTriangulated faceTris = {0};
 		if (face.size > 4) {
 			faceTris = stucTriangulateFace(
-				pVars->pCtx->alloc,
+				pArgs->pCtx->alloc,
 				&face,
 				pMesh->pVerts,
 				pMesh->core.pCorners,
@@ -1235,11 +1233,11 @@ void testPixelAgainstCellFaces(
 				tri.size = tri.end - tri.start;
 				tri.start += face.start;
 				tri.end += face.start;
-				testPixelAgainstFace(pVars, pPos, &tri, pColor);
+				testPixelAgainstFace(pArgs, pPos, &tri, pColor);
 			}
 		}
 		else {
-			testPixelAgainstFace(pVars, pPos, &face, pColor);
+			testPixelAgainstFace(pArgs, pPos, &face, pColor);
 		}
 	}
 }
@@ -1247,21 +1245,21 @@ void testPixelAgainstCellFaces(
 static
 Result stucRenderJob(void *pArgs) {
 	Result err = STUC_SUCCESS;
-	RenderArgs vars = *(RenderArgs *)pArgs;
-	I32 dataLen = vars.pixelCount * getPixelSize(vars.imageBuf.type);
-	vars.imageBuf.pData = vars.pCtx->alloc.pMalloc(dataLen);
-	Mesh *pMesh = &vars.pMap->mesh;
-	F32 pixelScale = 1.0f / (F32)vars.imageBuf.res;
+	RenderArgs args = *(RenderArgs *)pArgs;
+	I32 dataLen = args.pixelCount * getPixelSize(args.imageBuf.type);
+	args.imageBuf.pData = args.pCtx->alloc.pMalloc(dataLen);
+	Mesh *pMesh = &args.pMap->mesh;
+	F32 pixelScale = 1.0f / (F32)args.imageBuf.res;
 	F32 pixelHalfScale = pixelScale / 2.0f;
 	FaceCells faceCells = {0};
 	FaceCellsTable faceCellsTable = {.pFaceCells = &faceCells};
-	QuadTreeSearch searchState = {.pAlloc = &vars.pCtx->alloc, .pMap = vars.pMap};
+	QuadTreeSearch searchState = {.pAlloc = &args.pCtx->alloc, .pMap = args.pMap};
 	stucInitQuadTreeSearch(&searchState);
-	for (I32 i = 0; i < vars.pixelCount; ++i) {
-		I32 iOffset = vars.bufOffset + i;
+	for (I32 i = 0; i < args.pixelCount; ++i) {
+		I32 iOffset = args.bufOffset + i;
 		V2_F32 idx = {
-			(F32)(iOffset % vars.imageBuf.res),
-			(F32)(iOffset / vars.imageBuf.res)
+			(F32)(iOffset % args.imageBuf.res),
+			(F32)(iOffset / args.imageBuf.res)
 		};
 		V2_F32 pos = {
 			pixelScale * idx.d[0] + pixelHalfScale,
@@ -1280,19 +1278,19 @@ Result stucRenderJob(void *pArgs) {
 			faceRange
 		);
 		I32 leafIdx = faceCells.pCells[faceCells.cellSize - 1];
-		Cell *pLeaf = vars.pMap->quadTree.cellTable.pArr + leafIdx;
+		Cell *pLeaf = args.pMap->quadTree.cellTable.pArr + leafIdx;
 		for (I32 j = 0; j < faceCells.cellSize; ++j) {
-			testPixelAgainstCellFaces(&vars, pMesh, pLeaf, j, &faceCells, &pos, &color);
+			testPixelAgainstCellFaces(&args, pMesh, pLeaf, j, &faceCells, &pos, &color);
 		}
 		color.d[3] = (F32)(color.d[3] != FLT_MAX) * -1.0f;
-		setPixelColor(&vars.imageBuf, i, &color);
+		setPixelColor(&args.imageBuf, i, &color);
 	}
 	stucDestroyQuadTreeSearch(&searchState);
-	*(RenderArgs *)pArgs = vars;
-	StucThreadPool *pThreadPool = &vars.pCtx->threadPool;
-	pThreadPool->pMutexLock(vars.pCtx->pThreadPoolHandle, vars.pMutex);
-	--*vars.pActiveJobs;
-	pThreadPool->pMutexUnlock(vars.pCtx->pThreadPoolHandle, vars.pMutex);
+	*(RenderArgs *)pArgs = args;
+	StucThreadPool *pThreadPool = &args.pCtx->threadPool;
+	pThreadPool->pMutexLock(args.pCtx->pThreadPoolHandle, args.pMutex);
+	--*args.pActiveJobs;
+	pThreadPool->pMutexUnlock(args.pCtx->pThreadPoolHandle, args.pMutex);
 	return err;
 }
 
