@@ -86,7 +86,6 @@ BufMeshIdx getNewBufMeshIdx(
 	BufMesh *pMesh,
 	BufMeshDomain *pBufDomain,
 	const bool border,
-	DebugAndPerfVars *pDbVars,
 	bool *pRealloced
 ) {
 	MeshDomain *pDomain = (MeshDomain *)pBufDomain;
@@ -185,14 +184,13 @@ BufMeshIdx stucBufMeshAddFace(
 	const StucAlloc *pAlloc,
 	BufMesh *pMesh,
 	bool border,
-	DebugAndPerfVars *pDpVars,
 	bool *pRealloced
 ) {
 	BufMeshDomain domain = {0};
 	getFaceDomain((Mesh *)pMesh, (MeshDomain *)&domain);
 	domain.pBorderCount = &pMesh->borderFaceCount;
 	BufMeshIdx idx =
-		getNewBufMeshIdx(pAlloc, pMesh, &domain, border, pDpVars, pRealloced);
+		getNewBufMeshIdx(pAlloc, pMesh, &domain, border, pRealloced);
 	return idx;
 }
 
@@ -200,14 +198,13 @@ BufMeshIdx stucBufMeshAddCorner(
 	const StucAlloc *pAlloc,
 	BufMesh *pMesh,
 	bool border,
-	DebugAndPerfVars *pDpVars,
 	bool *pRealloced
 ) {
 	BufMeshDomain domain = {0};
 	getCornerDomain((Mesh *)pMesh, (MeshDomain *)&domain);
 	domain.pBorderCount = &pMesh->borderCornerCount;
 	BufMeshIdx idx =
-		getNewBufMeshIdx(pAlloc, pMesh, &domain, border, pDpVars, pRealloced);
+		getNewBufMeshIdx(pAlloc, pMesh, &domain, border, pRealloced);
 	return idx;
 }
 
@@ -215,14 +212,13 @@ BufMeshIdx stucBufMeshAddEdge(
 	const StucAlloc *pAlloc,
 	BufMesh *pMesh,
 	bool border,
-	DebugAndPerfVars *pDpVars,
 	bool *pRealloced
 ) {
 	BufMeshDomain domain = {0};
 	getEdgeDomain((Mesh *)pMesh, (MeshDomain *)&domain);
 	domain.pBorderCount = &pMesh->borderEdgeCount;
 	BufMeshIdx idx =
-		getNewBufMeshIdx(pAlloc, pMesh, &domain, border, pDpVars, pRealloced);
+		getNewBufMeshIdx(pAlloc, pMesh, &domain, border, pRealloced);
 	return idx;
 }
 
@@ -230,14 +226,13 @@ BufMeshIdx stucBufMeshAddVert(
 	const StucAlloc *pAlloc,
 	BufMesh *pMesh,
 	bool border,
-	DebugAndPerfVars *pDpVars,
 	bool *pRealloced
 ) {
 	BufMeshDomain domain = {0};
 	getVertDomain((Mesh *)pMesh, (MeshDomain *)&domain);
 	domain.pBorderCount = &pMesh->borderVertCount;
 	BufMeshIdx idx =
-		getNewBufMeshIdx(pAlloc, pMesh, &domain, border, pDpVars, pRealloced);
+		getNewBufMeshIdx(pAlloc, pMesh, &domain, border, pRealloced);
 	return idx;
 }
 
@@ -323,20 +318,16 @@ void stucMeshSetLastFace(const StucAlloc *pAlloc, Mesh *pMesh) {
 	pMesh->core.faceCount--; 
 }
 
-void stucBufMeshSetLastFaces(
-	const StucAlloc *pAlloc,
-	BufMesh *pBufMesh,
-	DebugAndPerfVars *pDpVars
-) {
+void stucBufMeshSetLastFaces(const StucAlloc *pAlloc, BufMesh *pBufMesh) {
 	Mesh *pMesh = &pBufMesh->mesh;
 	bool realloced = false;
 	BufMeshIdx lastFace =
-		stucBufMeshAddFace(pAlloc, pBufMesh, false, pDpVars, &realloced);
+		stucBufMeshAddFace(pAlloc, pBufMesh, false, &realloced);
 	pMesh->core.pFaces[lastFace.realIdx] = pMesh->core.cornerCount;
 	//bufMeshAddFace() increments this, so we need to undo that
 	pMesh->core.faceCount--; 
 
-	lastFace = stucBufMeshAddFace(pAlloc, pBufMesh, true, pDpVars, &realloced);
+	lastFace = stucBufMeshAddFace(pAlloc, pBufMesh, true, &realloced);
 	pMesh->core.pFaces[lastFace.realIdx] = pBufMesh->borderCornerCount;
 	pBufMesh->borderFaceCount--;
 }

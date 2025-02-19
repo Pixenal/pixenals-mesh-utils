@@ -84,28 +84,24 @@ BufMeshIdx stucBufMeshAddFace(
 	const StucAlloc *pAlloc,
 	BufMesh *pMesh,
 	bool border,
-	DebugAndPerfVars *pDpVars,
 	bool *pRealloced
 );
 BufMeshIdx stucBufMeshAddCorner(
 	const StucAlloc *pAlloc,
 	BufMesh *pMesh,
 	bool border,
-	DebugAndPerfVars *pDpVars,
 	bool *pRealloced
 );
 BufMeshIdx stucBufMeshAddEdge(
 	const StucAlloc *pAlloc,
 	BufMesh *pMesh,
 	bool border,
-	DebugAndPerfVars *pDpVars,
 	bool *pRealloced
 );
 BufMeshIdx stucBufMeshAddVert(
 	const StucAlloc *pAlloc,
 	BufMesh *pMesh,
 	bool border,
-	DebugAndPerfVars *pDpVars,
 	bool *pRealloced
 );
 BufMeshIdx stucConvertBorderFaceIdx(const BufMesh *pMesh, I32 face);
@@ -118,11 +114,7 @@ I32 stucMeshAddEdge(const StucAlloc *pAlloc, Mesh *pMesh, bool *pRealloced);
 I32 stucMeshAddVert(const StucAlloc *pAlloc, Mesh *pMesh, bool *pRealloced);
 void stucReallocMeshToFit(const StucAlloc *pAlloc, Mesh *pMesh);
 void stucMeshSetLastFace(const StucAlloc *pAlloc, Mesh *pMesh);
-void stucBufMeshSetLastFaces(
-	const StucAlloc *pAlloc,
-	BufMesh *pBufMesh,
-	DebugAndPerfVars *pDpVars
-);
+void stucBufMeshSetLastFaces(const StucAlloc *pAlloc, BufMesh *pBufMesh);
 bool stucCheckIfMesh(StucObjectData type);
 void stucAddToMeshCounts(
 	MeshCounts *pCounts,

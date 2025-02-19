@@ -356,7 +356,7 @@ V3_F32 stucGetBarycentricInFace(
 	}
 	else {
 		for (I32 k = 0; k < 3; ++k) {
-			pTriCorners[k] = k;
+			pTriCorners[k] = (I8)k;
 		}
 	}
 	return vertBc;

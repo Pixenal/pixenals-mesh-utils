@@ -452,7 +452,7 @@ void addVertToTableEntry(
 		pBasic->pEdgeVerts
 	);
 	if (isSeam) {
-		pBasic->pVertSeamTable[vert] = isSeam;
+		pBasic->pVertSeamTable[vert] = (I8)isSeam;
 		pBasic->pEdgeSeamTable[edge] = true;
 	}
 	if (pBasic->pInVertTable[vert] < 3 &&
@@ -716,7 +716,7 @@ void appendToOutMats(
 	char *pDest = stucAttribAsStr(&pOutMats->core, pOutMats->count);
 	char *pSrc = pOutMatBuf + pEntry->idx * STUC_ATTRIB_STRING_MAX_LEN;
 	memcpy(pDest, pSrc, STUC_ATTRIB_STRING_MAX_LEN);
-	pEntry->idx = pOutMats->count;
+	pEntry->idx = (I8)pOutMats->count;
 	pOutMats->count++;
 }
 
@@ -740,10 +740,10 @@ Result iterFacesAndCorrectMats(
 			char *pMatName = stucAttribAsStr(&pMatsToAdd->core, matIdx);
 			I32 idx = stucGetStrIdxInIndexedAttrib(pOutMats, pMatName);
 			if (idx >= 0) {
-				pEntry->idx = idx;
+				pEntry->idx = (I8)idx;
 			}
 			else {
-				pEntry->idx = pOutMats->count;
+				pEntry->idx = (I8)pOutMats->count;
 				appendToOutMatsBuf(pAlloc, pMesh, pOutMats, pMatName);
 			}
 		}
@@ -1165,10 +1165,11 @@ void testPixelAgainstFace(
 	V3_F32 ab = _(vertsXyz[1] V3SUB vertsXyz[0]);
 	V3_F32 ac = _(vertsXyz[2] V3SUB vertsXyz[0]);
 	V3_F32 normal = v3Cross(ab, ac);
-	F32 normalLen =
-		sqrt(normal.d[0] * normal.d[0] +
-		     normal.d[1] * normal.d[1] +
-		     normal.d[2] * normal.d[2]);
+	F32 normalLen = sqrtf(
+		normal.d[0] * normal.d[0] +
+		normal.d[1] * normal.d[1] +
+		normal.d[2] * normal.d[2]
+	);
 	_(&normal V3DIVEQLS normalLen);
 	V3_F32 up = { .0f, .0f, 1.0f };
 	F32 dotUp = _(normal V3DOT up);
@@ -1250,7 +1251,7 @@ Result stucRenderJob(void *pArgs) {
 	I32 dataLen = vars.pixelCount * getPixelSize(vars.imageBuf.type);
 	vars.imageBuf.pData = vars.pCtx->alloc.pMalloc(dataLen);
 	Mesh *pMesh = &vars.pMap->mesh;
-	F32 pixelScale = 1.0 / (F32)vars.imageBuf.res;
+	F32 pixelScale = 1.0f / (F32)vars.imageBuf.res;
 	F32 pixelHalfScale = pixelScale / 2.0f;
 	FaceCells faceCells = {0};
 	FaceCellsTable faceCellsTable = {.pFaceCells = &faceCells};
@@ -1337,7 +1338,7 @@ StucResult stucMapFileGenPreviewImage(
 		args[i].zBounds = zBounds;
 		args[i].pMutex = pMutex;
 		args[i].pActiveJobs = &activeJobs;
-		args[i].id = i;
+		args[i].id = (I8)i;
 		jobArgPtrs[i] = args + i;
 	}
 	void **ppJobHandles = pCtx->alloc.pCalloc(activeJobs, sizeof(void *));
