@@ -38,13 +38,12 @@ I32 stucCheckIfEdgeIsSeam(
 	I32 edgeIdx,
 	FaceRange face,
 	I32 corner,
-	const Mesh *pMesh,
-	EdgeVerts *pEdgeVerts
+	const Mesh *pMesh
 );
 U32 stucFnvHash(const U8 *value, I32 valueSize, U32 size);
 bool stucCheckIfEdgeIsPreserve(const Mesh *pMesh, I32 edge);
 bool stucCheckIfVertIsPreserve(const Mesh *pMesh, I32 vert);
-I32 stucCheckIfEdgeIsReceive(const Mesh *pMesh, I32 edge);
+bool stucCheckIfEdgeIsReceive(const Mesh *pMesh, I32 edge, F32 receiveLen);
 FaceTriangulated stucTriangulateFace(
 	const StucAlloc alloc,
 	const FaceRange *pInFace,

@@ -92,7 +92,9 @@ StucResult stucContextInit(
 		setDefaultStageReport(*pCtx);
 	}
 	//TODO add ability to set custom specialAttrib names
-	stucSetDefaultSpecialAttribNames(*pCtx);
+	stucSetDefaultSpAttribNames(*pCtx);
+	stucSetDefaultSpAttribDomains(*pCtx);
+	stucSetDefaultSpAttribTypes(*pCtx);
 	return STUC_SUCCESS;
 }
 
@@ -148,6 +150,28 @@ StucResult stucMapFileLoadForEdit(
 	);
 }
 
+static
+void buildEdgeLenList(StucContext pCtx, Mesh *pMesh) {
+	STUC_ASSERT("", pMesh->pEdgeLen);
+	V3_F32 *pPosCache = pCtx->alloc.pMalloc(pMesh->core.edgeCount * sizeof(V3_F32));
+	I8 *pSet = pCtx->alloc.pCalloc(pMesh->core.edgeCount, 1);
+	for (I32 i = 0; i < pMesh->core.cornerCount; ++i) {
+		V3_F32 pos = pMesh->pVerts[pMesh->core.pCorners[i]];
+		I32 edge = pMesh->core.pEdges[i];
+		if (!pSet[edge]) {
+			pPosCache[edge] = pos;
+			pSet[edge] = 1;
+			continue;
+		}
+		//STUC_ASSERT("more than 2 corners refernce 1 edge", pSet[edge] < 2);
+		V3_F32 diff = _(pos V3SUB pPosCache[edge]);
+		pMesh->pEdgeLen[edge] = v3Len(diff);
+		pSet[edge]++;
+	}
+	pCtx->alloc.pFree(pSet);
+	pCtx->alloc.pFree(pPosCache);
+}
+
 StucResult stucMapFileLoad(StucContext pCtx, StucMap *pMapHandle, char *filePath) {
 	StucResult err = STUC_NOT_SET;
 	StucMap pMap = pCtx->alloc.pCalloc(1, sizeof(MapFile));
@@ -176,42 +200,54 @@ StucResult stucMapFileLoad(StucContext pCtx, StucMap *pMapHandle, char *filePath
 		STUC_THROW_IFNOT(err, "", 0);
 		stucApplyObjTransform(pObjArr + i);
 	}
-	pMap->mesh.core.type.type = STUC_OBJECT_DATA_MESH_INTERN;
-	stucMergeObjArr(pCtx, &pMap->mesh, objCount, pObjArr, false);
+	Mesh *pMapMesh = pCtx->alloc.pCalloc(1, sizeof(Mesh));
+	pMapMesh->core.type.type = STUC_OBJECT_DATA_MESH_INTERN;
+	stucMergeObjArr(pCtx, pMapMesh, objCount, pObjArr, false);
 
-	stucSetAttribOrigins(&pMap->mesh.core.meshAttribs, STUC_ATTRIB_ORIGIN_MAP);
-	stucSetAttribOrigins(&pMap->mesh.core.faceAttribs, STUC_ATTRIB_ORIGIN_MAP);
-	stucSetAttribOrigins(&pMap->mesh.core.cornerAttribs, STUC_ATTRIB_ORIGIN_MAP);
-	stucSetAttribOrigins(&pMap->mesh.core.edgeAttribs, STUC_ATTRIB_ORIGIN_MAP);
-	stucSetAttribOrigins(&pMap->mesh.core.vertAttribs, STUC_ATTRIB_ORIGIN_MAP);
-	stucSetAttribToDontCopy(pCtx, &pMap->mesh, 0x7f0);
+	//append edgeLen attrib
+	stucAppendSpAttribsToMesh(pCtx, pMapMesh, 0x1000, STUC_ATTRIB_ORIGIN_MAP);
 
-	err = stucSetSpecialAttribs(pCtx, &pMap->mesh, 0x8ae);
+	stucSetAttribOrigins(&pMapMesh->core.meshAttribs, STUC_ATTRIB_ORIGIN_MAP);
+	stucSetAttribOrigins(&pMapMesh->core.faceAttribs, STUC_ATTRIB_ORIGIN_MAP);
+	stucSetAttribOrigins(&pMapMesh->core.cornerAttribs, STUC_ATTRIB_ORIGIN_MAP);
+	stucSetAttribOrigins(&pMapMesh->core.edgeAttribs, STUC_ATTRIB_ORIGIN_MAP);
+	stucSetAttribOrigins(&pMapMesh->core.vertAttribs, STUC_ATTRIB_ORIGIN_MAP);
+
+	stucSetAttribToDontCopy(pCtx, pMapMesh, 0x17f0);
+	err = stucSetSpecialAttribs(pCtx, pMapMesh, 0x18ae);
 	STUC_THROW_IFNOT(err, "", 0);
+
+	buildEdgeLenList(pCtx, pMapMesh);
 
 	//TODO some form of heap corruption when many objects
 	//test with address sanitizer on CircuitPieces.stuc
 	stucDestroyObjArr(pCtx, objCount, pObjArr);
 
-	if (pMap->mesh.pUvAttrib) {
+	if (pMapMesh->pUvAttrib) {
 		//TODO as with all special attributes, allow user to define what should be considered
 		//     the primary UV channel. This especially important for integration with other DCCs
-		if (!strncmp(pMap->mesh.pUvAttrib->core.name, "UVMap", STUC_ATTRIB_NAME_MAX_LEN)) {
+		if (!strncmp(
+			pMapMesh->pUvAttrib->core.name,
+			pCtx->spAttribNames[STUC_ATTRIB_SP_UVS],
+			STUC_ATTRIB_NAME_MAX_LEN
+		)) {
 			char newName[STUC_ATTRIB_NAME_MAX_LEN] = "Map_UVMap";
-			memcpy(pMap->mesh.pUvAttrib->core.name, newName, STUC_ATTRIB_NAME_MAX_LEN);
+			memcpy(pMapMesh->pUvAttrib->core.name, newName, STUC_ATTRIB_NAME_MAX_LEN);
 		}
 	}
 
 	//set corner attribs to interpolate by default
 	//TODO make this an option in ui, even for non common attribs
-	for (I32 i = 0; i < pMap->mesh.core.cornerAttribs.count; ++i) {
-		pMap->mesh.core.cornerAttribs.pArr[i].interpolate = true;
+	for (I32 i = 0; i < pMapMesh->core.cornerAttribs.count; ++i) {
+		pMapMesh->core.cornerAttribs.pArr[i].interpolate = true;
 	}
+
+	pMap->pMesh = pMapMesh;
 
 	//the quadtree is created before USGs are assigned to verts,
 	//as the tree's used to speed up the process
 	printf("File loaded. Creating quad tree\n");
-	err = stucCreateQuadTree(pCtx, pMap);
+	err = stucCreateQuadTree(pCtx, &pMap->quadTree, pMap->pMesh);
 	STUC_THROW_IFNOT(err, "failed to create quadtree", 0);
 
 	if (pMap->usgArr.count) {
@@ -231,8 +267,10 @@ StucResult stucMapFileLoad(StucContext pCtx, StucMap *pMapHandle, char *filePath
 		}
 		//TODO remove duplicate uses of alloc where pCtx is present
 		//like this
-		stucAllocUsgSquaresMesh(pCtx, &pCtx->alloc, pMap);
-		stucFillUsgSquaresMesh(pMap, pUsgArr);
+		Mesh *pSquares = pCtx->alloc.pCalloc(1, sizeof(Mesh));
+		stucAllocUsgSquaresMesh(pCtx, pMap, pSquares);
+		stucFillUsgSquaresMesh(pMap, pUsgArr, pSquares);
+		pMap->usgArr.pSquares = pSquares;
 		stucAssignUsgsToVerts(&pCtx->alloc, pMap, pUsgArr);
 		pMap->usgArr.pMemArr = pUsgArr;
 	}
@@ -246,13 +284,19 @@ StucResult stucMapFileLoad(StucContext pCtx, StucMap *pMapHandle, char *filePath
 
 StucResult stucMapFileUnload(StucContext pCtx, StucMap pMap) {
 	stucDestroyQuadTree(pCtx, &pMap->quadTree);
-	stucMeshDestroy(pCtx, &pMap->mesh.core);
+	if (pMap->pMesh) {
+		stucMeshDestroy(pCtx, (StucMesh *)&pMap->pMesh->core);
+		pCtx->alloc.pFree((Mesh *)pMap->pMesh);
+	}
+	if (pMap->usgArr.pSquares) {
+		pCtx->alloc.pFree((Mesh *)pMap->usgArr.pSquares);
+	}
 	pCtx->alloc.pFree(pMap);
 	return STUC_SUCCESS;
 }
 
 static
-void initCommonAttrib(StucContext pCtx, StucCommonAttrib *pEntry, StucAttrib *pAttrib) {
+void initCommonAttrib(StucContext pCtx, StucCommonAttrib *pEntry, const StucAttrib *pAttrib) {
 	memcpy(pEntry->name, pAttrib->core.name, STUC_ATTRIB_NAME_MAX_LEN);
 	StucTypeDefault *pDefault = 
 		stucGetTypeDefaultConfig(&pCtx->typeDefaults, pAttrib->core.type);
@@ -262,8 +306,8 @@ void initCommonAttrib(StucContext pCtx, StucCommonAttrib *pEntry, StucAttrib *pA
 static
 void getCommonAttribs(
 	StucContext pCtx,
-	AttribArray *pMapAttribs,
-	AttribArray *pMeshAttribs,
+	const AttribArray *pMapAttribs,
+	const AttribArray *pMeshAttribs,
 	I32 *pCommonAttribCount,
 	StucCommonAttrib **ppCommonAttribs
 ) {
@@ -315,35 +359,35 @@ StucResult stucQueryCommonAttribs(
 ) {
 	getCommonAttribs(
 		pCtx,
-		&pMap->mesh.core.meshAttribs,
+		&pMap->pMesh->core.meshAttribs,
 		&pMesh->meshAttribs,
 		&pCommonAttribs->meshCount,
 		&pCommonAttribs->pMesh
 	);
 	getCommonAttribs(
 		pCtx,
-		&pMap->mesh.core.faceAttribs,
+		&pMap->pMesh->core.faceAttribs,
 		&pMesh->faceAttribs,
 		&pCommonAttribs->faceCount,
 		&pCommonAttribs->pFace
 	);
 	getCommonAttribs(
 		pCtx,
-		&pMap->mesh.core.cornerAttribs,
+		&pMap->pMesh->core.cornerAttribs,
 		&pMesh->cornerAttribs,
 		&pCommonAttribs->cornerCount,
 		&pCommonAttribs->pCorner
 	);
 	getCommonAttribs(
 		pCtx,
-		&pMap->mesh.core.edgeAttribs,
+		&pMap->pMesh->core.edgeAttribs,
 		&pMesh->edgeAttribs,
 		&pCommonAttribs->edgeCount,
 		&pCommonAttribs->pEdge
 	);
 	getCommonAttribs(
 		pCtx,
-		&pMap->mesh.core.vertAttribs,
+		&pMap->pMesh->core.vertAttribs,
 		&pMesh->vertAttribs,
 		&pCommonAttribs->vertCount,
 		&pCommonAttribs->pVert
@@ -387,7 +431,7 @@ Result sendOffMappingJobs(
 	bool singleThread = !facesPerThread;
 	*pJobCount = singleThread ? 1 : *pJobCount;
 	void *jobArgPtrs[MAX_THREADS] = {0};
-	I32 borderTableSize = pBasic->pMap->mesh.core.faceCount / 5 + 2; //+ 2 incase is 0
+	I32 borderTableSize = pBasic->pMap->pMesh->core.faceCount / 5 + 2; //+ 2 incase is 0
 	*ppJobArgs = pBasic->pCtx->alloc.pCalloc(*pJobCount, sizeof(MappingJobArgs));
 	printf("fromjobsendoff: BorderTableSize: %d\n", borderTableSize);
 	for (I32 i = 0; i < *pJobCount; ++i) {
@@ -415,15 +459,13 @@ Result sendOffMappingJobs(
 }
 
 static
-void buildEdgeVertsTable(MapToMeshBasic *pBasic) {
-	const StucMesh *pCore = &pBasic->pInMesh->core;
-	pBasic->pEdgeVerts =
-		pBasic->pCtx->alloc.pMalloc(sizeof(EdgeVerts) * pCore->edgeCount);
-	memset(pBasic->pEdgeVerts, -1, sizeof(EdgeVerts) * pCore->edgeCount);
+void buildEdgeCornersTable(Mesh *pMesh) {
+	const StucMesh *pCore = &pMesh->core;
+	memset(pMesh->pEdgeCorners, -1, sizeof(V2_I32) * pCore->edgeCount);
 	for (I32 i = 0; i < pCore->cornerCount; ++i) {
 		I32 edge = pCore->pEdges[i];
-		I32 whichVert = (pBasic->pEdgeVerts)[edge].verts[0] >= 0;
-		(pBasic->pEdgeVerts)[edge].verts[whichVert] = i;
+		bool which = (pMesh->pEdgeCorners)[edge].d[0] >= 0;
+		(pMesh->pEdgeCorners)[edge].d[which] = i;
 	}
 }
 
@@ -439,26 +481,24 @@ void addVertToTableEntry(
 	I32 localCorner,
 	I32 vert,
 	I32 edge,
-	EdgeCache *pEdgeCache,
-	MapToMeshBasic *pBasic
+	EdgeCache *pEdgeCache
 ) {
 	//isSeam returns 2 if mesh border, and 1 if uv seam
 	I32 isSeam = stucCheckIfEdgeIsSeam(
 		edge,
 		face,
 		localCorner,
-		pMesh,
-		pBasic->pEdgeVerts
+		pMesh
 	);
 	if (isSeam) {
-		pBasic->pVertSeamTable[vert] = (I8)isSeam;
-		pBasic->pEdgeSeamTable[edge] = true;
+		pMesh->pSeamVert[vert] = (I8)isSeam;
+		pMesh->pSeamEdge[edge] = true;
 	}
-	if (pBasic->pInVertTable[vert] < 3 &&
+	if (pMesh->pNumAdjPreserve[vert] < 3 &&
 		stucCheckIfEdgeIsPreserve(pMesh, edge) &&
 		pEdgeCache[vert].d[0] != edge + 1 &&
 		pEdgeCache[vert].d[1] != edge + 1) {
-		pBasic->pInVertTable[vert]++;
+		pMesh->pNumAdjPreserve[vert]++;
 		I32 *pEdgeCacheIdx = &pEdgeCache[vert].idx;
 		pEdgeCache[vert].d[*pEdgeCacheIdx] = edge + 1;
 		++*pEdgeCacheIdx;
@@ -466,34 +506,29 @@ void addVertToTableEntry(
 }
 
 static
-void buildVertTables(MapToMeshBasic *pBasic) {
-	const StucAlloc *pAlloc = &pBasic->pCtx->alloc;
-	const Mesh *pInMesh = pBasic->pInMesh;
-	pBasic->pInVertTable = pAlloc->pCalloc(pInMesh->core.vertCount, 1);
-	pBasic->pVertSeamTable = pAlloc->pCalloc(pInMesh->core.vertCount, 1);
-	pBasic->pEdgeSeamTable = pAlloc->pCalloc(pInMesh->core.edgeCount, 1);
-	EdgeCache *pEdgeCache = pAlloc->pCalloc(pInMesh->core.vertCount, sizeof(EdgeCache));
-	for (I32 i = 0; i < pInMesh->core.faceCount; ++i) {
+void buildSeamAndPreserveTables(StucAlloc *pAlloc, Mesh *pMesh) {
+	EdgeCache *pEdgeCache = pAlloc->pCalloc(pMesh->core.vertCount, sizeof(EdgeCache));
+	for (I32 i = 0; i < pMesh->core.faceCount; ++i) {
 		FaceRange face = {0};
-		face.start = pInMesh->core.pFaces[i];
-		face.end = pInMesh->core.pFaces[i + 1];
+		face.start = pMesh->core.pFaces[i];
+		face.end = pMesh->core.pFaces[i + 1];
 		face.size = face.end - face.start;
 		face.idx = i;
 		for (I32 j = 0; j < face.size; ++j) {
 			I32 corner = face.start + j;
-			I32 vert = pInMesh->core.pCorners[corner];
-			I32 edge = pInMesh->core.pEdges[corner];
-			addVertToTableEntry(pInMesh, face, j, vert, edge, pEdgeCache, pBasic);
+			I32 vert = pMesh->core.pCorners[corner];
+			I32 edge = pMesh->core.pEdges[corner];
+			addVertToTableEntry(pMesh, face, j, vert, edge, pEdgeCache);
 			I32 prevj = j == 0 ? face.size - 1 : j - 1;
-			I32 prevEdge = pInMesh->core.pEdges[face.start + prevj];
-			addVertToTableEntry(pInMesh, face, prevj, vert, prevEdge, pEdgeCache, pBasic);
+			I32 prevEdge = pMesh->core.pEdges[face.start + prevj];
+			addVertToTableEntry(pMesh, face, prevj, vert, prevEdge, pEdgeCache);
 		}
 	}
 	pAlloc->pFree(pEdgeCache);
 }
 
 static
-bool checkIfNoFacesHaveMaskIdx(Mesh *pMesh, I8 maskIdx) {
+bool checkIfNoFacesHaveMaskIdx(const Mesh *pMesh, I8 maskIdx) {
 	if (!pMesh->pMatIdx) {
 		return false;
 	}
@@ -556,13 +591,14 @@ void mappingJobArgsDestroy(MapToMeshBasic *pBasic, I32 jobCount, MappingJobArgs 
 static
 Result mapToMeshInternal(
 	StucContext pCtx,
-	StucMap pMap,
-	Mesh *pMeshIn,
+	const StucMap pMap,
+	const Mesh *pMeshIn,
 	StucMesh *pOutMesh,
 	I8 maskIdx,
-	StucCommonAttribList *pCommonAttribList,
+	const StucCommonAttribList *pCommonAttribList,
 	InFaceArr **ppInFaceTable,
-	F32 wScale
+	F32 wScale,
+	F32 receiveLen
 ) {
 	StucResult err = STUC_SUCCESS;
 	if (checkIfNoFacesHaveMaskIdx(pMeshIn, maskIdx)) {
@@ -574,11 +610,10 @@ Result mapToMeshInternal(
 		.pInMesh = pMeshIn,
 		.pCommonAttribList = pCommonAttribList,
 		.wScale = wScale,
+		.receiveLen = receiveLen,
 		.maskIdx = maskIdx,
 		.ppInFaceTable = ppInFaceTable
 	};
-	buildEdgeVertsTable(&basic);
-	buildVertTables(&basic);
 	I32 jobCount = 0;
 	MappingJobArgs *pMappingJobArgs = NULL;
 
@@ -594,10 +629,6 @@ Result mapToMeshInternal(
 	STUC_CATCH(0, err, ;);
 	mappingJobArgsDestroy(&basic, jobCount, pMappingJobArgs);
 	pCtx->alloc.pFree(pMappingJobArgs);
-	pCtx->alloc.pFree(basic.pEdgeVerts);
-	pCtx->alloc.pFree(basic.pInVertTable);
-	pCtx->alloc.pFree(basic.pVertSeamTable);
-	pCtx->alloc.pFree(basic.pEdgeSeamTable);
 	return err;
 }
 
@@ -649,28 +680,28 @@ void InFaceTableToHashTable(
 static
 Result getMatsToAdd(
 	StucContext pCtx,
-	StucMapArr *pMapArr,
+	const StucMapArr *pMapArr,
 	I32 mapIdx,
-	CommonAttribList *pCommonAttribs,
-	AttribIndexedArr *pInIndexedAttribs,
-	AttribIndexed **ppMatsToAdd
+	const CommonAttribList *pCommonAttribs,
+	const AttribIndexedArr *pInIndexedAttribs,
+	const AttribIndexed **ppMatsToAdd
 ) {
-	AttribIndexedArr *pMapAttribArr = &pMapArr->ppArr[mapIdx]->indexedAttribs;
-	CommonAttribList *pMapCommon = pCommonAttribs + mapIdx;
-	char *pAttribName = pCtx->spAttribs[STUC_ATTRIB_SP_MAT_IDX];
-	CommonAttrib *pCommonAttrib =
+	const AttribIndexedArr *pMapAttribArr = &pMapArr->ppArr[mapIdx]->indexedAttribs;
+	const CommonAttribList *pMapCommon = pCommonAttribs + mapIdx;
+	char *pAttribName = pCtx->spAttribNames[STUC_ATTRIB_SP_MAT_IDX];
+	const CommonAttrib *pCommonAttrib =
 		stucGetCommonAttrib(pMapCommon->pFace, pMapCommon->faceCount, pAttribName);
-	BlendConfig *pConfig = {0};
+	BlendConfig config = {0};
 	if (pCommonAttrib) {
-		pConfig = &pCommonAttrib->blendConfig;
+		config = pCommonAttrib->blendConfig;
 	}
 	else {
-		pConfig =
-			&stucGetTypeDefaultConfig(&pCtx->typeDefaults, STUC_ATTRIB_STRING)->blendConfig;
+		config =
+			stucGetTypeDefaultConfig(&pCtx->typeDefaults, STUC_ATTRIB_STRING)->blendConfig;
 	}
 	char *pName = "StucMaterials";
-	AttribIndexed *pInMats = stucGetAttribIndexedIntern(pInIndexedAttribs, pName);
-	AttribIndexed *pMapMats = stucGetAttribIndexedIntern(pMapAttribArr, pName);
+	const AttribIndexed *pInMats = stucGetAttribIndexedIntern(pInIndexedAttribs, pName);
+	const AttribIndexed *pMapMats = stucGetAttribIndexedIntern(pMapAttribArr, pName);
 	if (!pInMats) {
 		*ppMatsToAdd = pMapMats;
 	}
@@ -678,7 +709,7 @@ Result getMatsToAdd(
 		*ppMatsToAdd = pInMats;
 	}
 	else {
-		*ppMatsToAdd = pConfig->order ? pInMats : pMapMats;
+		*ppMatsToAdd = config.order ? pInMats : pMapMats;
 	}
 	return STUC_SUCCESS;
 }
@@ -688,7 +719,7 @@ void appendToOutMatsBuf(
 	const StucAlloc *pAlloc,
 	Mesh *pMesh,
 	AttribIndexed *pOutMats,
-	char *pMatName
+	const char *pMatName
 ) {
 	STUC_ASSERT("", pOutMats->count <= pOutMats->size);
 	if (pOutMats->count == pOutMats->size) {
@@ -726,7 +757,7 @@ Result iterFacesAndCorrectMats(
 	Mesh *pMesh,
 	AttribIndexed *pOutMats,
 	MatTableEntry **ppMatTable,
-	AttribIndexed *pMatsToAdd
+	const AttribIndexed *pMatsToAdd
 ) {
 	Result err = STUC_SUCCESS;
 	for (I32 j = 0; j < pMesh->core.faceCount; ++j) {
@@ -736,7 +767,7 @@ Result iterFacesAndCorrectMats(
 		if (!pEntry->hasRef) {
 			pEntry->hasRef = true;
 			//We're just through material slots, so linear search should be fine for now
-			char *pMatName = stucAttribAsStr(&pMatsToAdd->core, matIdx);
+			const char *pMatName = stucAttribAsStrConst(&pMatsToAdd->core, matIdx);
 			I32 idx = stucGetStrIdxInIndexedAttrib(pOutMats, pMatName);
 			if (idx >= 0) {
 				pEntry->idx = (I8)idx;
@@ -756,16 +787,17 @@ static
 Result correctMatIndices(
 	StucContext pCtx,
 	Mesh *pMeshArr,
-	StucMapArr *pMapArr,
-	CommonAttribList *pCommonAttribs,
-	AttribIndexedArr *pInIndexedAttribs,
+	const StucMapArr *pMapArr,
+	const CommonAttribList *pCommonAttribs,
+	const AttribIndexedArr *pInIndexedAttribs,
 	AttribIndexedArr *pOutIndexedAttribs
 ) {
 	Result err = STUC_SUCCESS;
 	const StucAlloc *pAlloc = &pCtx->alloc;
 	pOutIndexedAttribs->size = 1;
 	pOutIndexedAttribs->count = 1;
-	pOutIndexedAttribs->pArr = pAlloc->pCalloc(pOutIndexedAttribs->size, sizeof(AttribIndexed));
+	pOutIndexedAttribs->pArr =
+		pAlloc->pCalloc(pOutIndexedAttribs->size, sizeof(AttribIndexed));
 	AttribIndexed *pOutMats = pOutIndexedAttribs->pArr;
 	pOutMats->size = pMapArr->count;
 	pOutMats->size += (pOutMats->size % 2);
@@ -785,7 +817,7 @@ Result correctMatIndices(
 		if (!pMesh->pMatIdx) {
 			continue;
 		}
-		AttribIndexed *pMatsToAdd = NULL;
+		const AttribIndexed *pMatsToAdd = NULL;
 		err = getMatsToAdd(
 			pCtx,
 			pMapArr,
@@ -820,6 +852,7 @@ typedef struct {
 	StucAttribIndexedArr *pOutIndexedAttribs;
 	StucCommonAttribList *pCommonAttribList;
 	F32 wScale;
+	F32 receiveLen;
 } StucMapToMeshArgs;
 
 static
@@ -833,7 +866,8 @@ Result mapToMeshFromJob(void *pArgsVoid) {
 		pArgs->pMeshOut,
 		pArgs->pOutIndexedAttribs,
 		pArgs->pCommonAttribList,
-		pArgs->wScale
+		pArgs->wScale,
+		pArgs->receiveLen
 	);
 }
 
@@ -846,7 +880,8 @@ Result stucQueueMapToMesh(
 	StucMesh *pMeshOut,
 	StucAttribIndexedArr *pOutIndexedAttribs,
 	StucCommonAttribList *pCommonAttribList,
-	F32 wScale
+	F32 wScale,
+	F32 receiveLen
 ) {
 	StucMapToMeshArgs *pArgs = pCtx->alloc.pCalloc(1, sizeof(StucMapToMeshArgs));
 	pArgs->pCtx = pCtx;
@@ -857,6 +892,7 @@ Result stucQueueMapToMesh(
 	pArgs->pOutIndexedAttribs = pOutIndexedAttribs;
 	pArgs->pCommonAttribList = pCommonAttribList;
 	pArgs->wScale = wScale;
+	pArgs->receiveLen = receiveLen;
 	pCtx->threadPool.pJobStackPushJobs(
 		pCtx->pThreadPoolHandle,
 		1,
@@ -870,13 +906,14 @@ Result stucQueueMapToMesh(
 static
 Result mapMapArrToMesh(
 	StucContext pCtx,
-	StucMapArr *pMapArr,
-	Mesh *pMeshIn,
-	StucAttribIndexedArr *pInIndexedAttribs,
+	const StucMapArr *pMapArr,
+	const Mesh *pMeshIn,
+	const StucAttribIndexedArr *pInIndexedAttribs,
 	StucMesh *pMeshOut,
 	StucAttribIndexedArr *pOutIndexedAttribs,
-	StucCommonAttribList *pCommonAttribList,
-	F32 wScale
+	const StucCommonAttribList *pCommonAttribList,
+	F32 wScale,
+	F32 receiveLen
 ) {
 	Result err = STUC_SUCCESS;
 	Mesh *pOutBufArr = pCtx->alloc.pCalloc(pMapArr->count, sizeof(Mesh));
@@ -884,12 +921,17 @@ Result mapMapArrToMesh(
 		pCtx->alloc.pCalloc(pMapArr->count, sizeof(StucObject));
 	for (I32 i = 0; i < pMapArr->count; ++i) {
 		pOutObjWrapArr[i].pData = (StucObjectData *)&pOutBufArr[i];
-		StucMap pMap = pMapArr->ppArr[i];
+		const StucMap pMap = pMapArr->ppArr[i];
 		I8 matIdx = pMapArr->pMatArr[i];
 		InFaceArr *pInFaceTable = NULL;
 		if (pMap->usgArr.count) {
-			MapFile squares = { .mesh = pMap->usgArr.squares };
-			err = stucCreateQuadTree(pCtx, &squares);
+			//set preserve to null to prevent usg squares from being split
+			if (pMeshIn->pEdgePreserve || pMeshIn->pVertPreserve) {
+				*(void **)&pMeshIn->pEdgePreserve = NULL;
+				*(void **)&pMeshIn->pVertPreserve = NULL;
+			}
+			MapFile squares = {.pMesh = pMap->usgArr.pSquares};
+			err = stucCreateQuadTree(pCtx, &squares.quadTree, squares.pMesh);
 			STUC_THROW_IFNOT(err, "failed to create usg quadtree", 0);
 			StucMesh squaresOut = {0};
 			err = mapToMeshInternal(
@@ -900,7 +942,8 @@ Result mapMapArrToMesh(
 				matIdx,
 				pCommonAttribList + i,
 				&pInFaceTable,
-				1.0f
+				1.0f,
+				-1.0f
 			);
 			STUC_THROW_IFNOT(err, "map to mesh usg failed", 1);
 			err = stucSampleInAttribsAtUsgOrigins(
@@ -915,10 +958,8 @@ Result mapMapArrToMesh(
 			//*pMeshOut = squaresOut;
 			//return STUC_SUCCESS;
 			stucMeshDestroy(pCtx, &squaresOut);
+			stucSetSpecialAttribs(pCtx, (Mesh *)pMeshIn, 0x50); //reassign preserve if present
 		}
-		err = stucSetSpecialAttribs(pCtx, pMeshIn, 0x50); //set perserve if present
-		STUC_THROW_IFNOT(err, "", 1);
-
 		err = mapToMeshInternal(
 			pCtx,
 			pMap,
@@ -927,7 +968,8 @@ Result mapMapArrToMesh(
 			matIdx,
 			pCommonAttribList + i,
 			NULL,
-			wScale
+			wScale,
+			receiveLen
 		);
 		STUC_THROW_IFNOT(err, "map to mesh failed", 1);
 		STUC_CATCH(1, err, ;);
@@ -967,21 +1009,135 @@ Result mapMapArrToMesh(
 	return err;
 }
 
+static
+Result appendSpAttribsToInMesh(
+	const StucContext pCtx,
+	Mesh *pWrap,
+	const StucMesh *pMeshIn,
+	UBitField32 flags
+) {
+	Result err = STUC_SUCCESS;
+	UBitField32 has = 0;
+	stucQuerySpAttribs(pCtx, pMeshIn, flags, &has);
+	if (has) {
+		STUC_RETURN_ERR(err, "in-mesh contains attribs it shouldn't");
+	}
+	Mesh meshInCpy = {.core = *pMeshIn};
+	Mesh *pMeshInCpyPtr = &meshInCpy;
+	stucAllocAttribsFromMeshArr(
+		&pCtx->alloc,
+		pWrap,
+		1, &pMeshInCpyPtr,
+		false,
+		false, //dont allocation data
+		true //alias pMeshIn's data instead
+	);
+	stucAppendSpAttribsToMesh(
+		pCtx,
+		pWrap,
+		flags, 
+		STUC_ATTRIB_ORIGIN_MESH_IN
+	);
+	return err;
+}
+
+static
+void destroyAppendedSpAttribs(StucContext pCtx, StucMesh *pMesh, UBitField32 flags) {
+	for (I32 i = 1; i < STUC_ATTRIB_SP_COUNT; ++i) {
+		if (!(flags >> i & 0x1)) {
+			continue;
+		}
+		Attrib *pAttrib = stucGetSpAttrib(pCtx, pMesh, i);
+		if (pAttrib) {
+			if (pAttrib->core.pData) {
+				pCtx->alloc.pFree(pAttrib->core.pData);
+				pAttrib->core.pData = NULL;
+			}
+		}
+	}
+	if (pMesh->faceAttribs.pArr) {
+		pCtx->alloc.pFree(pMesh->faceAttribs.pArr);
+		pMesh->faceAttribs.pArr = NULL;
+	}
+	if (pMesh->cornerAttribs.pArr) {
+		pCtx->alloc.pFree(pMesh->cornerAttribs.pArr);
+		pMesh->cornerAttribs.pArr = NULL;
+	}
+	if (pMesh->edgeAttribs.pArr) {
+		pCtx->alloc.pFree(pMesh->edgeAttribs.pArr);
+		pMesh->edgeAttribs.pArr = NULL;
+	}
+	if (pMesh->vertAttribs.pArr) {
+		pCtx->alloc.pFree(pMesh->vertAttribs.pArr);
+		pMesh->vertAttribs.pArr = NULL;
+	}
+}
+
+static
+Result initMeshInWrap(
+	StucContext pCtx,
+	Mesh *pWrap,
+	StucMesh *pMeshIn,
+	UBitField32 spAttribsToAppend
+) {
+	Result err = STUC_SUCCESS;
+	if (!pMeshIn->edgeCount) {
+		STUC_RETURN_ERR_IFNOT_COND(
+			err,
+			!pMeshIn->edgeAttribs.count,
+			"in-mesh has edge attribs, yet no edge list"
+		);
+		err = stucBuildEdgeList(pCtx, pWrap);
+		STUC_RETURN_ERR_IFNOT(err, "failed to build edge list");
+	}
+	//const qualifiers removed here 
+	stucAliasMeshCoreNoAttribs(&pWrap->core, pMeshIn);
+	err = appendSpAttribsToInMesh(pCtx, pWrap, pMeshIn, spAttribsToAppend);
+	STUC_RETURN_ERR_IFNOT(err, "");
+	stucSetAttribOrigins(&pWrap->core.meshAttribs, STUC_ATTRIB_ORIGIN_MESH_IN);
+	stucSetAttribOrigins(&pWrap->core.faceAttribs, STUC_ATTRIB_ORIGIN_MESH_IN);
+	stucSetAttribOrigins(&pWrap->core.cornerAttribs, STUC_ATTRIB_ORIGIN_MESH_IN);
+	stucSetAttribOrigins(&pWrap->core.edgeAttribs, STUC_ATTRIB_ORIGIN_MESH_IN);
+	stucSetAttribOrigins(&pWrap->core.vertAttribs, STUC_ATTRIB_ORIGIN_MESH_IN);
+
+	err = stucSetSpecialAttribs(pCtx, pWrap, 0x1ef5e);
+	STUC_RETURN_ERR_IFNOT(err, "");
+
+	err = stucBuildTangents(pWrap);
+	STUC_RETURN_ERR_IFNOT(err, "failed to build tangents");
+	buildEdgeCornersTable(pWrap);
+	buildSeamAndPreserveTables(&pCtx->alloc, pWrap);
+
+	//set all but pos, normal, uv, w-scale, and mat-idx
+	stucSetAttribToDontCopy(pCtx, pWrap, 0x1f3f0);
+
+	return err;
+}
+
 Result stucMapToMesh(
 	StucContext pCtx,
-	StucMapArr *pMapArr,
-	StucMesh *pMeshIn,
-	StucAttribIndexedArr *pInIndexedAttribs,
+	const StucMapArr *pMapArr,
+	const StucMesh *pMeshIn,
+	const StucAttribIndexedArr *pInIndexedAttribs,
 	StucMesh *pMeshOut,
 	StucAttribIndexedArr *pOutIndexedAttribs,
-	StucCommonAttribList *pCommonAttribList,
-	F32 wScale
+	const StucCommonAttribList *pCommonAttribList,
+	F32 wScale,
+	F32 receiveLen
 ) {
 	StucResult err = STUC_SUCCESS;
-	STUC_THROW_IFNOT_COND(err, pMeshIn, "", 0);
+	STUC_RETURN_ERR_IFNOT_COND(err, pMeshIn, "");
 	err = stucValidateMesh(pMeshIn, false);
-	STUC_THROW_IFNOT(err, "invalid in-mesh", 0);
-	Mesh meshInWrap = {.core = *pMeshIn};
+	STUC_RETURN_ERR_IFNOT(err, "invalid in-mesh");
+	Mesh meshInWrap = {0};
+	UBitField32 spAttribsToAppend = 0x1e300;
+	err = initMeshInWrap(
+		pCtx,
+		&meshInWrap,
+		(StucMesh *)pMeshIn,
+		spAttribsToAppend
+	);
+	STUC_THROW_IFNOT(err, "", 0);
 
 	STUC_THROW_IFNOT_COND(
 		err,
@@ -989,30 +1145,6 @@ Result stucMapToMesh(
 		"", 0
 	);
 
-	err = stucSetSpecialAttribs(pCtx, &meshInWrap, 0xf0e); //don't set preserve yet
-	STUC_THROW_IFNOT(err, "", 0);
-
-	stucSetAttribOrigins(&pMeshIn->meshAttribs, STUC_ATTRIB_ORIGIN_MESH_IN);
-	stucSetAttribOrigins(&pMeshIn->faceAttribs, STUC_ATTRIB_ORIGIN_MESH_IN);
-	stucSetAttribOrigins(&pMeshIn->cornerAttribs, STUC_ATTRIB_ORIGIN_MESH_IN);
-	stucSetAttribOrigins(&pMeshIn->edgeAttribs, STUC_ATTRIB_ORIGIN_MESH_IN);
-	stucSetAttribOrigins(&pMeshIn->vertAttribs, STUC_ATTRIB_ORIGIN_MESH_IN);
-
-	stucSetAttribToDontCopy(pCtx, &meshInWrap, 0x3f0);
-
-	err = stucBuildTangents(&meshInWrap);
-	STUC_THROW_IFNOT(err, "failed to build tangents", 0);
-
-	if (!pMeshIn->edgeCount) {
-		STUC_THROW_IFNOT_COND(
-			err,
-			!pMeshIn->edgeAttribs.count,
-			"in-mesh has edge attribs, yet no edge list",
-			0
-		);
-		err = stucBuildEdgeList(pCtx, &meshInWrap);
-		STUC_THROW_IFNOT(err, "failed to build edge list", 0);
-	}
 	err = mapMapArrToMesh(
 		pCtx,
 		pMapArr,
@@ -1021,11 +1153,13 @@ Result stucMapToMesh(
 		pMeshOut,
 		pOutIndexedAttribs,
 		pCommonAttribList,
-		wScale
+		wScale,
+		receiveLen
 	);
 	STUC_THROW_IFNOT(err, "mapMapArrToMesh returned error", 0);
-	printf("----------------------FINISHING IN-MESH WITH FACE COUNT %d\n", pMeshIn->faceCount);
+	printf("----------------------FINISHING IN-MESH\n");
 	STUC_CATCH(0, err, ;);
+	destroyAppendedSpAttribs(pCtx, &meshInWrap.core, spAttribsToAppend);
 	return err;
 }
 
@@ -1139,7 +1273,7 @@ void testPixelAgainstFace(
 	FaceRange *pFace,
 	Color *pColor
 ) {
-	Mesh* pMesh = &pArgs->pMap->mesh;
+	const Mesh *pMesh = pArgs->pMap->pMesh;
 	V2_F32 verts[4] = {0};
 	for (I32 i = 0; i < pFace->size; ++i) {
 		verts[i] = *(V2_F32 *)(pMesh->pVerts + pMesh->core.pCorners[pFace->start + i]);
@@ -1187,7 +1321,7 @@ void testPixelAgainstFace(
 static
 void testPixelAgainstCellFaces(
 	RenderArgs *pArgs,
-	Mesh *pMesh,
+	const Mesh *pMesh,
 	Cell *pLeaf,
 	I32 j,
 	FaceCells *pFaceCells,
@@ -1248,7 +1382,7 @@ Result stucRenderJob(void *pArgs) {
 	RenderArgs args = *(RenderArgs *)pArgs;
 	I32 dataLen = args.pixelCount * getPixelSize(args.imageBuf.type);
 	args.imageBuf.pData = args.pCtx->alloc.pMalloc(dataLen);
-	Mesh *pMesh = &args.pMap->mesh;
+	const Mesh *pMesh = args.pMap->pMesh;
 	F32 pixelScale = 1.0f / (F32)args.imageBuf.res;
 	F32 pixelHalfScale = pixelScale / 2.0f;
 	FaceCells faceCells = {0};
@@ -1296,7 +1430,7 @@ Result stucRenderJob(void *pArgs) {
 
 static
 V2_F32 getZBounds(StucMap pMap) {
-	Mesh* pMesh = &pMap->mesh;
+	const Mesh *pMesh = pMap->pMesh;
 	V2_F32 zBounds = {.d = {FLT_MAX, FLT_MIN}};
 	for (I32 i = 0; i < pMesh->core.vertCount; ++i) {
 		if (pMesh->pVerts[i].d[2] < zBounds.d[0]) {

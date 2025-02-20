@@ -86,21 +86,23 @@ I32 stucCheckIfEdgeIsSeam(
 	I32 edgeIdx,
 	FaceRange face,
 	I32 corner,
-	const Mesh *pMesh,
-	EdgeVerts *pEdgeVerts
+	const Mesh *pMesh
 ) {
-	STUC_ASSERT("", pMesh && pEdgeVerts);
+	STUC_ASSERT("", pMesh);
 	STUC_ASSERT("", face.size >= 3 && face.start >= 0 && face.end >= 0 && face.size >= 0);
 	STUC_ASSERT("", edgeIdx >= 0 && corner >= 0 && corner < face.size);
-	I32 *pVerts = pEdgeVerts[edgeIdx].verts;
-	STUC_ASSERT("", pVerts);
-	if (pVerts[1] < 0) {
+	V2_I32 corners = pMesh->pEdgeCorners[edgeIdx];
+	if (corners.d[1] < 0) {
 		return 2;
 	}
 	else {
-		STUC_ASSERT("", pVerts[0] == face.start + corner || pVerts[1] == face.start + corner);
-		I32 whichCorner = pVerts[0] == face.start + corner;
-		I32 otherCorner = pVerts[whichCorner];
+		STUC_ASSERT(
+			"",
+			corners.d[0] == face.start + corner ||
+			corners.d[1] == face.start + corner
+		);
+		I32 whichCorner = corners.d[0] == face.start + corner;
+		I32 otherCorner = corners.d[whichCorner];
 		I32 iNext = (corner + 1) % face.size;
 		I32 nextBaseCorner = face.start + iNext;
 		V2_F32 uv = pMesh->pUvs[nextBaseCorner];
@@ -130,12 +132,19 @@ bool stucCheckIfVertIsPreserve(const Mesh *pMesh, I32 vert) {
 	return pMesh->pVertPreserve ? pMesh->pVertPreserve[vert] : false;
 }
 
-I32 stucCheckIfEdgeIsReceive(const Mesh *pMesh, I32 edge) {
+bool stucCheckIfEdgeIsReceive(const Mesh *pMesh, I32 edge, F32 receiveLen) {
 	STUC_ASSERT("", pMesh && edge >= 0);
 	if (pMesh->pEdgeReceive) {
-		STUC_ASSERT("", pMesh->pEdgeReceive[edge] == 0 || pMesh->pEdgeReceive[edge] == 1);
+		STUC_ASSERT("", pMesh->pEdgeReceive[edge] % 2 == pMesh->pEdgeReceive[edge]);
 	}
-	return pMesh->pEdgeReceive ? pMesh->pEdgeReceive[edge] : 0;
+	if (receiveLen >= .0f) {
+		STUC_ASSERT("", pMesh->pEdgeLen);
+		return pMesh->pEdgeLen[edge] <= receiveLen;
+	}
+	else if (pMesh->pEdgeReceive) {
+		return pMesh->pEdgeReceive[edge];
+	}
+	return false;
 }
 
 static
@@ -211,7 +220,7 @@ void addTriEdgeToTable(
 FaceTriangulated stucTriangulateFace(
 	const StucAlloc alloc,
 	const FaceRange *pInFace,
-	void *pVerts,
+	const void *pVerts,
 	const I32 *pCorners,
 	I32 useStuc
 ) {
@@ -239,16 +248,16 @@ FaceTriangulated stucTriangulateFace(
 			F32 height;
 			F32 len;
 			if (useStuc) {
-				V2_F32 *pStuc = pVerts;
-				V2_F32 verta = pStuc[pInFace->start + i];
-				V2_F32 vertb = pStuc[pInFace->start + ib];
-				V2_F32 vertc = pStuc[pInFace->start + ic];
+				const V2_F32 *pUvs = pVerts;
+				V2_F32 verta = pUvs[pInFace->start + i];
+				V2_F32 vertb = pUvs[pInFace->start + ib];
+				V2_F32 vertc = pUvs[pInFace->start + ic];
 				height = v2TriHeight(verta, vertb, vertc);
 				V2_F32 ac = _(vertc V2SUB verta);
 				len = v2Len(ac);
 			}
 			else {
-				V3_F32 *pVertsCast = pVerts;
+				const V3_F32 *pVertsCast = pVerts;
 				V3_F32 verta = pVertsCast[pCorners[pInFace->start + i]];
 				V3_F32 vertb = pVertsCast[pCorners[pInFace->start + ib]];
 				V3_F32 vertc = pVertsCast[pCorners[pInFace->start + ic]];

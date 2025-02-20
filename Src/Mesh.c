@@ -487,7 +487,7 @@ void stucMergeObjArr(
 		pCtx->alloc.pMalloc(sizeof(I32) * pMesh->cornerBufSize);
 	pMesh->core.pEdges =
 		pCtx->alloc.pMalloc(sizeof(I32) * pMesh->cornerBufSize);
-	stucAllocAttribsFromMeshArr(&pCtx->alloc, pMesh, objCount, ppSrcs, setCommon);
+	stucAllocAttribsFromMeshArr(&pCtx->alloc, pMesh, objCount, ppSrcs, setCommon, true, false);
 	for (I32 i = 0; i < objCount; ++i) {
 		stucCopyMesh(&pMesh->core, (StucMesh *)pObjArr[i].pData);
 	}
@@ -636,7 +636,7 @@ Result stucBuildTangents(Mesh *pMesh) {
 	return err;
 }
 
-Result stucValidateMesh(StucMesh *pMesh, bool checkEdges) {
+Result stucValidateMesh(const StucMesh *pMesh, bool checkEdges) {
 	Result err = STUC_SUCCESS;
 	STUC_RETURN_ERR_IFNOT_COND(err, pMesh->faceCount && pMesh->pFaces, "");
 	STUC_RETURN_ERR_IFNOT_COND(err, pMesh->cornerCount && pMesh->pCorners, "");
@@ -680,4 +680,15 @@ Result stucValidateMesh(StucMesh *pMesh, bool checkEdges) {
 		}
 	}
 	return err;
+}
+
+void stucAliasMeshCoreNoAttribs(StucMesh *pDest, StucMesh *pSrc) {
+	pDest->type = pSrc->type;
+	pDest->pFaces = pSrc->pFaces;
+	pDest->pCorners = pSrc->pCorners;
+	pDest->pEdges = pSrc->pEdges;
+	pDest->faceCount = pSrc->faceCount;
+	pDest->cornerCount = pSrc->cornerCount;
+	pDest->edgeCount = pSrc->edgeCount;
+	pDest->vertCount = pSrc->vertCount;
 }

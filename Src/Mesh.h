@@ -15,6 +15,10 @@ typedef struct {
 //so you can just have pNormalAttrib and remove pNormal.
 //or would having to cast all the time be too annoying?
 //probably
+//TODO maybe combine I8 flags into a single 'StucEdgeFlags' or 'StucVertFlags' attrib?
+//Like you could have edge preserve, edge receive and seam edge in a
+//single attrib. Is it worth it? They don't take up much atm. If more flags were added
+//it'd might be worth considering
 typedef struct {
 	StucMesh core;
 	StucAttrib *pVertAttrib;
@@ -28,6 +32,11 @@ typedef struct {
 	StucAttrib *pUsgAttrib;
 	StucAttrib *pWScaleAttrib;
 	StucAttrib *pMatIdxAttrib;
+	StucAttrib *pEdgeLenAttrib;
+	StucAttrib *pSeamEdgeAttrib;
+	StucAttrib *pSeamVertAttrib;
+	StucAttrib *pNumAdjPreserveAttrib;
+	StucAttrib *pEdgeCornersAttrib;
 	Stuc_V3_F32 *pVerts;
 	Stuc_V3_F32 *pNormals;
 	Stuc_V3_F32 *pTangents;
@@ -41,6 +50,11 @@ typedef struct {
 	//it'd be ideal if this were unsigned, do dcc's usually store mats unsigned though?
 	//probably not worth it tbh, i've never see an object with 128 mat slots let alone 256
 	I8 *pMatIdx;
+	F32 *pEdgeLen;
+	I8 *pSeamEdge;
+	I8 *pSeamVert;
+	I8 *pNumAdjPreserve;
+	Stuc_V2_I32 *pEdgeCorners;
 	I32 faceBufSize;
 	I32 cornerBufSize;
 	I32 edgeBufSize;
@@ -133,4 +147,5 @@ void stucMergeObjArr(
 StucResult stucDestroyObjArr(StucContext pCtx, I32 objCount, StucObject *pObjArr);
 FaceRange stucGetFaceRange(const StucMesh *pMesh, I32 idx, bool border);
 StucResult stucBuildTangents(Mesh *pMesh);
-StucResult stucValidateMesh(StucMesh *pMesh, bool checkEdges);
+StucResult stucValidateMesh(const StucMesh *pMesh, bool checkEdges);
+void stucAliasMeshCoreNoAttribs(StucMesh *pDest, StucMesh *pSrc);
