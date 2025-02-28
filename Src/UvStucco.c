@@ -36,6 +36,7 @@
 //TODO add user define void * args to custom callbacks
 //TODO allow for layered mapping. eg, map-faces assigned layer 0 are only mapped
 //to in-faces with a layer attribute of 0
+//TODO make naming for MeshIn consistent
 
 static
 void setDefaultStageReport(StucContext pCtx) {
@@ -106,7 +107,7 @@ StucResult stucContextDestroy(StucContext pCtx) {
 
 StucResult stucMapFileExport(
 	StucContext pCtx,
-	char *pName,
+	const char *pName,
 	I32 objCount,
 	StucObject *pObjArr,
 	I32 usgCount,
@@ -127,7 +128,7 @@ StucResult stucMapFileExport(
 //TODO replace these with StucUsg and StucObj arr structs, that combine arr and count
 StucResult stucMapFileLoadForEdit(
 	StucContext pCtx,
-	char *filePath,
+	const char *filePath,
 	I32 *pObjCount,
 	StucObject **ppObjArr,
 	I32 *pUsgCount,
@@ -165,14 +166,41 @@ void buildEdgeLenList(StucContext pCtx, Mesh *pMesh) {
 		}
 		//STUC_ASSERT("more than 2 corners refernce 1 edge", pSet[edge] < 2);
 		V3_F32 diff = _(pos V3SUB pPosCache[edge]);
-		pMesh->pEdgeLen[edge] = v3Len(diff);
+		pMesh->pEdgeLen[edge] = v3F32Len(diff);
 		pSet[edge]++;
 	}
 	pCtx->alloc.pFree(pSet);
 	pCtx->alloc.pFree(pPosCache);
 }
 
-StucResult stucMapFileLoad(StucContext pCtx, StucMap *pMapHandle, char *filePath) {
+static
+void TEMPsetSpFromAttribName(StucContext pCtx, StucMesh *pMesh, AttribArray *pArr) {
+	for (I32 j = 0; j < pArr->count; ++j) {
+		if (!strcmp(pArr->pArr[j].core.name, "StucMaterialIndices")) {
+			strncpy(pArr->pArr[j].core.name, "StucMaterials", STUC_ATTRIB_NAME_MAX_LEN);
+			pArr->pArr[j].core.use = STUC_ATTRIB_USE_IDX;
+			pMesh->activeAttribs[STUC_ATTRIB_USE_IDX].active = true;
+			pMesh->activeAttribs[STUC_ATTRIB_USE_IDX].idx = (I16)j;
+		}
+		else if (!strcmp(pArr->pArr[j].core.name, "Color")) {
+			pArr->pArr[j].core.use = STUC_ATTRIB_USE_COLOR;
+			//pMesh->activeAttribs[STUC_ATTRIB_USE_COLOR].active = true;
+			//pMesh->activeAttribs[STUC_ATTRIB_USE_COLOR].idx = (I16)j;
+		}
+		else {
+			for (I32 k = 1; k < STUC_ATTRIB_USE_SP_ENUM_COUNT; ++k) {
+				if (!strncmp(pArr->pArr[j].core.name, pCtx->spAttribNames[k], STUC_ATTRIB_NAME_MAX_LEN)) {
+					pArr->pArr[j].core.use = k;
+					pMesh->activeAttribs[k].active = true;
+					pMesh->activeAttribs[k].idx = (I16)j;
+					break;
+				}
+			}
+		}
+	}
+}
+
+StucResult stucMapFileLoad(StucContext pCtx, StucMap *pMapHandle, const char *filePath) {
 	StucResult err = STUC_NOT_SET;
 	StucMap pMap = pCtx->alloc.pCalloc(1, sizeof(MapFile));
 	I32 objCount = 0;
@@ -196,13 +224,33 @@ StucResult stucMapFileLoad(StucContext pCtx, StucMap *pMapHandle, char *filePath
 	STUC_THROW_IFNOT(err, "failed to load file from disk", 0);
 
 	for (I32 i = 0; i < objCount; ++i) {
-		err = stucSetSpecialAttribs(pCtx, (Mesh *)pObjArr[i].pData, 0x8ae); //10101110 - all except for preserve
+		//TODO TEMP DELETE
+		//TODO when you fix this, make sure map uvs arn't marked special,
+		//or it'll conflit 
+		Mesh *pMesh = (Mesh *)pObjArr[i].pData;
+		TEMPsetSpFromAttribName(pCtx, &pMesh->core, &pMesh->core.faceAttribs);
+		TEMPsetSpFromAttribName(pCtx, &pMesh->core, &pMesh->core.cornerAttribs);
+		TEMPsetSpFromAttribName(pCtx, &pMesh->core, &pMesh->core.edgeAttribs);
+		TEMPsetSpFromAttribName(pCtx, &pMesh->core, &pMesh->core.vertAttribs);
+
+		err = stucAssignActiveAliases(
+			pCtx,
+			(Mesh *)pObjArr[i].pData,
+			0x8ae, //10101110 - all except for preserve
+			STUC_DOMAIN_NONE
+		);
 		STUC_THROW_IFNOT(err, "", 0);
 		stucApplyObjTransform(pObjArr + i);
 	}
 	Mesh *pMapMesh = pCtx->alloc.pCalloc(1, sizeof(Mesh));
 	pMapMesh->core.type.type = STUC_OBJECT_DATA_MESH_INTERN;
-	stucMergeObjArr(pCtx, pMapMesh, objCount, pObjArr, false);
+	err = stucMergeObjArr(pCtx, pMapMesh, objCount, pObjArr, false);
+	STUC_THROW_IFNOT(err, "", 0);
+
+	TEMPsetSpFromAttribName(pCtx, &pMapMesh->core, &pMapMesh->core.faceAttribs);
+	TEMPsetSpFromAttribName(pCtx, &pMapMesh->core, &pMapMesh->core.cornerAttribs);
+	TEMPsetSpFromAttribName(pCtx, &pMapMesh->core, &pMapMesh->core.edgeAttribs);
+	TEMPsetSpFromAttribName(pCtx, &pMapMesh->core, &pMapMesh->core.vertAttribs);
 
 	//append edgeLen attrib
 	stucAppendSpAttribsToMesh(pCtx, pMapMesh, 0x1000, STUC_ATTRIB_ORIGIN_MAP);
@@ -213,8 +261,8 @@ StucResult stucMapFileLoad(StucContext pCtx, StucMap *pMapHandle, char *filePath
 	stucSetAttribOrigins(&pMapMesh->core.edgeAttribs, STUC_ATTRIB_ORIGIN_MAP);
 	stucSetAttribOrigins(&pMapMesh->core.vertAttribs, STUC_ATTRIB_ORIGIN_MAP);
 
-	stucSetAttribToDontCopy(pCtx, pMapMesh, 0x17f0);
-	err = stucSetSpecialAttribs(pCtx, pMapMesh, 0x18ae);
+	stucSetAttribCopyOpt(pCtx, &pMapMesh->core, STUC_ATTRIB_DONT_COPY, 0x17f0);
+	err = stucAssignActiveAliases(pCtx, pMapMesh, 0x18ae, STUC_DOMAIN_NONE);
 	STUC_THROW_IFNOT(err, "", 0);
 
 	buildEdgeLenList(pCtx, pMapMesh);
@@ -223,17 +271,21 @@ StucResult stucMapFileLoad(StucContext pCtx, StucMap *pMapHandle, char *filePath
 	//test with address sanitizer on CircuitPieces.stuc
 	stucDestroyObjArr(pCtx, objCount, pObjArr);
 
-	if (pMapMesh->pUvAttrib) {
-		//TODO as with all special attributes, allow user to define what should be considered
-		//     the primary UV channel. This especially important for integration with other DCCs
-		if (!strncmp(
-			pMapMesh->pUvAttrib->core.name,
-			pCtx->spAttribNames[STUC_ATTRIB_SP_UVS],
-			STUC_ATTRIB_NAME_MAX_LEN
-		)) {
-			char newName[STUC_ATTRIB_NAME_MAX_LEN] = "Map_UVMap";
-			memcpy(pMapMesh->pUvAttrib->core.name, newName, STUC_ATTRIB_NAME_MAX_LEN);
+	{
+		Attrib *pUvAttrib = stucGetActiveAttrib(pCtx, &pMapMesh->core, STUC_ATTRIB_USE_UV);
+		if (pUvAttrib) {
+			//TODO as with all special attributes, allow user to define what should be considered
+			//     the primary UV channel. This especially important for integration with other DCCs
+			if (!strncmp(
+				pUvAttrib->core.name,
+				pCtx->spAttribNames[STUC_ATTRIB_USE_UV],
+				STUC_ATTRIB_NAME_MAX_LEN
+			)) {
+				char newName[STUC_ATTRIB_NAME_MAX_LEN] = "Map_UVMap";
+				memcpy(pUvAttrib->core.name, newName, STUC_ATTRIB_NAME_MAX_LEN);
+			}
 		}
+		pMapMesh->core.activeAttribs[STUC_ATTRIB_USE_UV].active = false;
 	}
 
 	//set corner attribs to interpolate by default
@@ -253,14 +305,24 @@ StucResult stucMapFileLoad(StucContext pCtx, StucMap *pMapHandle, char *filePath
 	if (pMap->usgArr.count) {
 		pMap->usgArr.pArr = pCtx->alloc.pCalloc(pMap->usgArr.count, sizeof(Usg));
 		for (I32 i = 0; i < pMap->usgArr.count; ++i) {
-			err = stucSetSpecialAttribs(pCtx, (Mesh *)pUsgArr[i].obj.pData, 0x02); //000010 - set only vert pos
+			err = stucAssignActiveAliases(
+				pCtx,
+				(Mesh *)pUsgArr[i].obj.pData,
+				0x02, //000010 - set only vert pos
+				STUC_DOMAIN_NONE
+			);
 			STUC_THROW_IFNOT(err, "", 0);
 			pMap->usgArr.pArr[i].origin = *(V2_F32 *)&pUsgArr[i].obj.transform.d[3];
 			pMap->usgArr.pArr[i].pMesh = (Mesh *)pUsgArr[i].obj.pData;
 			stucApplyObjTransform(&pUsgArr[i].obj);
 			if (pUsgArr[i].pFlatCutoff) {
 				pMap->usgArr.pArr[i].pFlatCutoff = (Mesh *)pUsgArr[i].pFlatCutoff->pData;
-				err = stucSetSpecialAttribs(pCtx, (Mesh *)pUsgArr[i].pFlatCutoff->pData, 0x02); //000010 - set only vert pos
+				err = stucAssignActiveAliases(
+					pCtx,
+					(Mesh *)pUsgArr[i].pFlatCutoff->pData,
+					0x02, //000010 - set only vert pos
+					STUC_DOMAIN_NONE
+				);
 				STUC_THROW_IFNOT(err, "", 0);
 				stucApplyObjTransform(pUsgArr[i].pFlatCutoff);
 			}
@@ -295,6 +357,13 @@ StucResult stucMapFileUnload(StucContext pCtx, StucMap pMap) {
 	return STUC_SUCCESS;
 }
 
+Result stucMapFileMeshGet(StucContext pCtx, StucMap pMap, const StucMesh **ppMesh) {
+	Result err = STUC_SUCCESS;
+	STUC_RETURN_ERR_IFNOT_COND(err, pCtx && pMap && ppMesh, "invalid args");
+	*ppMesh = &pMap->pMesh->core;
+	return err;
+}
+
 static
 void initCommonAttrib(StucContext pCtx, StucCommonAttrib *pEntry, const StucAttrib *pAttrib) {
 	memcpy(pEntry->name, pAttrib->core.name, STUC_ATTRIB_NAME_MAX_LEN);
@@ -308,8 +377,7 @@ void getCommonAttribs(
 	StucContext pCtx,
 	const AttribArray *pMapAttribs,
 	const AttribArray *pMeshAttribs,
-	I32 *pCommonAttribCount,
-	StucCommonAttrib **ppCommonAttribs
+	StucCommonAttribArr *pCommonAttribs
 ) {
 	//TODO ignore special attribs like StucTangent or StucTSign
 	if (!pMeshAttribs || !pMapAttribs) {
@@ -327,7 +395,7 @@ void getCommonAttribs(
 			}
 		}
 	}
-	*ppCommonAttribs = count ?
+	pCommonAttribs->pArr = count ?
 		pCtx->alloc.pMalloc(sizeof(StucCommonAttrib) * count) : NULL;
 	count = 0;
 	for (I32 i = 0; i < pMeshAttribs->count; ++i) {
@@ -339,14 +407,14 @@ void getCommonAttribs(
 			)) {
 				initCommonAttrib(
 					pCtx,
-					*ppCommonAttribs + count,
+					pCommonAttribs->pArr + count,
 					pMeshAttribs->pArr + i
 				);
 				count++;
 			}
 		}
 	}
-	*pCommonAttribCount = count;
+	pCommonAttribs->count = count;
 }
 
 //TODO handle edge case, where attribute share the same name,
@@ -361,58 +429,79 @@ StucResult stucQueryCommonAttribs(
 		pCtx,
 		&pMap->pMesh->core.meshAttribs,
 		&pMesh->meshAttribs,
-		&pCommonAttribs->meshCount,
-		&pCommonAttribs->pMesh
+		&pCommonAttribs->mesh
 	);
 	getCommonAttribs(
 		pCtx,
 		&pMap->pMesh->core.faceAttribs,
 		&pMesh->faceAttribs,
-		&pCommonAttribs->faceCount,
-		&pCommonAttribs->pFace
+		&pCommonAttribs->face
 	);
 	getCommonAttribs(
 		pCtx,
 		&pMap->pMesh->core.cornerAttribs,
 		&pMesh->cornerAttribs,
-		&pCommonAttribs->cornerCount,
-		&pCommonAttribs->pCorner
+		&pCommonAttribs->corner
 	);
 	getCommonAttribs(
 		pCtx,
 		&pMap->pMesh->core.edgeAttribs,
 		&pMesh->edgeAttribs,
-		&pCommonAttribs->edgeCount,
-		&pCommonAttribs->pEdge
+		&pCommonAttribs->edge
 	);
 	getCommonAttribs(
 		pCtx,
 		&pMap->pMesh->core.vertAttribs,
 		&pMesh->vertAttribs,
-		&pCommonAttribs->vertCount,
-		&pCommonAttribs->pVert
+		&pCommonAttribs->vert
 	);
 	return STUC_SUCCESS;
+}
+
+StucResult stucCommonAttribArrGetFromDomain(
+	StucContext pCtx,
+	StucCommonAttribList *pList,
+	StucDomain domain,
+	StucCommonAttribArr **ppArr
+) {
+	Result err = STUC_SUCCESS;
+	switch (domain) {
+	case STUC_DOMAIN_FACE:
+		*ppArr = &pList->face;
+		break;
+	case STUC_DOMAIN_CORNER:
+		*ppArr = &pList->corner;
+		break;
+	case STUC_DOMAIN_EDGE:
+		*ppArr = &pList->edge;
+		break;
+	case STUC_DOMAIN_VERT:
+		*ppArr = &pList->vert;
+		break;
+	default:
+		STUC_RETURN_ERR(err, "invalid domain");
+	}
+	return err;
 }
 
 StucResult stucDestroyCommonAttribs(
 	StucContext pCtx,
 	StucCommonAttribList *pCommonAttribs
 ) {
-	if (pCommonAttribs->pMesh) {
-		pCtx->alloc.pFree(pCommonAttribs->pMesh);
+	if (pCommonAttribs->mesh.pArr) {
+		pCtx->alloc.pFree(pCommonAttribs->mesh.pArr);
 	}
-	if (pCommonAttribs->pFace) {
-		pCtx->alloc.pFree(pCommonAttribs->pFace);
+	if (pCommonAttribs->face.pArr) {
+		pCtx->alloc.pFree(pCommonAttribs->face.pArr);
 	}
-	if (pCommonAttribs->pCorner) {
-		pCtx->alloc.pFree(pCommonAttribs->pCorner);
+	if (pCommonAttribs->corner.pArr) {
+		pCtx->alloc.pFree(pCommonAttribs->corner.pArr);
 	}
-	if (pCommonAttribs->pEdge) {
-		pCtx->alloc.pFree(pCommonAttribs->pEdge);
+	if (pCommonAttribs->edge.pArr) {
+		pCtx->alloc.pFree(pCommonAttribs->edge.pArr);
 	}
-	if (pCommonAttribs->pVert) {
-		pCtx->alloc.pFree(pCommonAttribs->pVert);
+	if (pCommonAttribs->vert.pArr) {
+		pCtx->alloc.pFree(pCommonAttribs->vert.pArr);
 	}
 	return STUC_SUCCESS;
 }
@@ -560,10 +649,16 @@ Result mapToFaces( MapToMeshBasic *pBasic, I32 *pJobCount, MappingJobArgs **ppJo
 	);
 	STUC_THROW_IFNOT(err, "", 0);
 	*pEmpty = true;
+	printf("\n");
 	for (I32 i = 0; i < *pJobCount; ++i) {
+		printf("	job %d checked %d faces and used %d\n",
+			i,
+			(*ppJobArgs)[i].facesChecked,
+			(*ppJobArgs)[i].facesUsed
+		);
 		if ((*ppJobArgs)[i].bufSize > 0) {
 			*pEmpty = false;
-			break;
+			//break;
 		}
 	}
 	err = stucJobGetErrs(pBasic->pCtx, *pJobCount, &ppJobHandles);
@@ -623,7 +718,7 @@ Result mapToMeshInternal(
 	if (!empty) {
 		err = stucCombineJobMeshes(&basic, pMappingJobArgs, jobCount);
 		STUC_THROW_IFNOT(err, "", 0);
-		stucReallocMeshToFit(&pCtx->alloc, &basic.outMesh);
+		stucReallocMeshToFit(pCtx, &basic.outMesh);
 		*pOutMesh = basic.outMesh.core;
 	}
 	STUC_CATCH(0, err, ;);
@@ -678,69 +773,51 @@ void InFaceTableToHashTable(
 }
 
 static
-Result getMatsToAdd(
+Result getOriginIndexedAttrib(
 	StucContext pCtx,
+	Attrib *pAttrib,
 	const StucMapArr *pMapArr,
 	I32 mapIdx,
-	const CommonAttribList *pCommonAttribs,
-	const AttribIndexedArr *pInIndexedAttribs,
-	const AttribIndexed **ppMatsToAdd
+	const AttribIndexed *pMapIndexedAttrib,
+	const AttribIndexed *pInIndexedAttrib,
+	const AttribIndexed **ppMatsToAdd,
+	StucDomain domain
 ) {
-	const AttribIndexedArr *pMapAttribArr = &pMapArr->ppArr[mapIdx]->indexedAttribs;
-	const CommonAttribList *pMapCommon = pCommonAttribs + mapIdx;
-	char *pAttribName = pCtx->spAttribNames[STUC_ATTRIB_SP_MAT_IDX];
-	const CommonAttrib *pCommonAttrib =
-		stucGetCommonAttrib(pMapCommon->pFace, pMapCommon->faceCount, pAttribName);
-	BlendConfig config = {0};
-	if (pCommonAttrib) {
-		config = pCommonAttrib->blendConfig;
+	Result err = STUC_SUCCESS;
+	switch (pAttrib->origin) {
+		case STUC_ATTRIB_ORIGIN_MAP:
+			*ppMatsToAdd = pMapIndexedAttrib;
+			break;
+		case STUC_ATTRIB_ORIGIN_MESH_IN:
+			*ppMatsToAdd = pInIndexedAttrib;
+			break;
+		case STUC_ATTRIB_ORIGIN_COMMON:
+			const CommonAttribList *pMapCommon = pMapArr->pCommonAttribArr + mapIdx;
+			const CommonAttrib *pCommonAttrib =
+				stucGetCommonAttribFromDomain(pMapCommon, pAttrib->core.name, domain);
+			BlendConfig config = {0};
+			if (pCommonAttrib) {
+				config = pCommonAttrib->blendConfig;
+			}
+			else {
+				StucTypeDefault *pDefaultConfig =
+					stucGetTypeDefaultConfig(&pCtx->typeDefaults, STUC_ATTRIB_STRING);
+				config = pDefaultConfig->blendConfig;
+			}
+			*ppMatsToAdd = config.order ? pInIndexedAttrib : pMapIndexedAttrib;
+			break;
+		default:
+			STUC_ASSERT("invalid attrib origin for this function", false);
 	}
-	else {
-		config =
-			stucGetTypeDefaultConfig(&pCtx->typeDefaults, STUC_ATTRIB_STRING)->blendConfig;
-	}
-	char *pName = "StucMaterials";
-	const AttribIndexed *pInMats = stucGetAttribIndexedIntern(pInIndexedAttribs, pName);
-	const AttribIndexed *pMapMats = stucGetAttribIndexedIntern(pMapAttribArr, pName);
-	if (!pInMats) {
-		*ppMatsToAdd = pMapMats;
-	}
-	else if (!pMapMats) {
-		*ppMatsToAdd = pInMats;
-	}
-	else {
-		*ppMatsToAdd = config.order ? pInMats : pMapMats;
-	}
-	return STUC_SUCCESS;
+	return err;
 }
 
-static
-void appendToOutMatsBuf(
-	const StucAlloc *pAlloc,
-	Mesh *pMesh,
-	AttribIndexed *pOutMats,
-	const char *pMatName
-) {
-	STUC_ASSERT("", pOutMats->count <= pOutMats->size);
-	if (pOutMats->count == pOutMats->size) {
-		pOutMats->size *= 2;
-		stucReallocAttrib(pAlloc, pMesh, &pOutMats->core, pOutMats->size);
-	}
-	memcpy(stucAttribAsStr(&pOutMats->core, pOutMats->count), pMatName,
-	       STUC_ATTRIB_STRING_MAX_LEN);
-	pOutMats->count++;
-}
-
-typedef struct {
-	I8 idx;
-	bool hasRef;
-} MatTableEntry;
-
+/*
 static
 void appendToOutMats(
 	AttribIndexed *pOutMats,
 	char *pOutMatBuf,
-	MatTableEntry *pEntry
+	TableEntry *pEntry
 ) {
 	pEntry->hasRef = true;
 	char *pDest = stucAttribAsStr(&pOutMats->core, pOutMats->count);
@@ -749,97 +826,276 @@ void appendToOutMats(
 	pEntry->idx = (I8)pOutMats->count;
 	pOutMats->count++;
 }
+*/
 
 static
-Result iterFacesAndCorrectMats(
-	const StucAlloc *pAlloc,
-	I32 i,
+Result iterFacesAndCorrectIdxAttrib(
+	StucContext pCtx,
+	Attrib *pAttrib,
 	Mesh *pMesh,
-	AttribIndexed *pOutMats,
-	MatTableEntry **ppMatTable,
-	const AttribIndexed *pMatsToAdd
+	AttribIndexed *pOutIndexedAttrib,
+	const AttribIndexed *pOriginIndexedAttrib,
+	StucDomain domain
 ) {
 	Result err = STUC_SUCCESS;
-	for (I32 j = 0; j < pMesh->core.faceCount; ++j) {
-		I32 matIdx = pMesh->pMatIdx[j];
-		STUC_THROW_IFNOT_COND(err, matIdx >= 0 && matIdx < pMatsToAdd->count, "", 0);
-		MatTableEntry *pEntry = ppMatTable[i] + matIdx;
+	STUC_RETURN_ERR_IFNOT_COND(err, pAttrib->core.type == STUC_ATTRIB_I8, "");
+
+	typedef struct {
+		I8 idx;
+		bool hasRef;
+	} TableEntry;
+	TableEntry *pTable =
+		pCtx->alloc.pCalloc(pOriginIndexedAttrib->count, sizeof(TableEntry));
+
+	I8 *pIdx = pAttrib->core.pData;
+	I32 domainCount = stucGetDomainCount(&pMesh->core, domain);
+	for (I32 i = 0; i < domainCount; ++i) {
+		I32 idx = pIdx[i];
+		STUC_THROW_IFNOT_COND(err, idx >= 0 && idx < pOriginIndexedAttrib->count, "", 0);
+		TableEntry *pEntry = pTable + idx;
 		if (!pEntry->hasRef) {
 			pEntry->hasRef = true;
-			//We're just through material slots, so linear search should be fine for now
-			const char *pMatName = stucAttribAsStrConst(&pMatsToAdd->core, matIdx);
-			I32 idx = stucGetStrIdxInIndexedAttrib(pOutMats, pMatName);
-			if (idx >= 0) {
-				pEntry->idx = (I8)idx;
+			I32 newIdx = stucGetIdxInIndexedAttrib(
+				pOutIndexedAttrib,
+				pOriginIndexedAttrib,
+				idx
+			);
+			if (newIdx >= 0) {
+				pEntry->idx = (I8)newIdx;
 			}
 			else {
-				pEntry->idx = (I8)pOutMats->count;
-				appendToOutMatsBuf(pAlloc, pMesh, pOutMats, pMatName);
+				pEntry->idx = (I8)pOutIndexedAttrib->count;
+				stucAppendToIndexedAttrib(
+					pCtx,
+					pOutIndexedAttrib,
+					&pOriginIndexedAttrib->core,
+					idx
+				);
 			}
 		}
-		pMesh->pMatIdx[j] = pEntry->idx;
+		pIdx[i] = pEntry->idx;
 	}
 	STUC_CATCH(0, err, ;);
+	pCtx->alloc.pFree(pTable);
 	return err;
 }
 
 static
-Result correctMatIndices(
+Result getIndexedAttribInMaps(
+	StucContext pCtx,
+	const Mesh *pMesh,
+	const StucMapArr *pMapArr,
+	const Attrib *pAttrib,
+	bool *pSame,
+	StucDomain domain,
+	const AttribIndexed ***pppOut
+) {
+	Result err = STUC_SUCCESS;
+	const AttribIndexed **ppAttribs = pCtx->alloc.pCalloc(pMapArr->count, sizeof(void *));
+	bool found = false;
+	*pSame = true;
+	StucMap pMapCache = NULL;
+	for (I32 i = 0; i < pMapArr->count; ++i) {
+		const StucMap pMap = pMapArr->ppArr[i];
+		const char *pName = NULL;
+		switch (pAttrib->origin) {
+			case STUC_ATTRIB_ORIGIN_MAP:
+				pName = pAttrib->core.name;
+				break;
+			case STUC_ATTRIB_ORIGIN_COMMON: {
+				const AttribArray *pMapAttribArr =
+					stucGetAttribArrFromDomainConst(&pMap->pMesh->core, domain);
+				const Attrib *pMapAttrib = NULL;
+				err = stucGetMatchingAttribConst(
+					pCtx,
+					&pMap->pMesh->core, pMapAttribArr,
+					&pMesh->core, pAttrib,
+					true,
+					&pMapAttrib
+				);
+				STUC_THROW_IFNOT_COND(err, pMapAttrib, "", 0);
+				pName = pMapAttrib->core.name;
+				break;
+			}
+			default:
+				STUC_ASSERT("invalid attrib origin", false);
+		}
+		const AttribIndexed *pIndexedAttrib =
+			stucGetAttribIndexedInternConst(&pMap->indexedAttribs, pName);
+		if (pIndexedAttrib) {
+			found = true;
+			ppAttribs[i] = pIndexedAttrib;
+			if (!pMapCache) {
+				pMapCache = pMapArr->ppArr[i];
+			}
+			else if (*pSame) {
+				*pSame = pMapCache == pMapArr->ppArr[i];
+			}
+		}
+	}
+	if (found) {
+		*pppOut = ppAttribs;
+		return err;
+	}
+	STUC_CATCH(0, err, ;);
+	pCtx->alloc.pFree(ppAttribs);
+	*pppOut = NULL;
+	return err;
+}
+
+static
+Result correctIdxIndices(
+	StucContext pCtx,
+	const char *pName,
+	Mesh *pMeshArr,
+	const StucMapArr *pMapArr,
+	const AttribIndexedArr *pInIndexedAttribs,
+	const AttribIndexed **ppMapAttribs,
+	AttribIndexed *pOutIndexedAttrib,
+	StucDomain domain
+) {
+	Result err = STUC_SUCCESS;
+	const AttribIndexed *pInIndexedAttrib =
+		stucGetAttribIndexedInternConst(pInIndexedAttribs, pName);
+	for (I32 i = 0; i < pMapArr->count; ++i) {
+		AttribArray *pAttribArr = stucGetAttribArrFromDomain(&pMeshArr[i].core, domain);
+		Attrib *pAttrib = stucGetAttribIntern(pName, pAttribArr, false, NULL, NULL);
+		if (!ppMapAttribs[i] || !pAttrib) {
+			continue;
+		}
+		Mesh *pMesh = pMeshArr + i;
+		const AttribIndexed *pOriginIndexedAttrib = NULL;
+		err = getOriginIndexedAttrib(
+			pCtx,
+			pAttrib,
+			pMapArr,
+			i,
+			ppMapAttribs[i],
+			pInIndexedAttrib,
+			&pOriginIndexedAttrib,
+			domain
+		);
+		STUC_RETURN_ERR_IFNOT(err, "");
+		STUC_RETURN_ERR_IFNOT_COND(
+			err,
+			pOriginIndexedAttrib,
+			"no indexed attrib found for idx attrib in mesh"
+		);
+		err = iterFacesAndCorrectIdxAttrib(
+			pCtx,
+			pAttrib,
+			pMesh,
+			pOutIndexedAttrib,
+			pOriginIndexedAttrib,
+			domain
+		);
+		STUC_RETURN_ERR_IFNOT(err, "");
+	}
+	return err;
+}
+
+static
+Result mergeIndexedAttribs(
 	StucContext pCtx,
 	Mesh *pMeshArr,
 	const StucMapArr *pMapArr,
-	const CommonAttribList *pCommonAttribs,
 	const AttribIndexedArr *pInIndexedAttribs,
 	AttribIndexedArr *pOutIndexedAttribs
 ) {
 	Result err = STUC_SUCCESS;
 	const StucAlloc *pAlloc = &pCtx->alloc;
-	pOutIndexedAttribs->size = 1;
-	pOutIndexedAttribs->count = 1;
+	pOutIndexedAttribs->size = pInIndexedAttribs->count;
 	pOutIndexedAttribs->pArr =
 		pAlloc->pCalloc(pOutIndexedAttribs->size, sizeof(AttribIndexed));
-	AttribIndexed *pOutMats = pOutIndexedAttribs->pArr;
-	pOutMats->size = pMapArr->count;
-	pOutMats->size += (pOutMats->size % 2);
-	stucInitAttribCore(
-		pAlloc,
-		&pOutMats->core,
-		"StucMaterials",
-		pOutMats->size,
-		STUC_ATTRIB_STRING
-	);
-	MatTableEntry **ppMatTable = pAlloc->pCalloc(pMapArr->count, sizeof(void *));
-
 	for (I32 i = 0; i < pMapArr->count; ++i) {
 		Mesh *pMesh = pMeshArr + i;
-		err = stucSetSpecialAttribs(pCtx, pMesh, 0x800);//only set mat indices
-		STUC_THROW_IFNOT(err, "", 0);
-		if (!pMesh->pMatIdx) {
-			continue;
+		for (I32 j = STUC_DOMAIN_FACE; j <= STUC_DOMAIN_VERT; ++j) {
+			AttribArray *pAttribArr = stucGetAttribArrFromDomain(&pMesh->core, j);
+			for (I32 k = 0; k < pAttribArr->count; ++k) {
+				Attrib *pAttrib = pAttribArr->pArr + k;
+				if (pAttrib->core.use != STUC_ATTRIB_USE_IDX ||
+					pAttrib->origin == STUC_ATTRIB_ORIGIN_MESH_OUT) {
+					continue;
+				}
+				AttribIndexed *pIndexedAttrib = NULL;
+				stucGetAttribIndexed(pAttrib->core.name, pOutIndexedAttribs, &pIndexedAttrib);
+				if (pIndexedAttrib) {
+					//already added
+					continue;
+				}
+				if (pAttrib->origin == STUC_ATTRIB_ORIGIN_MESH_IN) {
+					err = stucAppendAndCopyIndexedAttrib(
+						pCtx,
+						pAttrib->core.name,
+						pOutIndexedAttribs,
+						pInIndexedAttribs
+					);
+					STUC_THROW_IFNOT(err, "", 0);
+					continue;
+				}
+				bool same = false;
+				const AttribIndexed **ppMapAttribs = NULL;
+				err = getIndexedAttribInMaps(
+					pCtx,
+					pMesh,
+					pMapArr,
+					pAttrib,
+					&same,
+					j,
+					&ppMapAttribs
+				);
+				STUC_THROW_IFNOT_COND(err, ppMapAttribs, "", 0);
+				//if (same) {
+					//get map to add
+					//append and copy into out
+					//continue;
+				//}
+				{
+					const AttribIndexed *pRefAttrib = NULL;
+					switch (pAttrib->origin) {
+						case STUC_ATTRIB_ORIGIN_MAP:
+							for (I32 l = 0; l < pMapArr->count; ++l) {
+								if (ppMapAttribs[l]) {
+									pRefAttrib = ppMapAttribs[l];
+									break;
+								}
+							}
+							break;
+						case STUC_ATTRIB_ORIGIN_COMMON:
+							STUC_ASSERT("", pAttrib->origin == STUC_ATTRIB_ORIGIN_COMMON);
+							pRefAttrib = stucGetAttribIndexedInternConst(
+								pInIndexedAttribs,
+								pAttrib->core.name
+							);
+							break;
+						default:
+							STUC_ASSERT("invalid attrib origin", false);
+					}
+					STUC_ASSERT("", pRefAttrib);
+					pIndexedAttrib = stucAppendIndexedAttrib(
+						pCtx,
+						pOutIndexedAttribs,
+						pRefAttrib->core.name,
+						0, //dont allocate pData
+						pRefAttrib->core.type,
+						pRefAttrib->core.use
+					);
+				}
+				err = correctIdxIndices(
+					pCtx,
+					pAttrib->core.name,
+					pMeshArr,
+					pMapArr,
+					pInIndexedAttribs,
+					ppMapAttribs,
+					pIndexedAttrib,
+					j
+				);
+				STUC_THROW_IFNOT(err, "", 0);
+			}
 		}
-		const AttribIndexed *pMatsToAdd = NULL;
-		err = getMatsToAdd(
-			pCtx,
-			pMapArr,
-			i,
-			pCommonAttribs,
-			pInIndexedAttribs,
-			&pMatsToAdd
-		);
-		STUC_ASSERT("mesh faces have mat indices, but map has no materials?",
-			pMatsToAdd && pMatsToAdd->count
-		);
-		STUC_THROW_IFNOT(err, "", 0);
-		ppMatTable[i] = pAlloc->pCalloc(pMatsToAdd->count, sizeof(MatTableEntry));
-
-		iterFacesAndCorrectMats(pAlloc, i, pMesh, pOutMats, ppMatTable, pMatsToAdd);
-		STUC_CATCH(0, err, ;)
-		pAlloc->pFree(ppMatTable[i]);
-		ppMatTable[i] = NULL;
-		STUC_THROW_IFNOT(err, "", 1);
 	}
-	STUC_CATCH(1, err, ;)
-	pAlloc->pFree(ppMatTable);
+	STUC_CATCH(0, err, ;)
 	return err;
 }
 
@@ -850,7 +1106,6 @@ typedef struct {
 	StucAttribIndexedArr *pInIndexedAttribs;
 	StucMesh *pMeshOut;
 	StucAttribIndexedArr *pOutIndexedAttribs;
-	StucCommonAttribList *pCommonAttribList;
 	F32 wScale;
 	F32 receiveLen;
 } StucMapToMeshArgs;
@@ -865,7 +1120,6 @@ Result mapToMeshFromJob(void *pArgsVoid) {
 		pArgs->pInIndexedAttribs,
 		pArgs->pMeshOut,
 		pArgs->pOutIndexedAttribs,
-		pArgs->pCommonAttribList,
 		pArgs->wScale,
 		pArgs->receiveLen
 	);
@@ -879,7 +1133,6 @@ Result stucQueueMapToMesh(
 	StucAttribIndexedArr *pInIndexedAttribs,
 	StucMesh *pMeshOut,
 	StucAttribIndexedArr *pOutIndexedAttribs,
-	StucCommonAttribList *pCommonAttribList,
 	F32 wScale,
 	F32 receiveLen
 ) {
@@ -890,7 +1143,6 @@ Result stucQueueMapToMesh(
 	pArgs->pInIndexedAttribs = pInIndexedAttribs;
 	pArgs->pMeshOut = pMeshOut;
 	pArgs->pOutIndexedAttribs = pOutIndexedAttribs;
-	pArgs->pCommonAttribList = pCommonAttribList;
 	pArgs->wScale = wScale;
 	pArgs->receiveLen = receiveLen;
 	pCtx->threadPool.pJobStackPushJobs(
@@ -911,7 +1163,6 @@ Result mapMapArrToMesh(
 	const StucAttribIndexedArr *pInIndexedAttribs,
 	StucMesh *pMeshOut,
 	StucAttribIndexedArr *pOutIndexedAttribs,
-	const StucCommonAttribList *pCommonAttribList,
 	F32 wScale,
 	F32 receiveLen
 ) {
@@ -940,7 +1191,7 @@ Result mapMapArrToMesh(
 				pMeshIn,
 				&squaresOut,
 				matIdx,
-				pCommonAttribList + i,
+				pMapArr->pCommonAttribArr + i,
 				&pInFaceTable,
 				1.0f,
 				-1.0f
@@ -958,7 +1209,12 @@ Result mapMapArrToMesh(
 			//*pMeshOut = squaresOut;
 			//return STUC_SUCCESS;
 			stucMeshDestroy(pCtx, &squaresOut);
-			stucSetSpecialAttribs(pCtx, (Mesh *)pMeshIn, 0x50); //reassign preserve if present
+			stucAssignActiveAliases(
+				pCtx,
+				(Mesh *)pMeshIn,
+				0x50, //reassign preserve if present
+				STUC_DOMAIN_NONE
+			);
 		}
 		err = mapToMeshInternal(
 			pCtx,
@@ -966,7 +1222,7 @@ Result mapMapArrToMesh(
 			pMeshIn,
 			&pOutBufArr[i].core,
 			matIdx,
-			pCommonAttribList + i,
+			pMapArr->pCommonAttribArr + i,
 			NULL,
 			wScale,
 			receiveLen
@@ -986,16 +1242,16 @@ Result mapMapArrToMesh(
 	}
 	pMeshOut->type.type = STUC_OBJECT_DATA_MESH;
 	Mesh meshOutWrap = {.core = *pMeshOut};
-	err = correctMatIndices(
+	err = mergeIndexedAttribs(
 		pCtx,
 		pOutBufArr,
 		pMapArr,
-		pCommonAttribList,
 		pInIndexedAttribs,
 		pOutIndexedAttribs
 	);
 	STUC_THROW_IFNOT(err, "", 0);
-	stucMergeObjArr(pCtx, &meshOutWrap, pMapArr->count, pOutObjWrapArr, false);
+	err = stucMergeObjArr(pCtx, &meshOutWrap, pMapArr->count, pOutObjWrapArr, false);
+	STUC_THROW_IFNOT(err, "", 0);
 	*pMeshOut = meshOutWrap.core;
 	STUC_CATCH(0, err,
 		stucMeshDestroy(pCtx, pMeshOut);
@@ -1025,11 +1281,12 @@ Result appendSpAttribsToInMesh(
 	Mesh meshInCpy = {.core = *pMeshIn};
 	Mesh *pMeshInCpyPtr = &meshInCpy;
 	stucAllocAttribsFromMeshArr(
-		&pCtx->alloc,
+		pCtx,
 		pWrap,
 		1, &pMeshInCpyPtr,
+		0,
 		false,
-		false, //dont allocation data
+		false, //dont allocate data
 		true //alias pMeshIn's data instead
 	);
 	stucAppendSpAttribsToMesh(
@@ -1043,11 +1300,11 @@ Result appendSpAttribsToInMesh(
 
 static
 void destroyAppendedSpAttribs(StucContext pCtx, StucMesh *pMesh, UBitField32 flags) {
-	for (I32 i = 1; i < STUC_ATTRIB_SP_COUNT; ++i) {
+	for (I32 i = 1; i < STUC_ATTRIB_USE_SP_ENUM_COUNT; ++i) {
 		if (!(flags >> i & 0x1)) {
 			continue;
 		}
-		Attrib *pAttrib = stucGetSpAttrib(pCtx, pMesh, i);
+		Attrib *pAttrib = stucGetActiveAttrib(pCtx, pMesh, i);
 		if (pAttrib) {
 			if (pAttrib->core.pData) {
 				pCtx->alloc.pFree(pAttrib->core.pData);
@@ -1078,10 +1335,14 @@ Result initMeshInWrap(
 	StucContext pCtx,
 	Mesh *pWrap,
 	StucMesh *pMeshIn,
-	UBitField32 spAttribsToAppend
+	UBitField32 spAttribsToAppend,
+	bool *pBuildEdges
 ) {
 	Result err = STUC_SUCCESS;
-	if (!pMeshIn->edgeCount) {
+	stucAliasMeshCoreNoAttribs(&pWrap->core, pMeshIn);
+	*pBuildEdges = !pMeshIn->edgeCount;
+	if (*pBuildEdges) {
+		printf("no edge list found, building one\n");
 		STUC_RETURN_ERR_IFNOT_COND(
 			err,
 			!pMeshIn->edgeAttribs.count,
@@ -1089,9 +1350,8 @@ Result initMeshInWrap(
 		);
 		err = stucBuildEdgeList(pCtx, pWrap);
 		STUC_RETURN_ERR_IFNOT(err, "failed to build edge list");
+		printf("finished building edge list\n");
 	}
-	//const qualifiers removed here 
-	stucAliasMeshCoreNoAttribs(&pWrap->core, pMeshIn);
 	err = appendSpAttribsToInMesh(pCtx, pWrap, pMeshIn, spAttribsToAppend);
 	STUC_RETURN_ERR_IFNOT(err, "");
 	stucSetAttribOrigins(&pWrap->core.meshAttribs, STUC_ATTRIB_ORIGIN_MESH_IN);
@@ -1100,7 +1360,7 @@ Result initMeshInWrap(
 	stucSetAttribOrigins(&pWrap->core.edgeAttribs, STUC_ATTRIB_ORIGIN_MESH_IN);
 	stucSetAttribOrigins(&pWrap->core.vertAttribs, STUC_ATTRIB_ORIGIN_MESH_IN);
 
-	err = stucSetSpecialAttribs(pCtx, pWrap, 0x1ef5e);
+	err = stucAssignActiveAliases(pCtx, pWrap, 0x1ef5e, STUC_DOMAIN_NONE);
 	STUC_RETURN_ERR_IFNOT(err, "");
 
 	err = stucBuildTangents(pWrap);
@@ -1109,7 +1369,7 @@ Result initMeshInWrap(
 	buildSeamAndPreserveTables(&pCtx->alloc, pWrap);
 
 	//set all but pos, normal, uv, w-scale, and mat-idx
-	stucSetAttribToDontCopy(pCtx, pWrap, 0x1f3f0);
+	stucSetAttribCopyOpt(pCtx, &pWrap->core, STUC_ATTRIB_DONT_COPY, 0x1f3f0);
 
 	return err;
 }
@@ -1121,7 +1381,6 @@ Result stucMapToMesh(
 	const StucAttribIndexedArr *pInIndexedAttribs,
 	StucMesh *pMeshOut,
 	StucAttribIndexedArr *pOutIndexedAttribs,
-	const StucCommonAttribList *pCommonAttribList,
 	F32 wScale,
 	F32 receiveLen
 ) {
@@ -1131,11 +1390,13 @@ Result stucMapToMesh(
 	STUC_RETURN_ERR_IFNOT(err, "invalid in-mesh");
 	Mesh meshInWrap = {0};
 	UBitField32 spAttribsToAppend = 0x1e300;
+	bool builtEdges = false;
 	err = initMeshInWrap(
 		pCtx,
 		&meshInWrap,
 		(StucMesh *)pMeshIn,
-		spAttribsToAppend
+		spAttribsToAppend,
+		&builtEdges
 	);
 	STUC_THROW_IFNOT(err, "", 0);
 
@@ -1152,13 +1413,18 @@ Result stucMapToMesh(
 		pInIndexedAttribs,
 		pMeshOut,
 		pOutIndexedAttribs,
-		pCommonAttribList,
 		wScale,
 		receiveLen
 	);
 	STUC_THROW_IFNOT(err, "mapMapArrToMesh returned error", 0);
 	printf("----------------------FINISHING IN-MESH\n");
 	STUC_CATCH(0, err, ;);
+	if (builtEdges && meshInWrap.core.pEdges) {
+		if (meshInWrap.core.pEdges) {
+			pCtx->alloc.pFree(meshInWrap.core.pEdges);
+			meshInWrap.core.pEdges = NULL;
+		}
+	}
 	destroyAppendedSpAttribs(pCtx, &meshInWrap.core, spAttribsToAppend);
 	return err;
 }
@@ -1235,18 +1501,25 @@ StucResult stucMeshDestroy(StucContext pCtx, StucMesh *pMesh) {
 	return STUC_SUCCESS;
 }
 
-StucResult stucGetAttribSize(StucAttrib *pAttrib, I32 *pSize) {
-	*pSize = stucGetAttribSizeIntern(pAttrib->core.type);
+StucResult stucGetAttribSize(StucAttribCore *pAttrib, I32 *pSize) {
+	*pSize = stucGetAttribSizeIntern(pAttrib->type);
 	return STUC_SUCCESS;
 }
 
-StucResult stucGetAttrib(char *pName, StucAttribArray *pAttribs, StucAttrib **ppAttrib) {
-	*ppAttrib = stucGetAttribIntern(pName, pAttribs);
+StucResult stucGetAttrib(const char *pName, StucAttribArray *pAttribs, StucAttrib **ppAttrib) {
+	*ppAttrib = stucGetAttribIntern(pName, pAttribs, false, NULL, NULL);
+	return STUC_SUCCESS;
+}
+
+StucResult stucAttribGetAsVoid(StucAttribCore *pAttrib, int32_t idx, void **ppOut) {
+	StucResult err = STUC_SUCCESS;
+	STUC_RETURN_ERR_IFNOT_COND(err, pAttrib && ppOut && idx >= 0, "");
+	*ppOut = stucAttribAsVoid(pAttrib, idx);
 	return STUC_SUCCESS;
 }
 
 StucResult stucGetAttribIndexed(
-	char *pName,
+	const char *pName,
 	StucAttribIndexedArr *pAttribs,
 	StucAttribIndexed **ppAttrib
 ) {
@@ -1281,7 +1554,7 @@ void testPixelAgainstFace(
 	I8 triCorners[4] = {0};
 	V3_F32 bc = stucGetBarycentricInFace(verts, triCorners, pFace->size, *pPos);
 	if (bc.d[0] < -.0001f || bc.d[1] < -.0001f || bc.d[2] < -.0001f ||
-		!v3IsFinite(bc)) {
+		!v3F32IsFinite(bc)) {
 		return;
 	}
 	V3_F32 vertsXyz[3] = {0};
@@ -1296,7 +1569,7 @@ void testPixelAgainstFace(
 	}
 	V3_F32 ab = _(vertsXyz[1] V3SUB vertsXyz[0]);
 	V3_F32 ac = _(vertsXyz[2] V3SUB vertsXyz[0]);
-	V3_F32 normal = v3Cross(ab, ac);
+	V3_F32 normal = v3F32Cross(ab, ac);
 	F32 normalLen = sqrtf(
 		normal.d[0] * normal.d[0] +
 		normal.d[1] * normal.d[1] +
@@ -1559,4 +1832,28 @@ void stucJobDestroyHandles(
 			ppJobHandles + i
 		);
 	}
+}
+
+StucResult stucAttribSpecialTypesGet(StucContext pCtx, const StucAttribType **ppTypes) {
+	*ppTypes = pCtx->spAttribTypes;
+	return STUC_SUCCESS;
+}
+
+Result stucAttribGetAllDomains(
+	StucContext pCtx,
+	StucMesh *pMesh,
+	const char *pName,
+	Attrib **ppAttrib,
+	StucDomain *pDomain
+) {
+	for (I32 i = STUC_DOMAIN_FACE; i <= STUC_DOMAIN_VERT; ++i) {
+		AttribArray *pArr = stucGetAttribArrFromDomain(pMesh, i);
+		Attrib *pAttrib = stucGetAttribIntern(pName, pArr, false, NULL, NULL);
+		if (pAttrib) {
+			*ppAttrib = pAttrib;
+			*pDomain = i;
+			break;
+		}
+	}
+	return STUC_SUCCESS;
 }

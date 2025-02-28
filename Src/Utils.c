@@ -13,7 +13,7 @@
 I32 stucCheckFaceIsInBounds(V2_F32 min, V2_F32 max, FaceRange face, const Mesh *pMesh) {
 	STUC_ASSERT("", pMesh && pMesh->pVerts && pMesh->core.pCorners);
 	STUC_ASSERT("", face.size >= 3 && face.start >= 0 && face.end >= 0 && face.idx >= 0);
-	STUC_ASSERT("", v2IsFinite(min) && v2IsFinite(max));
+	STUC_ASSERT("", v2F32IsFinite(min) && v2F32IsFinite(max));
 	V2_F32 faceMin = {0};
 	V2_F32 faceMax = {0};
 	faceMin.d[0] = faceMin.d[1] = FLT_MAX;
@@ -21,7 +21,7 @@ I32 stucCheckFaceIsInBounds(V2_F32 min, V2_F32 max, FaceRange face, const Mesh *
 	for (I32 i = 0; i < face.size; ++i) {
 		I32 vertIdx = pMesh->core.pCorners[face.start + i];
 		V3_F32 *pVert = pMesh->pVerts + vertIdx;
-		STUC_ASSERT("", pVert && v3IsFinite(*pVert));
+		STUC_ASSERT("", pVert && v3F32IsFinite(*pVert));
 		if (pVert->d[0] < faceMin.d[0]) {
 			faceMin.d[0] = pVert->d[0];
 		}
@@ -69,7 +69,7 @@ void stucGetFaceBounds(FaceBounds *pBounds, const V2_F32 *pUvs, FaceRange face) 
 	pBounds->fMax.d[0] = pBounds->fMax.d[1] = -FLT_MAX;
 	for (I32 i = 0; i < face.size; ++i) {
 		const V2_F32 *uv = pUvs + face.start + i;
-		STUC_ASSERT("", uv && v2IsFinite(*uv));
+		STUC_ASSERT("", uv && v2F32IsFinite(*uv));
 		pBounds->fMin.d[0] = uv->d[0] < pBounds->fMin.d[0] ?
 			uv->d[0] : pBounds->fMin.d[0];
 		pBounds->fMin.d[1] = uv->d[1] < pBounds->fMin.d[1] ?
@@ -107,7 +107,7 @@ I32 stucCheckIfEdgeIsSeam(
 		I32 nextBaseCorner = face.start + iNext;
 		V2_F32 uv = pMesh->pUvs[nextBaseCorner];
 		V2_F32 uvOther = pMesh->pUvs[otherCorner];
-		STUC_ASSERT("", v2IsFinite(uv) && v2IsFinite(uvOther));
+		STUC_ASSERT("", v2F32IsFinite(uv) && v2F32IsFinite(uvOther));
 		I32 isSeam = !_(uv V2APROXEQL uvOther);
 		if (isSeam) {
 			return 1;
@@ -252,18 +252,18 @@ FaceTriangulated stucTriangulateFace(
 				V2_F32 verta = pUvs[pInFace->start + i];
 				V2_F32 vertb = pUvs[pInFace->start + ib];
 				V2_F32 vertc = pUvs[pInFace->start + ic];
-				height = v2TriHeight(verta, vertb, vertc);
+				height = v2F32TriHeight(verta, vertb, vertc);
 				V2_F32 ac = _(vertc V2SUB verta);
-				len = v2Len(ac);
+				len = v2F32Len(ac);
 			}
 			else {
 				const V3_F32 *pVertsCast = pVerts;
 				V3_F32 verta = pVertsCast[pCorners[pInFace->start + i]];
 				V3_F32 vertb = pVertsCast[pCorners[pInFace->start + ib]];
 				V3_F32 vertc = pVertsCast[pCorners[pInFace->start + ic]];
-				height = v3TriHeight(verta, vertb, vertc);
+				height = v3F32TriHeight(verta, vertb, vertc);
 				V3_F32 ac = _(vertc V3SUB verta);
-				len = v3Len(ac);
+				len = v3F32Len(ac);
 			}
 			//If ear is not degenerate, then add.
 			//Or, if skipped == i, the corner has wrapped back around,
@@ -342,10 +342,10 @@ V3_F32 stucGetBarycentricInFace(
 	I32 cornerCount,
 	V2_F32 vert
 ) {
-	STUC_ASSERT("", pTriStuc && v2IsFinite(*pTriStuc) && v2IsFinite(vert));
+	STUC_ASSERT("", pTriStuc && v2F32IsFinite(*pTriStuc) && v2F32IsFinite(vert));
 	STUC_ASSERT("", cornerCount >= 3 && pTriCorners);
 	V3_F32 vertBc = cartesianToBarycentric(pTriStuc, &vert);
-	if (cornerCount == 4 && v3IsFinite(vertBc) && vertBc.d[1] < 0) {
+	if (cornerCount == 4 && v3F32IsFinite(vertBc) && vertBc.d[1] < 0) {
 		//base face is a quad, and vert is outside first tri,
 		//so use the second tri
 		
@@ -416,9 +416,6 @@ Result buildCornerAdjTable(
 					pBucket->pArr,
 					sizeof(AdjEntry) * pBucket->size
 				);
-			}
-			else {
-				STUC_THROW(err, "invalid bucket", 0);
 			}
 			pBucket->pArr[pBucket->count].face = i;
 			pBucket->pArr[pBucket->count].corner = j;
@@ -599,10 +596,10 @@ Mat3x3 stucBuildFaceTbn(FaceRange face, const Mesh *pMesh, const I32 *pCornerOve
 	Mat2x2 coeffMatInv = mat2x2Invert(coeffMat);
 	Mat2x3 tb = mat2x2MultiplyMat2x3(coeffMatInv, varMat);
 	Mat3x3 tbn = {0};
-	*(V3_F32 *)&tbn.d[0] = v3Normalize(*(V3_F32 *)&tb.d[0]);
-	*(V3_F32 *)&tbn.d[1] = v3Normalize(*(V3_F32 *)&tb.d[1]);
+	*(V3_F32 *)&tbn.d[0] = v3F32Normalize(*(V3_F32 *)&tb.d[0]);
+	*(V3_F32 *)&tbn.d[1] = v3F32Normalize(*(V3_F32 *)&tb.d[1]);
 	V3_F32 normal = _(osDirA V3CROSS osDirB);
-	*(V3_F32 *)&tbn.d[2] = v3Normalize(normal);
+	*(V3_F32 *)&tbn.d[2] = v3F32Normalize(normal);
 	return tbn;
 }
 
@@ -610,8 +607,8 @@ void stucGetTriScale(I32 size, BaseTriVerts *pTri) {
 	for (I32 i = 0; i < size; ++i) {
 		I32 iLast = i == 0 ? size - 1 : i - 1;
 		I32 iNext = (i + 1) % size;
-		F32 uvArea = v2TriArea(pTri->uv[iLast], pTri->uv[i], pTri->uv[iNext]);
-		F32 xyzArea = v3TriArea(pTri->xyz[iLast], pTri->xyz[i], pTri->xyz[iNext]);
+		F32 uvArea = v2F32TriArea(pTri->uv[iLast], pTri->uv[i], pTri->uv[iNext]);
+		F32 xyzArea = v3F32TriArea(pTri->xyz[iLast], pTri->xyz[i], pTri->xyz[iNext]);
 		pTri->scale[i] = xyzArea / uvArea;
 	}
 }

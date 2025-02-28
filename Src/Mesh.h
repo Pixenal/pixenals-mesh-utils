@@ -21,22 +21,7 @@ typedef struct {
 //it'd might be worth considering
 typedef struct {
 	StucMesh core;
-	StucAttrib *pVertAttrib;
-	StucAttrib *pUvAttrib;
-	StucAttrib *pNormalAttrib;
-	StucAttrib *pTangentAttrib;
-	StucAttrib *pTSignAttrib;
-	StucAttrib *pEdgePreserveAttrib;
-	StucAttrib *pVertPreserveAttrib;
-	StucAttrib *pEdgeReceiveAttrib;
-	StucAttrib *pUsgAttrib;
-	StucAttrib *pWScaleAttrib;
-	StucAttrib *pMatIdxAttrib;
-	StucAttrib *pEdgeLenAttrib;
-	StucAttrib *pSeamEdgeAttrib;
-	StucAttrib *pSeamVertAttrib;
-	StucAttrib *pNumAdjPreserveAttrib;
-	StucAttrib *pEdgeCornersAttrib;
+	//aliases to special attribs
 	Stuc_V3_F32 *pVerts;
 	Stuc_V3_F32 *pNormals;
 	Stuc_V3_F32 *pTangents;
@@ -95,25 +80,25 @@ typedef struct {
 
 void stucCreateMesh(StucContext pCtx, StucObject *pObj, StucObjectType type);
 BufMeshIdx stucBufMeshAddFace(
-	const StucAlloc *pAlloc,
+	StucContext pCtx,
 	BufMesh *pMesh,
 	bool border,
 	bool *pRealloced
 );
 BufMeshIdx stucBufMeshAddCorner(
-	const StucAlloc *pAlloc,
+	StucContext pCtx,
 	BufMesh *pMesh,
 	bool border,
 	bool *pRealloced
 );
 BufMeshIdx stucBufMeshAddEdge(
-	const StucAlloc *pAlloc,
+	StucContext pCtx,
 	BufMesh *pMesh,
 	bool border,
 	bool *pRealloced
 );
 BufMeshIdx stucBufMeshAddVert(
-	const StucAlloc *pAlloc,
+	StucContext pCtx,
 	BufMesh *pMesh,
 	bool border,
 	bool *pRealloced
@@ -122,13 +107,13 @@ BufMeshIdx stucConvertBorderFaceIdx(const BufMesh *pMesh, I32 face);
 BufMeshIdx stucConvertBorderCornerIdx(const BufMesh *pMesh, I32 corner);
 BufMeshIdx stucConvertBorderEdgeIdx(const BufMesh *pMesh, I32 edge);
 BufMeshIdx stucConvertBorderVertIdx(const BufMesh *pMesh, I32 vert);
-I32 stucMeshAddFace(const StucAlloc *pAlloc, Mesh *pMesh, bool *pRealloced);
-I32 stucMeshAddCorner(const StucAlloc *pAlloc, Mesh *pMesh, bool *pRealloced);
-I32 stucMeshAddEdge(const StucAlloc *pAlloc, Mesh *pMesh, bool *pRealloced);
-I32 stucMeshAddVert(const StucAlloc *pAlloc, Mesh *pMesh, bool *pRealloced);
-void stucReallocMeshToFit(const StucAlloc *pAlloc, Mesh *pMesh);
-void stucMeshSetLastFace(const StucAlloc *pAlloc, Mesh *pMesh);
-void stucBufMeshSetLastFaces(const StucAlloc *pAlloc, BufMesh *pBufMesh);
+I32 stucMeshAddFace(StucContext pCtx, Mesh *pMesh, bool *pRealloced);
+I32 stucMeshAddCorner(StucContext pCtx, Mesh *pMesh, bool *pRealloced);
+I32 stucMeshAddEdge(StucContext pCtx, Mesh *pMesh, bool *pRealloced);
+I32 stucMeshAddVert(StucContext pCtx, Mesh *pMesh, bool *pRealloced);
+void stucReallocMeshToFit(StucContext pCtx, Mesh *pMesh);
+void stucMeshSetLastFace(StucContext pCtx, Mesh *pMesh);
+void stucBufMeshSetLastFaces(StucContext pCtx, BufMesh *pBufMesh);
 bool stucCheckIfMesh(StucObjectData type);
 void stucAddToMeshCounts(
 	MeshCounts *pCounts,
@@ -137,7 +122,7 @@ void stucAddToMeshCounts(
 );
 StucResult stucCopyMesh(StucMesh *pDestMesh, const StucMesh *pSrcMesh);
 void stucApplyObjTransform(StucObject *pObj);
-void stucMergeObjArr(
+StucResult stucMergeObjArr(
 	StucContext pCtx,
 	Mesh *pMesh,
 	I32 objCount,
@@ -149,3 +134,5 @@ FaceRange stucGetFaceRange(const StucMesh *pMesh, I32 idx, bool border);
 StucResult stucBuildTangents(Mesh *pMesh);
 StucResult stucValidateMesh(const StucMesh *pMesh, bool checkEdges);
 void stucAliasMeshCoreNoAttribs(StucMesh *pDest, StucMesh *pSrc);
+I32 stucGetDomainSize(const Mesh *pMesh, StucDomain domain);
+I32 stucGetDomainCount(const StucMesh *pMesh, StucDomain domain);
