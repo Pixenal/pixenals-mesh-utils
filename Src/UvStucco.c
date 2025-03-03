@@ -184,8 +184,8 @@ void TEMPsetSpFromAttribName(StucContext pCtx, StucMesh *pMesh, AttribArray *pAr
 		}
 		else if (!strcmp(pArr->pArr[j].core.name, "Color")) {
 			pArr->pArr[j].core.use = STUC_ATTRIB_USE_COLOR;
-			//pMesh->activeAttribs[STUC_ATTRIB_USE_COLOR].active = true;
-			//pMesh->activeAttribs[STUC_ATTRIB_USE_COLOR].idx = (I16)j;
+			pMesh->activeAttribs[STUC_ATTRIB_USE_COLOR].active = true;
+			pMesh->activeAttribs[STUC_ATTRIB_USE_COLOR].idx = (I16)j;
 		}
 		else {
 			for (I32 k = 1; k < STUC_ATTRIB_USE_SP_ENUM_COUNT; ++k) {
@@ -198,6 +198,37 @@ void TEMPsetSpFromAttribName(StucContext pCtx, StucMesh *pMesh, AttribArray *pAr
 			}
 		}
 	}
+}
+
+static
+Result attemptToSetMissingActiveDomains(StucMesh *pMesh) {
+	Result err = STUC_SUCCESS;
+	for (I32 i = 1; i < STUC_ATTRIB_USE_ENUM_COUNT; ++i) {
+		if (i == STUC_ATTRIB_USE_SP_ENUM_COUNT) {
+			continue;
+		}
+		AttribActive *pIdx = pMesh->activeAttribs + i;
+		if (pIdx->domain != STUC_DOMAIN_NONE) {
+			continue;
+		}
+		for (I32 j = STUC_DOMAIN_FACE; j <= STUC_DOMAIN_VERT; ++j) {
+			AttribArray *pAttribArr = stucGetAttribArrFromDomain(pMesh, j);
+			if (pIdx->idx >= pAttribArr->count ||
+				pAttribArr->pArr[pIdx->idx].core.use != i
+			) {
+				continue;
+			}
+			//the below is false, 2 domains have their own candidate.
+			//the intended attrib is ambiguous, so return error
+			STUC_RETURN_ERR_IFNOT_COND(
+				err,
+				pIdx->domain == STUC_DOMAIN_NONE,
+				"Unable to determine active attrib domain"
+			);
+			pIdx->domain = j;
+		}
+	}
+	return err;
 }
 
 StucResult stucMapFileLoad(StucContext pCtx, StucMap *pMapHandle, const char *filePath) {
@@ -233,6 +264,10 @@ StucResult stucMapFileLoad(StucContext pCtx, StucMap *pMapHandle, const char *fi
 		TEMPsetSpFromAttribName(pCtx, &pMesh->core, &pMesh->core.edgeAttribs);
 		TEMPsetSpFromAttribName(pCtx, &pMesh->core, &pMesh->core.vertAttribs);
 
+		//TODO this shouldn't be an issue.
+		//check for this on export, so this doesn't throw and error on loaad
+		attemptToSetMissingActiveDomains(&pMesh->core);
+
 		err = stucAssignActiveAliases(
 			pCtx,
 			(Mesh *)pObjArr[i].pData,
@@ -246,11 +281,6 @@ StucResult stucMapFileLoad(StucContext pCtx, StucMap *pMapHandle, const char *fi
 	pMapMesh->core.type.type = STUC_OBJECT_DATA_MESH_INTERN;
 	err = stucMergeObjArr(pCtx, pMapMesh, objCount, pObjArr, false);
 	STUC_THROW_IFNOT(err, "", 0);
-
-	TEMPsetSpFromAttribName(pCtx, &pMapMesh->core, &pMapMesh->core.faceAttribs);
-	TEMPsetSpFromAttribName(pCtx, &pMapMesh->core, &pMapMesh->core.cornerAttribs);
-	TEMPsetSpFromAttribName(pCtx, &pMapMesh->core, &pMapMesh->core.edgeAttribs);
-	TEMPsetSpFromAttribName(pCtx, &pMapMesh->core, &pMapMesh->core.vertAttribs);
 
 	//append edgeLen attrib
 	stucAppendSpAttribsToMesh(pCtx, pMapMesh, 0x1000, STUC_ATTRIB_ORIGIN_MAP);
@@ -1334,25 +1364,27 @@ static
 Result initMeshInWrap(
 	StucContext pCtx,
 	Mesh *pWrap,
-	StucMesh *pMeshIn,
+	StucMesh meshIn, //passed by value so we can set active attrib domains if missing
 	UBitField32 spAttribsToAppend,
 	bool *pBuildEdges
 ) {
 	Result err = STUC_SUCCESS;
-	stucAliasMeshCoreNoAttribs(&pWrap->core, pMeshIn);
-	*pBuildEdges = !pMeshIn->edgeCount;
+	err = attemptToSetMissingActiveDomains(&meshIn);
+	STUC_RETURN_ERR_IFNOT(err, "");
+	stucAliasMeshCoreNoAttribs(&pWrap->core, &meshIn);
+	*pBuildEdges = !meshIn.edgeCount;
 	if (*pBuildEdges) {
 		printf("no edge list found, building one\n");
 		STUC_RETURN_ERR_IFNOT_COND(
 			err,
-			!pMeshIn->edgeAttribs.count,
+			!meshIn.edgeAttribs.count,
 			"in-mesh has edge attribs, yet no edge list"
 		);
 		err = stucBuildEdgeList(pCtx, pWrap);
 		STUC_RETURN_ERR_IFNOT(err, "failed to build edge list");
 		printf("finished building edge list\n");
 	}
-	err = appendSpAttribsToInMesh(pCtx, pWrap, pMeshIn, spAttribsToAppend);
+	err = appendSpAttribsToInMesh(pCtx, pWrap, &meshIn, spAttribsToAppend);
 	STUC_RETURN_ERR_IFNOT(err, "");
 	stucSetAttribOrigins(&pWrap->core.meshAttribs, STUC_ATTRIB_ORIGIN_MESH_IN);
 	stucSetAttribOrigins(&pWrap->core.faceAttribs, STUC_ATTRIB_ORIGIN_MESH_IN);
@@ -1394,7 +1426,7 @@ Result stucMapToMesh(
 	err = initMeshInWrap(
 		pCtx,
 		&meshInWrap,
-		(StucMesh *)pMeshIn,
+		*(StucMesh *)pMeshIn,
 		spAttribsToAppend,
 		&builtEdges
 	);
@@ -1834,9 +1866,30 @@ void stucJobDestroyHandles(
 	}
 }
 
-StucResult stucAttribSpecialTypesGet(StucContext pCtx, const StucAttribType **ppTypes) {
+Result stucAttribSpTypesGet(StucContext pCtx, const AttribType **ppTypes) {
+	Result err = STUC_SUCCESS;
+	STUC_RETURN_ERR_IFNOT_COND(err, pCtx && ppTypes, "");
 	*ppTypes = pCtx->spAttribTypes;
-	return STUC_SUCCESS;
+	return err;
+}
+
+Result stucAttribSpDomainsGet(StucContext pCtx, const StucDomain **ppDomains) {
+	Result err = STUC_SUCCESS;
+	STUC_RETURN_ERR_IFNOT_COND(err, pCtx && ppDomains, "");
+	*ppDomains = pCtx->spAttribDomains;
+	return err;
+}
+
+Result stucAttribSpIsValid(
+	StucContext pCtx,
+	const AttribCore *pCore,
+	StucDomain domain
+) {
+	Result err = STUC_SUCCESS;
+	STUC_RETURN_ERR_IFNOT_COND(err, pCtx && pCore, "");
+	return 
+		pCtx->spAttribTypes[pCore->use] == pCore->type &&
+		pCtx->spAttribDomains[pCore->use] == domain;
 }
 
 Result stucAttribGetAllDomains(

@@ -723,6 +723,21 @@ Result stucValidateMesh(const StucMesh *pMesh, bool checkEdges) {
 			STUC_RETURN_ERR_IFNOT_COND(err, pMesh->pCorners[corner] < pMesh->vertCount, "");
 		}
 	}
+	for (I32 i = 1; i < STUC_ATTRIB_USE_ENUM_COUNT; ++i) {
+		if (i == STUC_ATTRIB_USE_SP_ENUM_COUNT) {
+			continue;
+		}
+		AttribActive idx = pMesh->activeAttribs[i];
+		if (!idx.active) {
+			continue;
+		}
+		STUC_RETURN_ERR_IFNOT_COND(err, idx.idx >= 0, "invalid active attrib index");
+		STUC_RETURN_ERR_IFNOT_COND(
+			err,
+			idx.domain >= 0 && idx.domain <= STUC_DOMAIN_VERT,
+			"invalid active attrib domain"
+		);
+	}
 	return err;
 }
 
