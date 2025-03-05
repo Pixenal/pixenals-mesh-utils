@@ -135,4 +135,4 @@ StucResult stucBuildTangents(Mesh *pMesh);
 StucResult stucValidateMesh(const StucMesh *pMesh, bool checkEdges);
 void stucAliasMeshCoreNoAttribs(StucMesh *pDest, StucMesh *pSrc);
 I32 stucGetDomainSize(const Mesh *pMesh, StucDomain domain);
-I32 stucGetDomainCount(const StucMesh *pMesh, StucDomain domain);
+I32 stucDomainCountGetIntern(const StucMesh *pMesh, StucDomain domain);

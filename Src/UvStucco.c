@@ -878,7 +878,7 @@ Result iterFacesAndCorrectIdxAttrib(
 		pCtx->alloc.pCalloc(pOriginIndexedAttrib->count, sizeof(TableEntry));
 
 	I8 *pIdx = pAttrib->core.pData;
-	I32 domainCount = stucGetDomainCount(&pMesh->core, domain);
+	I32 domainCount = stucDomainCountGetIntern(&pMesh->core, domain);
 	for (I32 i = 0; i < domainCount; ++i) {
 		I32 idx = pIdx[i];
 		STUC_THROW_IFNOT_COND(err, idx >= 0 && idx < pOriginIndexedAttrib->count, "", 0);
@@ -1909,4 +1909,125 @@ Result stucAttribGetAllDomains(
 		}
 	}
 	return STUC_SUCCESS;
+}
+
+StucResult stucAttribGetAllDomainsConst(
+	StucContext pCtx,
+	const StucMesh *pMesh,
+	const char *pName,
+	const StucAttrib **ppAttrib,
+	StucDomain *pDomain
+) {
+	return stucAttribGetAllDomains(pCtx, (StucMesh *)pMesh, pName, (StucAttrib **)ppAttrib, pDomain);
+}
+
+StucResult stucAttribArrGet(
+	StucContext pCtx,
+	StucMesh *pMesh,
+	StucDomain domain,
+	StucAttribArray **ppArr
+) {
+	Result err = STUC_SUCCESS;
+	STUC_RETURN_ERR_IFNOT_COND(err, pCtx && pMesh && ppArr, "");
+	*ppArr = stucGetAttribArrFromDomain(pMesh, domain);
+	return err;
+}
+
+StucResult stucAttribArrGetConst(
+	StucContext pCtx,
+	const StucMesh *pMesh,
+	StucDomain domain,
+	const StucAttribArray **ppArr
+) {
+	return stucAttribArrGet(
+		pCtx,
+		(StucMesh *)pMesh,
+		domain,
+		(AttribArray **)ppArr
+	);
+}
+
+StucResult stucAttribGetCompType(
+	StucContext pCtx,
+	StucAttribType type,
+	StucAttribType *pCompType
+) {
+	Result err = STUC_SUCCESS;
+	STUC_RETURN_ERR_IFNOT_COND(err, pCtx && pCompType, "");
+	*pCompType = stucAttribGetCompTypeIntern(type);
+	return err;
+}
+
+StucResult stucAttribTypeGetVecSize(
+	StucContext pCtx,
+	StucAttribType type,
+	I32 *pSize
+) {
+	Result err = STUC_SUCCESS;
+	STUC_RETURN_ERR_IFNOT_COND(err, pCtx && pSize, "");
+	*pSize = stucAttribTypeGetVecSizeIntern(type);
+	return err;
+}
+
+StucResult stucDomainCountGet(
+	StucContext pCtx,
+	const StucMesh *pMesh,
+	StucDomain domain,
+	int32_t *pCount
+) {
+	Result err = STUC_SUCCESS;
+	STUC_RETURN_ERR_IFNOT_COND(err, pCtx && pMesh && pCount, "");
+	*pCount = stucDomainCountGetIntern(pMesh, domain);
+	return err;
+}
+
+StucResult stucAttribIndexedArrDestroy(StucContext pCtx, StucAttribIndexedArr *pArr) {
+	Result err = STUC_SUCCESS;
+	STUC_RETURN_ERR_IFNOT_COND(err, pCtx && pArr, "");
+	if (pArr->pArr) {
+		for (I32 i = 0; i < pArr->count; ++i) {
+			if (pArr->pArr[i].core.pData) {
+				pCtx->alloc.pFree(pArr->pArr[i].core.pData);
+			}
+		}
+		pCtx->alloc.pFree(pArr->pArr);
+		pArr->pArr = NULL;
+	}
+	pArr->count = pArr->size = 0;
+	return err;
+}
+
+StucResult stucMapArrDestroy(StucContext pCtx, StucMapArr *pMapArr) {
+	Result err = STUC_SUCCESS;
+	STUC_RETURN_ERR_IFNOT_COND(err, pCtx && pMapArr, "");
+	if (pMapArr->pCommonAttribArr) {
+		for (I32 i = 0; i < pMapArr->count; ++i) {
+			if (pMapArr->pCommonAttribArr[i].mesh.pArr) {
+				pCtx->alloc.pFree(pMapArr->pCommonAttribArr[i].mesh.pArr);
+			}
+			if (pMapArr->pCommonAttribArr[i].face.pArr) {
+				pCtx->alloc.pFree(pMapArr->pCommonAttribArr[i].face.pArr);
+			}
+			if (pMapArr->pCommonAttribArr[i].corner.pArr) {
+				pCtx->alloc.pFree(pMapArr->pCommonAttribArr[i].corner.pArr);
+			}
+			if (pMapArr->pCommonAttribArr[i].edge.pArr) {
+				pCtx->alloc.pFree(pMapArr->pCommonAttribArr[i].edge.pArr);
+			}
+			if (pMapArr->pCommonAttribArr[i].vert.pArr) {
+				pCtx->alloc.pFree(pMapArr->pCommonAttribArr[i].vert.pArr);
+			}
+		}
+		pCtx->alloc.pFree(pMapArr->pCommonAttribArr);
+		pMapArr->pCommonAttribArr = NULL;
+	}
+	if (pMapArr->pMatArr) {
+		pCtx->alloc.pFree(pMapArr->pMatArr);
+		pMapArr->pMatArr = NULL;
+	}
+	if (pMapArr->ppArr) {
+		pCtx->alloc.pFree(pMapArr->ppArr);
+		pMapArr->ppArr = NULL;
+	}
+	return err;
 }

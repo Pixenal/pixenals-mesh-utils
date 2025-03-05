@@ -767,7 +767,7 @@ I32 stucGetDomainSize(const Mesh *pMesh, StucDomain domain) {
 	return 0;
 }
 
-I32 stucGetDomainCount(const StucMesh *pMesh, StucDomain domain) {
+I32 stucDomainCountGetIntern(const StucMesh *pMesh, StucDomain domain) {
 	switch (domain) {
 		case STUC_DOMAIN_FACE:
 			return pMesh->faceCount;
