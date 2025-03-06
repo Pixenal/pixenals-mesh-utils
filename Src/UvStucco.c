@@ -107,7 +107,7 @@ StucResult stucContextDestroy(StucContext pCtx) {
 
 StucResult stucMapFileExport(
 	StucContext pCtx,
-	const char *pName,
+	const char *pPath,
 	I32 objCount,
 	StucObject *pObjArr,
 	I32 usgCount,
@@ -116,7 +116,7 @@ StucResult stucMapFileExport(
 ) {
 	return stucWriteStucFile(
 		pCtx,
-		pName,
+		pPath,
 		objCount,
 		pObjArr,
 		usgCount,
@@ -2028,6 +2028,24 @@ StucResult stucMapArrDestroy(StucContext pCtx, StucMapArr *pMapArr) {
 	if (pMapArr->ppArr) {
 		pCtx->alloc.pFree(pMapArr->ppArr);
 		pMapArr->ppArr = NULL;
+	}
+	return err;
+}
+
+StucResult stucObjectInit(
+	StucContext pCtx,
+	StucObject *pObj,
+	StucMesh *pMesh,
+	const Stuc_M4x4_F32 *pTransform
+) {
+	Result err = STUC_SUCCESS;
+	STUC_RETURN_ERR_IFNOT_COND(err, pCtx && pObj, "");
+	pObj->pData = (StucObjectData *)pMesh;
+	if (pTransform) {
+		pObj->transform = *pTransform;
+	}
+	else {
+		pObj->transform = identM4x4;
 	}
 	return err;
 }
