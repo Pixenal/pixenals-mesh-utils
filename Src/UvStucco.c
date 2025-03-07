@@ -941,6 +941,7 @@ Result getIndexedAttribInMaps(
 					&pMap->pMesh->core, pMapAttribArr,
 					&pMesh->core, pAttrib,
 					true,
+					false,
 					&pMapAttrib
 				);
 				STUC_THROW_IFNOT_COND(err, pMapAttrib, "", 0);
