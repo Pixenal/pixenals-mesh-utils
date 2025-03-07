@@ -1,9 +1,9 @@
 #pragma once
 
-#include <UvStuccoIntern.h>
-#include <MathUtils.h>
-#include <Mesh.h>
-#include <Types.h>
+#include <uv_stucco_intern.h>
+#include <math_utils.h>
+#include <mesh.h>
+#include <types.h>
 
 typedef struct {
 	I32* pCorners;

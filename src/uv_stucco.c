@@ -3,18 +3,18 @@
 #include <math.h>
 #include <float.h>
 
-#include <Io.h>
-#include <MapToJobMesh.h>
-#include <CombineJobMeshes.h>
-#include <MapFile.h>
-#include <Context.h>
-#include <Alloc.h>
-#include <ThreadPool.h>
-#include <UvStucco.h>
-#include <AttribUtils.h>
-#include <Utils.h>
-#include <ImageUtils.h>
-#include <Error.h>
+#include <io.h>
+#include <map_to_job_mesh.h>
+#include <combine_job_meshes.h>
+#include <map.h>
+#include <context.h>
+#include <alloc.h>
+#include <thread_pool.h>
+#include <uv_stucco.h>
+#include <attrib_utils.h>
+#include <utils.h>
+#include <image_utils.h>
+#include <error.h>
 
 // TODO
 // - Reduce the bits written to the UVGP file for vert and corner indices, based on the total amount, in order to save space.

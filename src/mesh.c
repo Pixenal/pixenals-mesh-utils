@@ -3,10 +3,10 @@
 
 #include <mikktspace.h>
 
-#include <Error.h>
-#include <AttribUtils.h>
-#include <Mesh.h>
-#include <Context.h>
+#include <error.h>
+#include <attrib_utils.h>
+#include <mesh.h>
+#include <context.h>
 
 typedef struct {
 	StucDomain domain;

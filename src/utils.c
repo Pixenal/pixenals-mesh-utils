@@ -3,12 +3,12 @@
 #include <assert.h>
 #include <string.h>
 
-#include <Utils.h>
-#include <MathUtils.h>
-#include <Context.h>
-#include <AttribUtils.h>
-#include <Error.h>
-#include <ThreadPool.h>
+#include <utils.h>
+#include <math_utils.h>
+#include <context.h>
+#include <attrib_utils.h>
+#include <error.h>
+#include <thread_pool.h>
 
 I32 stucCheckFaceIsInBounds(V2_F32 min, V2_F32 max, FaceRange face, const Mesh *pMesh) {
 	STUC_ASSERT("", pMesh && pMesh->pVerts && pMesh->core.pCorners);

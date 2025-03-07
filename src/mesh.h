@@ -2,9 +2,9 @@
 
 #include <stdint.h>
 
-#include <UvStucco.h>
-#include <DebugAndPerf.h>
-#include <Types.h>
+#include <uv_stucco.h>
+#include <debug_and_perf.h>
+#include <types.h>
 
 typedef struct {
 	I32 idx;
