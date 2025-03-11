@@ -164,6 +164,9 @@ void buildEdgeLenList(StucContext pCtx, Mesh *pMesh) {
 			pSet[edge] = 1;
 			continue;
 		}
+		//this occurs usually due to interior faces,
+		// it shouldn't be an issue for for map-meshes, more so for in-meshes.
+		//TODO remove this assert if no issues arise
 		//STUC_ASSERT("more than 2 corners refernce 1 edge", pSet[edge] < 2);
 		V3_F32 diff = _(pos V3SUB pPosCache[edge]);
 		pMesh->pEdgeLen[edge] = v3F32Len(diff);
@@ -1401,8 +1404,10 @@ Result initMeshInWrap(
 	buildEdgeCornersTable(pWrap);
 	buildSeamAndPreserveTables(&pCtx->alloc, pWrap);
 
-	//set all but pos, normal, uv, w-scale, and mat-idx
-	stucSetAttribCopyOpt(pCtx, &pWrap->core, STUC_ATTRIB_DONT_COPY, 0x1f3f0);
+	//set all but required
+	stucSetAttribCopyOpt(pCtx, &pWrap->core, STUC_ATTRIB_DONT_COPY, 0xc0e ^ 0xffffffff);
+	//set required
+	stucSetAttribCopyOpt(pCtx, &pWrap->core, STUC_ATTRIB_COPY, 0xc0e);
 
 	return err;
 }

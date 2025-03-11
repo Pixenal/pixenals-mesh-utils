@@ -729,6 +729,10 @@ Result stucValidateMesh(const StucMesh *pMesh, bool checkEdges) {
 		}
 		AttribActive idx = pMesh->activeAttribs[i];
 		if (!idx.active) {
+			STUC_RETURN_ERR_IFNOT_COND(err,
+				!stucIsAttribUseRequired(i),
+				"in-mesh must have active attribs for pos, uv, normal, and idx"
+			);
 			continue;
 		}
 		STUC_RETURN_ERR_IFNOT_COND(err, idx.idx >= 0, "invalid active attrib index");
