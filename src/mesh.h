@@ -53,11 +53,13 @@ typedef struct {
 	StucAttrib *pInTangentAttrib;
 	StucAttrib *pAlphaAttrib;
 	StucAttrib *pInTSignAttrib;
+	StucAttrib *pInMapFacePairAttrib;
 	F32 *pW;
 	Stuc_V3_F32 *pInNormal;
 	Stuc_V3_F32 *pInTangent;
 	F32 *pAlpha;
 	F32 *pInTSign;
+	Stuc_V2_I32 *pInMapFacePair;
 	I32 borderVertCount;
 	I32 borderCornerCount;
 	I32 borderEdgeCount;

@@ -338,21 +338,33 @@ StucResult stucMapFileLoad(StucContext pCtx, StucMap *pMapHandle, const char *fi
 	if (pMap->usgArr.count) {
 		pMap->usgArr.pArr = pCtx->alloc.pCalloc(pMap->usgArr.count, sizeof(Usg));
 		for (I32 i = 0; i < pMap->usgArr.count; ++i) {
+			Mesh *pUsgMesh = (Mesh *)pUsgArr[i].obj.pData;
+			TEMPsetSpFromAttribName(pCtx, &pUsgMesh->core, &pUsgMesh->core.faceAttribs);
+			TEMPsetSpFromAttribName(pCtx, &pUsgMesh->core, &pUsgMesh->core.cornerAttribs);
+			TEMPsetSpFromAttribName(pCtx, &pUsgMesh->core, &pUsgMesh->core.edgeAttribs);
+			TEMPsetSpFromAttribName(pCtx, &pUsgMesh->core, &pUsgMesh->core.vertAttribs);
+			attemptToSetMissingActiveDomains(&pUsgMesh->core);
 			err = stucAssignActiveAliases(
 				pCtx,
-				(Mesh *)pUsgArr[i].obj.pData,
+				pUsgMesh,
 				0x02, //000010 - set only vert pos
 				STUC_DOMAIN_NONE
 			);
 			STUC_THROW_IFNOT(err, "", 0);
 			pMap->usgArr.pArr[i].origin = *(V2_F32 *)&pUsgArr[i].obj.transform.d[3];
-			pMap->usgArr.pArr[i].pMesh = (Mesh *)pUsgArr[i].obj.pData;
+			pMap->usgArr.pArr[i].pMesh = pUsgMesh;
 			stucApplyObjTransform(&pUsgArr[i].obj);
 			if (pUsgArr[i].pFlatCutoff) {
+				Mesh *pFlatCutoff = (Mesh *)pUsgArr[i].pFlatCutoff->pData;
 				pMap->usgArr.pArr[i].pFlatCutoff = (Mesh *)pUsgArr[i].pFlatCutoff->pData;
+				TEMPsetSpFromAttribName(pCtx, &pFlatCutoff->core, &pFlatCutoff->core.faceAttribs);
+				TEMPsetSpFromAttribName(pCtx, &pFlatCutoff->core, &pFlatCutoff->core.cornerAttribs);
+				TEMPsetSpFromAttribName(pCtx, &pFlatCutoff->core, &pFlatCutoff->core.edgeAttribs);
+				TEMPsetSpFromAttribName(pCtx, &pFlatCutoff->core, &pFlatCutoff->core.vertAttribs);
+				attemptToSetMissingActiveDomains(&pFlatCutoff->core);
 				err = stucAssignActiveAliases(
 					pCtx,
-					(Mesh *)pUsgArr[i].pFlatCutoff->pData,
+					pFlatCutoff,
 					0x02, //000010 - set only vert pos
 					STUC_DOMAIN_NONE
 				);
@@ -663,7 +675,12 @@ bool checkIfNoFacesHaveMaskIdx(const Mesh *pMesh, I8 maskIdx) {
 }
 
 static
-Result mapToFaces( MapToMeshBasic *pBasic, I32 *pJobCount, MappingJobArgs **ppJobArgs, bool *pEmpty) {
+Result mapToFaces(
+	MapToMeshBasic *pBasic,
+	I32 *pJobCount,
+	MappingJobArgs **ppJobArgs,
+	bool *pEmpty
+) {
 	Result err = STUC_SUCCESS;
 	void **ppJobHandles = NULL;
 	err = sendOffMappingJobs(pBasic, pJobCount, &ppJobHandles, ppJobArgs);
@@ -724,7 +741,7 @@ Result mapToMeshInternal(
 	StucMesh *pOutMesh,
 	I8 maskIdx,
 	const StucCommonAttribList *pCommonAttribList,
-	InFaceArr **ppInFaceTable,
+	InFaceTable *pInFaceTable,
 	F32 wScale,
 	F32 receiveLen
 ) {
@@ -740,8 +757,16 @@ Result mapToMeshInternal(
 		.wScale = wScale,
 		.receiveLen = receiveLen,
 		.maskIdx = maskIdx,
-		.ppInFaceTable = ppInFaceTable
+		.pInFaceTable = pInFaceTable,
 	};
+	if (pInFaceTable) {
+		stucLinAllocInit(
+			&pCtx->alloc,
+			&pInFaceTable->pAlloc,
+			sizeof(I32),
+			pMeshIn->core.faceCount
+		);
+	}
 	I32 jobCount = 0;
 	MappingJobArgs *pMappingJobArgs = NULL;
 
@@ -844,22 +869,6 @@ Result getOriginIndexedAttrib(
 	}
 	return err;
 }
-
-/*
-static
-void appendToOutMats(
-	AttribIndexed *pOutMats,
-	char *pOutMatBuf,
-	TableEntry *pEntry
-) {
-	pEntry->hasRef = true;
-	char *pDest = stucAttribAsStr(&pOutMats->core, pOutMats->count);
-	char *pSrc = pOutMatBuf + pEntry->idx * STUC_ATTRIB_STRING_MAX_LEN;
-	memcpy(pDest, pSrc, STUC_ATTRIB_STRING_MAX_LEN);
-	pEntry->idx = (I8)pOutMats->count;
-	pOutMats->count++;
-}
-*/
 
 static
 Result iterFacesAndCorrectIdxAttrib(
@@ -1208,7 +1217,7 @@ Result mapMapArrToMesh(
 		pOutObjWrapArr[i].pData = (StucObjectData *)&pOutBufArr[i];
 		const StucMap pMap = pMapArr->ppArr[i];
 		I8 matIdx = pMapArr->pMatArr[i];
-		InFaceArr *pInFaceTable = NULL;
+		InFaceTable inFaceTable = {0};
 		if (pMap->usgArr.count) {
 			//set preserve to null to prevent usg squares from being split
 			if (pMeshIn->pEdgePreserve || pMeshIn->pVertPreserve) {
@@ -1226,7 +1235,7 @@ Result mapMapArrToMesh(
 				&squaresOut,
 				matIdx,
 				pMapArr->pCommonAttribArr + i,
-				&pInFaceTable,
+				&inFaceTable,
 				1.0f,
 				-1.0f
 			);
@@ -1236,10 +1245,10 @@ Result mapMapArrToMesh(
 				pMap,
 				pMeshIn,
 				&squaresOut,
-				pInFaceTable
+				inFaceTable.pArr
 			);
 			STUC_THROW_IFNOT(err, "", 1);
-			InFaceTableToHashTable(&pCtx->alloc, pMap, squaresOut.faceCount, pInFaceTable);
+			InFaceTableToHashTable(&pCtx->alloc, pMap, squaresOut.faceCount, inFaceTable.pArr);
 			//*pMeshOut = squaresOut;
 			//return STUC_SUCCESS;
 			stucMeshDestroy(pCtx, &squaresOut);
@@ -1266,11 +1275,9 @@ Result mapMapArrToMesh(
 		if (pMap->usgArr.count) {
 			pCtx->alloc.pFree(pMap->usgArr.pInFaceTable);
 			pMap->usgArr.pInFaceTable = NULL;
-			for (I32 j = 0; j < pMap->usgArr.count; ++j) {
-				//TODO uncomment this and fix any memory issue
-				//pCtx->alloc.pFree(pInFaceTable[i].pArr);
-			}
-			pCtx->alloc.pFree(pInFaceTable);
+			stucLinAllocDestroy(inFaceTable.pAlloc);
+			inFaceTable.pAlloc = NULL;
+			inFaceTable.pArr = NULL;
 		}
 		STUC_THROW_IFNOT(err, "", 0);
 	}
