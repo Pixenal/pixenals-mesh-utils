@@ -526,7 +526,7 @@ Result stucMergeObjArr(
 		pCtx->alloc.pMalloc(sizeof(I32) * pMesh->cornerBufSize);
 	pMesh->core.pEdges =
 		pCtx->alloc.pMalloc(sizeof(I32) * pMesh->cornerBufSize);
-	err = stucAllocAttribsFromMeshArr(pCtx, pMesh, objCount, ppSrcs, 0, setCommon, true, false);
+	err = stucAllocAttribsFromMeshArr(pCtx, pMesh, objCount, ppSrcs, -1, setCommon, true, false);
 	STUC_THROW_IFNOT(err, "", 0);
 	for (I32 i = 0; i < objCount; ++i) {
 		stucCopyMesh(&pMesh->core, (StucMesh *)pObjArr[i].pData);
