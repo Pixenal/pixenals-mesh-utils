@@ -410,7 +410,11 @@ Result stucMapFileMeshGet(StucContext pCtx, StucMap pMap, const StucMesh **ppMes
 }
 
 static
-void initCommonAttrib(StucContext pCtx, StucCommonAttrib *pEntry, const StucAttrib *pAttrib) {
+void initCommonAttrib(
+	StucContext pCtx,
+	StucCommonAttrib *pEntry,
+	const StucAttrib *pAttrib
+) {
 	memcpy(pEntry->name, pAttrib->core.name, STUC_ATTRIB_NAME_MAX_LEN);
 	StucTypeDefault *pDefault = 
 		stucGetTypeDefaultConfig(&pCtx->typeDefaults, pAttrib->core.type);
@@ -418,89 +422,80 @@ void initCommonAttrib(StucContext pCtx, StucCommonAttrib *pEntry, const StucAttr
 }
 
 static
-void getCommonAttribs(
+Result getCommonAttribs(
 	StucContext pCtx,
+	const StucMesh *pMapMesh,
 	const AttribArray *pMapAttribs,
+	const StucMesh *pMesh,
 	const AttribArray *pMeshAttribs,
-	StucCommonAttribArr *pCommonAttribs
+	StucCommonAttribArr *pCommonArr
 ) {
+	Result err = STUC_SUCCESS;
 	//TODO ignore special attribs like StucTangent or StucTSign
-	if (!pMeshAttribs || !pMapAttribs) {
-		return;
-	}
-	I32 count = 0;
+	pCommonArr->count = 0;
+	pCommonArr->size = 2;
+	pCommonArr->pArr = pCtx->alloc.pCalloc(pCommonArr->size, sizeof(StucCommonAttrib));
 	for (I32 i = 0; i < pMeshAttribs->count; ++i) {
-		for (I32 j = 0; j < pMapAttribs->count; ++j) {
-			if (!strncmp(
-				pMeshAttribs->pArr[i].core.name,
-				pMapAttribs->pArr[j].core.name,
-				STUC_ATTRIB_NAME_MAX_LEN)
-				) {
-				count++;
-			}
+		Attrib *pAttrib = pMeshAttribs->pArr + i;
+		Attrib *pMapAttrib = NULL;
+		err = stucGetMatchingAttribConst(
+			pCtx,
+			pMapMesh, pMapAttribs,
+			pMesh, pAttrib,
+			true,
+			true,
+			&pMapAttrib
+		);
+		STUC_THROW_IFNOT(err, "", 0);
+		if (!pMapAttrib) {
+			continue;
 		}
-	}
-	pCommonAttribs->pArr = count ?
-		pCtx->alloc.pMalloc(sizeof(StucCommonAttrib) * count) : NULL;
-	count = 0;
-	for (I32 i = 0; i < pMeshAttribs->count; ++i) {
-		for (I32 j = 0; j < pMapAttribs->count; ++j) {
-			if (!strncmp(
-				pMeshAttribs->pArr[i].core.name,
-				pMapAttribs->pArr[j].core.name,
-				STUC_ATTRIB_NAME_MAX_LEN
-			)) {
-				initCommonAttrib(
-					pCtx,
-					pCommonAttribs->pArr + count,
-					pMeshAttribs->pArr + i
-				);
-				count++;
-			}
+		STUC_ASSERT("", pCommonArr->count <= pCommonArr->size);
+		if (pCommonArr->count == pCommonArr->size) {
+			pCommonArr->size *= 2;
+			pCommonArr->pArr = pCtx->alloc.pRealloc(pCommonArr->pArr, pCommonArr->size);
 		}
+		initCommonAttrib(pCtx, pCommonArr->pArr + pCommonArr->count, pAttrib);
+		pCommonArr->count++;
 	}
-	pCommonAttribs->count = count;
+	STUC_CATCH(0, err,
+		pCtx->alloc.pFree(pCommonArr->pArr);
+		pCommonArr->count = pCommonArr->size = 0;
+	);
+	return err;
 }
 
 //TODO handle edge case, where attribute share the same name,
 //but have incompatible types. Such as a F32 and a string.
 StucResult stucQueryCommonAttribs(
 	StucContext pCtx,
-	StucMap pMap,
-	StucMesh *pMesh,
+	const StucMap pMap,
+	const StucMesh *pMesh,
 	StucCommonAttribList *pCommonAttribs
 ) {
-	getCommonAttribs(
-		pCtx,
-		&pMap->pMesh->core.meshAttribs,
-		&pMesh->meshAttribs,
-		&pCommonAttribs->mesh
+	Result err = STUC_SUCCESS;
+	STUC_RETURN_ERR_IFNOT_COND(err, pCtx && pMap && pMesh && pCommonAttribs, "");
+	const StucMesh *pMapMesh = &pMap->pMesh->core;
+	const StucMesh meshWrap = *pMesh;
+	err = attemptToSetMissingActiveDomains(&meshWrap);
+	STUC_RETURN_ERR_IFNOT(err, "");
+	for (I32 i = STUC_DOMAIN_FACE; i <= STUC_DOMAIN_MESH; ++i) {
+		StucCommonAttribArr *pCommonArr = NULL;
+		stucCommonAttribArrGetFromDomain(pCtx, pCommonAttribs, i, &pCommonArr);
+		err = getCommonAttribs(
+			pCtx,
+			pMapMesh,
+			stucGetAttribArrFromDomainConst(pMapMesh, i),
+			&meshWrap,
+			stucGetAttribArrFromDomainConst(&meshWrap, i),
+			pCommonArr
+		);
+		STUC_THROW_IFNOT(err, "", 0);
+	}
+	STUC_CATCH(0, err,
+		stucDestroyCommonAttribs(pCtx, pCommonAttribs);
 	);
-	getCommonAttribs(
-		pCtx,
-		&pMap->pMesh->core.faceAttribs,
-		&pMesh->faceAttribs,
-		&pCommonAttribs->face
-	);
-	getCommonAttribs(
-		pCtx,
-		&pMap->pMesh->core.cornerAttribs,
-		&pMesh->cornerAttribs,
-		&pCommonAttribs->corner
-	);
-	getCommonAttribs(
-		pCtx,
-		&pMap->pMesh->core.edgeAttribs,
-		&pMesh->edgeAttribs,
-		&pCommonAttribs->edge
-	);
-	getCommonAttribs(
-		pCtx,
-		&pMap->pMesh->core.vertAttribs,
-		&pMesh->vertAttribs,
-		&pCommonAttribs->vert
-	);
-	return STUC_SUCCESS;
+	return err;
 }
 
 StucResult stucCommonAttribArrGetFromDomain(
@@ -523,6 +518,9 @@ StucResult stucCommonAttribArrGetFromDomain(
 	case STUC_DOMAIN_VERT:
 		*ppArr = &pList->vert;
 		break;
+	case STUC_DOMAIN_MESH:
+		*ppArr = &pList->mesh;
+		break;
 	default:
 		STUC_RETURN_ERR(err, "invalid domain");
 	}
@@ -533,22 +531,18 @@ StucResult stucDestroyCommonAttribs(
 	StucContext pCtx,
 	StucCommonAttribList *pCommonAttribs
 ) {
-	if (pCommonAttribs->mesh.pArr) {
-		pCtx->alloc.pFree(pCommonAttribs->mesh.pArr);
+	Result err = STUC_SUCCESS;
+	STUC_RETURN_ERR_IFNOT_COND(err, pCtx && pCommonAttribs, "");
+	for (I32 i = STUC_DOMAIN_FACE; i <= STUC_DOMAIN_MESH; ++i) {
+		StucCommonAttribArr *pArr = NULL;
+		stucCommonAttribArrGetFromDomain(pCtx, pCommonAttribs, i, &pArr);
+		if (pArr) {
+			pCtx->alloc.pFree(pArr->pArr);
+			pArr->pArr = NULL;
+		}
+		pArr->count = pArr->size = 0;
 	}
-	if (pCommonAttribs->face.pArr) {
-		pCtx->alloc.pFree(pCommonAttribs->face.pArr);
-	}
-	if (pCommonAttribs->corner.pArr) {
-		pCtx->alloc.pFree(pCommonAttribs->corner.pArr);
-	}
-	if (pCommonAttribs->edge.pArr) {
-		pCtx->alloc.pFree(pCommonAttribs->edge.pArr);
-	}
-	if (pCommonAttribs->vert.pArr) {
-		pCtx->alloc.pFree(pCommonAttribs->vert.pArr);
-	}
-	return STUC_SUCCESS;
+	return err;
 }
 
 static
@@ -1411,8 +1405,8 @@ Result initMeshInWrap(
 	buildEdgeCornersTable(pWrap);
 	buildSeamAndPreserveTables(&pCtx->alloc, pWrap);
 
-	//set all but required
-	stucSetAttribCopyOpt(pCtx, &pWrap->core, STUC_ATTRIB_DONT_COPY, 0xc0e ^ 0xffffffff);
+	//set sp
+	stucSetAttribCopyOpt(pCtx, &pWrap->core, STUC_ATTRIB_DONT_COPY, spAttribsToAppend);
 	//set required
 	stucSetAttribCopyOpt(pCtx, &pWrap->core, STUC_ATTRIB_COPY, 0xc0e);
 
