@@ -687,6 +687,16 @@ void stucSetBitArr(UBitField8 *pArr, I32 idx, I32 value, I32 len) {
 	}
 }
 
+void stucSetBorderFaceMapAttrib(
+	BorderFace *pEntry,
+	UBitField8 *pArr,
+	I32 corner,
+	I32 value
+) {
+	I32 len = 3 + pEntry->memType;
+	stucSetBitArr(pArr, corner, value, len);
+}
+
 void stucInsertionSort(I32 *pIdxTable, I32 count, I32 *pSort) {
 	//insertion sort
 	I32 a = pSort[0];

@@ -215,7 +215,7 @@ Result attemptToSetMissingActiveDomains(StucMesh *pMesh) {
 			continue;
 		}
 		for (I32 j = STUC_DOMAIN_FACE; j <= STUC_DOMAIN_VERT; ++j) {
-			AttribArray *pAttribArr = stucGetAttribArrFromDomain(pMesh, j);
+			const AttribArray *pAttribArr = stucGetAttribArrFromDomainConst(pMesh, j);
 			if (pIdx->idx >= pAttribArr->count ||
 				pAttribArr->pArr[pIdx->idx].core.use != i
 			) {
@@ -476,7 +476,7 @@ StucResult stucQueryCommonAttribs(
 	Result err = STUC_SUCCESS;
 	STUC_RETURN_ERR_IFNOT_COND(err, pCtx && pMap && pMesh && pCommonAttribs, "");
 	const StucMesh *pMapMesh = &pMap->pMesh->core;
-	const StucMesh meshWrap = *pMesh;
+	StucMesh meshWrap = *pMesh;
 	err = attemptToSetMissingActiveDomains(&meshWrap);
 	STUC_RETURN_ERR_IFNOT(err, "");
 	for (I32 i = STUC_DOMAIN_FACE; i <= STUC_DOMAIN_MESH; ++i) {

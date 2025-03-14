@@ -80,6 +80,12 @@ bool stucCalcIntersection(
 );
 I32 stucIdxBitArray(UBitField8 *pArr, I32 idx, I32 len);
 void stucSetBitArr(UBitField8 *pArr, I32 idx, I32 value, I32 len);
+void stucSetBorderFaceMapAttrib(
+	BorderFace *pEntry,
+	UBitField8 *pArr,
+	I32 corner,
+	I32 value
+);
 void stucInsertionSort(I32 *pIdxTable, I32 count, I32 *pSort);
 void stucFInsertionSort(I32 *pIdxTable, I32 count, F32 *pSort);
 Mat3x3 stucGetInterpolatedTbn(
