@@ -785,3 +785,12 @@ I32 stucDomainCountGetIntern(const StucMesh *pMesh, StucDomain domain) {
 	STUC_ASSERT("invalid domain", false);
 	return 0;
 }
+
+I32 stucGetVirtualBufIdx(BufMesh *pBufMesh, I32 corner) {
+	I32 idxVirtual = pBufMesh->mesh.cornerBufSize - corner - 1;
+	STUC_ASSERT(
+		"",
+		idxVirtual >= 0 && idxVirtual < pBufMesh->borderCornerCount
+	);
+	return idxVirtual;
+}

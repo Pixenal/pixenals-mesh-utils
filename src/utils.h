@@ -100,3 +100,8 @@ I32 stucGetBorderFaceSize(I32 memType);
 Result stucAllocBorderFace(I32 memType, BorderTableAlloc *pHandles, void **ppOut);
 void stucGetBorderFaceBitArrs(BorderFace *pEntry, BorderFaceBitArrs *pArrs);
 void stucBorderTableDestroyAlloc(BorderTableAlloc *pTableAlloc);
+V3_F32 stucGetBufCornerUvw(
+	const MapToMeshBasic *pBasic,
+	const BufMesh *pMesh,
+	I32 corner
+);

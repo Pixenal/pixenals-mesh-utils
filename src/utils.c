@@ -965,3 +965,16 @@ void stucBorderTableDestroyAlloc(BorderTableAlloc *pTableAlloc) {
 		stucLinAllocDestroy(pTableAlloc->pLarge);
 	}
 }
+
+V3_F32 stucGetBufCornerUvw(
+	const MapToMeshBasic *pBasic,
+	const BufMesh *pMesh,
+	I32 corner
+) {
+	V3_F32 bufUvw = { .d = {
+		0, 0,
+		pMesh->pW[corner] * pBasic->wScale}
+	};
+	*(V2_F32 *)&bufUvw = pMesh->mesh.pUvs[corner];
+	return bufUvw;
+}
