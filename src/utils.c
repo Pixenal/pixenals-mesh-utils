@@ -714,7 +714,6 @@ void stucInsertionSort(I32 *pIdxTable, I32 count, I32 *pSort) {
 			if (insert) {
 				break;
 			}
-			STUC_ASSERT("", j < bufSize && j >= 0);
 		}
 		if (!insert) {
 			pIdxTable[bufSize] = i;
@@ -726,7 +725,6 @@ void stucInsertionSort(I32 *pIdxTable, I32 count, I32 *pSort) {
 			}
 			pIdxTable[j] = i;
 		}
-		STUC_ASSERT("", i >= bufSize && i < count);
 		bufSize++;
 	}
 }
@@ -748,7 +746,6 @@ void stucFInsertionSort(I32 *pIdxTable, I32 count, F32 *pSort) {
 			if (insert) {
 				break;
 			}
-			STUC_ASSERT("", j < bufSize && j >= 0);
 		}
 		if (!insert) {
 			pIdxTable[bufSize] = i;
@@ -760,7 +757,6 @@ void stucFInsertionSort(I32 *pIdxTable, I32 count, F32 *pSort) {
 			}
 			pIdxTable[j] = i;
 		}
-		STUC_ASSERT("", i >= bufSize && i < count);
 		bufSize++;
 	}
 }
