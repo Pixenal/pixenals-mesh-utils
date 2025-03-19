@@ -139,3 +139,6 @@ void stucAliasMeshCoreNoAttribs(StucMesh *pDest, StucMesh *pSrc);
 I32 stucGetDomainSize(const Mesh *pMesh, StucDomain domain);
 I32 stucDomainCountGetIntern(const StucMesh *pMesh, StucDomain domain);
 I32 stucGetVirtualBufIdx(BufMesh *pBufMesh, I32 corner);
+I32 stucGetCornerPrev(I32 corner, const FaceRange *pFace);
+I32 stucGetCornerNext(I32 corner, const FaceRange *pFace);
+bool stucGetIfSeamEdge(const Mesh *pMesh, const FaceRange *pFace, I32 corner);

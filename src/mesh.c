@@ -794,3 +794,25 @@ I32 stucGetVirtualBufIdx(BufMesh *pBufMesh, I32 corner) {
 	);
 	return idxVirtual;
 }
+
+I32 stucGetCornerPrev(I32 corner, const FaceRange *pFace) {
+	I32 prev = corner ? corner - 1 : pFace->size - 1;
+	STUC_ASSERT("", prev >= 0 && prev < pFace->size);
+	return prev;
+}
+
+I32 stucGetCornerNext(I32 corner, const FaceRange *pFace) {
+	STUC_ASSERT("", corner < pFace->size);
+	I32 next = (corner + 1) % pFace->size;
+	STUC_ASSERT("", next >= 0);
+	return next;
+}
+
+bool stucGetIfSeamEdge(const Mesh *pMesh, const FaceRange *pFace, I32 corner) {
+	I32 faceStart = pMesh->core.pFaces[pFace->idx];
+	I32 cornerReal = faceStart + corner;
+	STUC_ASSERT("", cornerReal < pMesh->core.cornerCount);
+	I32 edge = pMesh->core.pEdges[cornerReal];
+	STUC_ASSERT("", pMesh->pSeamEdge);
+	return pMesh->pSeamEdge[edge];
+}
