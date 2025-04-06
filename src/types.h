@@ -19,8 +19,7 @@ typedef uint64_t U64;
 typedef float F32;
 typedef double F64;
 
-#ifdef WIN32
-#define ONG l
-#else
-#define ONG 
-#endif
+typedef struct Range {
+	I32 start;
+	I32 end;
+} Range;

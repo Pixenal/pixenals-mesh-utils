@@ -10,11 +10,7 @@ SPDX-License-Identifier: Apache-2.0
 #include <uv_stucco.h>
 #include <debug_and_perf.h>
 #include <types.h>
-
-typedef struct {
-	I32 idx;
-	I32 realIdx;
-} BufMeshIdx;
+#include <alloc.h>
 
 //is it worth just putting pData at the start of Attrib,
 //so you can just have pNormalAttrib and remove pNormal.
@@ -24,10 +20,10 @@ typedef struct {
 //Like you could have edge preserve, edge receive and seam edge in a
 //single attrib. Is it worth it? They don't take up much atm. If more flags were added
 //it'd might be worth considering
-typedef struct {
+typedef struct Mesh {
 	StucMesh core;
 	//aliases to special attribs
-	Stuc_V3_F32 *pVerts;
+	Stuc_V3_F32 *pPos;
 	Stuc_V3_F32 *pNormals;
 	Stuc_V3_F32 *pTangents;
 	F32 *pTSigns;
@@ -44,84 +40,50 @@ typedef struct {
 	I8 *pSeamEdge;
 	I8 *pSeamVert;
 	I8 *pNumAdjPreserve;
-	Stuc_V2_I32 *pEdgeCorners;
+	Stuc_V2_I32 *pEdgeFaces;
+	Stuc_V2_I8 *pEdgeCorners;
 	I32 faceBufSize;
 	I32 cornerBufSize;
 	I32 edgeBufSize;
 	I32 vertBufSize;
 } Mesh;
 
-typedef struct {
-	Mesh mesh;
-	StucAttrib *pWAttrib;
-	StucAttrib *pInNormalAttrib;
-	StucAttrib *pInTangentAttrib;
-	StucAttrib *pAlphaAttrib;
-	StucAttrib *pInTSignAttrib;
-	StucAttrib *pInMapFacePairAttrib;
-	F32 *pW;
-	Stuc_V3_F32 *pInNormal;
-	Stuc_V3_F32 *pInTangent;
-	F32 *pAlpha;
-	F32 *pInTSign;
-	Stuc_V2_I32 *pInMapFacePair;
-	I32 borderVertCount;
-	I32 borderCornerCount;
-	I32 borderEdgeCount;
-	I32 borderFaceCount;
-} BufMesh;
-
-typedef struct {
+typedef struct MeshCounts {
 	I32 faces;
 	I32 corners;
 	I32 edges;
 	I32 verts;
 } MeshCounts;
 
-typedef struct {
+typedef struct FaceRange {
 	I32 start;
 	I32 end;
 	I32 size;
 	I32 idx;
 } FaceRange;
 
-void stucCreateMesh(StucContext pCtx, StucObject *pObj, StucObjectType type);
-BufMeshIdx stucBufMeshAddFace(
-	StucContext pCtx,
-	BufMesh *pMesh,
-	bool border,
-	bool *pRealloced
-);
-BufMeshIdx stucBufMeshAddCorner(
-	StucContext pCtx,
-	BufMesh *pMesh,
-	bool border,
-	bool *pRealloced
-);
-BufMeshIdx stucBufMeshAddEdge(
-	StucContext pCtx,
-	BufMesh *pMesh,
-	bool border,
-	bool *pRealloced
-);
-BufMeshIdx stucBufMeshAddVert(
-	StucContext pCtx,
-	BufMesh *pMesh,
-	bool border,
-	bool *pRealloced
-);
-BufMeshIdx stucConvertBorderFaceIdx(const BufMesh *pMesh, I32 face);
-BufMeshIdx stucConvertBorderCornerIdx(const BufMesh *pMesh, I32 corner);
-BufMeshIdx stucConvertBorderEdgeIdx(const BufMesh *pMesh, I32 edge);
-BufMeshIdx stucConvertBorderVertIdx(const BufMesh *pMesh, I32 vert);
-I32 stucMeshAddFace(StucContext pCtx, Mesh *pMesh, bool *pRealloced);
-I32 stucMeshAddCorner(StucContext pCtx, Mesh *pMesh, bool *pRealloced);
-I32 stucMeshAddEdge(StucContext pCtx, Mesh *pMesh, bool *pRealloced);
-I32 stucMeshAddVert(StucContext pCtx, Mesh *pMesh, bool *pRealloced);
-void stucReallocMeshToFit(StucContext pCtx, Mesh *pMesh);
-void stucMeshSetLastFace(StucContext pCtx, Mesh *pMesh);
-void stucBufMeshSetLastFaces(StucContext pCtx, BufMesh *pBufMesh);
-bool stucCheckIfMesh(StucObjectData type);
+typedef struct FaceCorner {
+	I32 face;
+	I32 corner;
+} FaceCorner;
+
+typedef struct FaceTriangulated {
+	U8 *pTris;
+} FaceTriangulated;
+
+typedef struct TriCache {
+	FaceTriangulated *pArr;
+	LinAlloc alloc;
+} TriCache;
+
+void stucCreateMesh(const StucContext pCtx, StucObject *pObj, StucObjectType type);
+I32 stucMeshAddFace(const StucContext pCtx, Mesh *pMesh, bool *pRealloced);
+I32 stucMeshAddCorner(const StucContext pCtx, Mesh *pMesh, bool *pRealloced);
+I32 stucMeshAddEdge(const StucContext pCtx, Mesh *pMesh, bool *pRealloced);
+I32 stucMeshAddVert(const StucContext pCtx, Mesh *pMesh, bool *pRealloced);
+void stucReallocMeshToFit(const StucContext pCtx, Mesh *pMesh);
+void stucMeshSetLastFace(const StucContext pCtx, Mesh *pMesh);
+bool stucCheckIfMesh(const StucObjectData type);
 void stucAddToMeshCounts(
 	MeshCounts *pCounts,
 	MeshCounts *pBoundsCounts,
@@ -137,13 +99,19 @@ StucResult stucMergeObjArr(
 	bool setCommon
 );
 StucResult stucDestroyObjArr(StucContext pCtx, I32 objCount, StucObject *pObjArr);
-FaceRange stucGetFaceRange(const StucMesh *pMesh, I32 idx, bool border);
+FaceRange stucGetFaceRange(const StucMesh *pMesh, I32 idx);
 StucResult stucBuildTangents(Mesh *pMesh);
 StucResult stucValidateMesh(const StucMesh *pMesh, bool checkEdges);
 void stucAliasMeshCoreNoAttribs(StucMesh *pDest, StucMesh *pSrc);
 I32 stucGetDomainSize(const Mesh *pMesh, StucDomain domain);
 I32 stucDomainCountGetIntern(const StucMesh *pMesh, StucDomain domain);
-I32 stucGetVirtualBufIdx(BufMesh *pBufMesh, I32 corner);
 I32 stucGetCornerPrev(I32 corner, const FaceRange *pFace);
 I32 stucGetCornerNext(I32 corner, const FaceRange *pFace);
-bool stucGetIfSeamEdge(const Mesh *pMesh, const FaceRange *pFace, I32 corner);
+bool stucGetIfSeamEdge(const Mesh *pMesh, I32 edge);
+bool stucGetIfMatBorderEdge(const Mesh *pMesh, I32 edge);
+void stucGetAdjCorner(const Mesh *pMesh, FaceCorner corner, FaceCorner *pAdjCorner);
+Stuc_V2_F32 stucGetVertPosAsV2(const Mesh *pMesh, const FaceRange *pFace, I32 corner);
+Stuc_V2_F32 stucGetUvPos(const Mesh *pMesh, const FaceRange *pFace, I32 corner);
+I32 stucGetMeshVert(const StucMesh *pMesh, FaceCorner corner);
+I32 stucGetMeshEdge(const StucMesh *pMesh, FaceCorner corner);
+bool checkForNgonsInMesh(const StucMesh *pMesh);
