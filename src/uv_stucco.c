@@ -1034,10 +1034,12 @@ PieceFaceIdx *getAdjFaceInPiece(
 }
 
 typedef struct BorderEdgeTableEntry {
-	struct BorderEdgeTableEntry *pNext;
-	I32 idx;
+	HTableEntryCore core;
+	FaceCorner corner;
+	bool checked;
 } BorderEdgeTableEntry;
 
+/*
 typedef struct BorderEdgeBucket {
 	BorderEdgeTableEntry *pList;
 } BorderEdgeBucket;
@@ -1054,91 +1056,65 @@ typedef struct BorderEdgeArr {
 	I32 size;
 	I32 count;
 } BorderEdgeArr;
+*/
 
 static
-void initBorderEdgeArr(
-	const MapToMeshBasic *pBasic,
-	const InPiece *pInPiece,
-	BorderEdgeArr *pArr
+void borderEdgeInit(
+	void *pUserData,
+	HTableEntryCore *pEntry,
+	const void *pKeyData,
+	void *pInitInfo,
+	I32 linIdx
 ) {
-	const StucAlloc *pAlloc = &pBasic->pCtx->alloc;
-	pArr->size = 2;
-	pArr->pCorners = pAlloc->fpMalloc(pArr->size * sizeof(FaceCorner));
-	pArr->table.size = pArr->size;
-	pArr->table.pTable = pAlloc->fpCalloc(pArr->table.size, sizeof(BorderEdgeBucket));
-	stucLinAllocInit(
-		pAlloc,
-		&pArr->table.alloc,
-		sizeof(BorderEdgeTableEntry),
-		pArr->table.size,
-		true
-	);
+	((BorderEdgeTableEntry *)pEntry)->corner = *(FaceCorner *)pKeyData;
 }
 
 static
-void destroyBorderEdgeArr(const MapToMeshBasic *pBasic, BorderEdgeArr *pArr) {
-	const StucAlloc *pAlloc = &pBasic->pCtx->alloc;
-	pAlloc->fpFree(pArr->pCorners);
-	pAlloc->fpFree(pArr->table.pTable);
-	stucLinAllocDestroy(&pArr->table.alloc);
-	*pArr = (BorderEdgeArr) {0};
+bool borderEdgeCmp(
+	const HTableEntryCore *pEntryCore,
+	const void *pKeyData,
+	const void *pInitInfo
+) {
+	BorderEdgeTableEntry *pEntry = (BorderEdgeTableEntry *)pEntryCore;
+	return
+		pEntry->corner.face == ((FaceCorner *)pKeyData)->face &&
+		pEntry->corner.corner == ((FaceCorner *)pKeyData)->corner;
 }
 
 static
-BorderEdgeTableEntry *initBorderEdgeTableEntry(BorderEdgeArr *pArr) {
-	BorderEdgeTableEntry *pNewEntry = NULL;
-	stucLinAlloc(&pArr->table.alloc, &pNewEntry, 1);
-	pNewEntry->idx = pArr->count;
-	return pNewEntry;
+U64 borderEdgeMakeKey(const void *pKeyData) {
+	return (U64)*(I32 *)pKeyData;
 }
 
+/*
 static
 BorderEdgeBucket *getBorderEdgeBucket(BorderEdgeTable *pTable, FaceCorner corner) {
 	U32 key = corner.face + corner.corner;
 	U32 hash = stucFnvHash((U8 *)&key, sizeof(key), pTable->size);
 	return pTable->pTable + hash;
 }
+*/
 
 static
-void addBorderEdge(const MapToMeshBasic *pBasic, BorderEdgeArr *pArr, FaceCorner corner) {
-	const StucAlloc *pAlloc = &pBasic->pCtx->alloc;
-	STUC_ASSERT("", pArr->count <= pArr->size);
-	if (pArr->count == pArr->size) {
-		pArr->size *= 2;
-		pArr->pCorners =
-			pAlloc->fpRealloc(pArr->pCorners, pArr->size * sizeof(FaceCorner));
-	}
-	FaceRange face = stucGetFaceRange(&pBasic->pInMesh->core, corner.face);
-	pArr->pCorners[pArr->count] = corner;
-	BorderEdgeBucket *pBucket = getBorderEdgeBucket(&pArr->table, corner);
-	if (!pBucket->pList) {
-		pBucket->pList = initBorderEdgeTableEntry(pArr);
-	}
-	else {
-		BorderEdgeTableEntry *pEntry = pBucket->pList;
-		while (pEntry->pNext) {
-			pEntry = pEntry->pNext;
-		}
-		pEntry->pNext = initBorderEdgeTableEntry(pArr);
-	}
-	pArr->count++;
-}
-
-static
-I32 getBorderEdgeIdx(BorderEdgeArr *pArr, FaceCorner corner) {
-	BorderEdgeBucket *pBucket = getBorderEdgeBucket(&pArr->table, corner);
-	BorderEdgeTableEntry *pEntry = pBucket->pList;
-	while (pEntry) {
-		STUC_ASSERT("", pEntry->idx >= 0 && pEntry->idx < pArr->count);
-		FaceCorner entryCorner = pArr->pCorners[pEntry->idx];
-		if (entryCorner.face == corner.face && entryCorner.corner == corner.corner) {
-			return pEntry->idx;
-		}
-		//TODO add self reference check to all linked list walks
-		STUC_ASSERT("", pEntry != pEntry->pNext);
-		pEntry = pEntry->pNext;
-	}
-	return -1;
+BorderEdgeTableEntry *borderEdgeAddOrGet(
+	HTable *pBorderTable,
+	FaceCorner corner,
+	bool add
+) {
+	BorderEdgeTableEntry *pEntry = NULL;
+	SearchResult result = stucHTableGet(
+		pBorderTable,
+		0,
+		&corner,
+		&pEntry,
+		add, &corner,
+		borderEdgeMakeKey, NULL, borderEdgeInit, borderEdgeCmp
+	);
+	STUC_ASSERT(
+		"there shouldn't be an existing entry if adding",
+		!(add ^ result == STUC_SEARCH_ADDED)
+	);
+	return pEntry;
 }
 
 static
@@ -1171,39 +1147,31 @@ bool findAndAddBorder(
 	const MapToMeshBasic *pBasic,
 	InPiece *pNewInPiece,
 	HTable *pIdxTable,
-	BorderEdgeArr *pBorderEdges,
-	bool *pFlagArr
+	HTable *pBorderEdgeTable,
+	I32 edgesMax,
+	BorderEdgeTableEntry *pStart
 ) {
 	const Mesh *pInMesh = pBasic->pInMesh;
 	Border border = {0};
-	{
-		I32 i = 0;
-		for (; i < pBorderEdges->count; ++i) {
-			I32 edge = stucGetMeshEdge(&pBasic->pInMesh->core, pBorderEdges->pCorners[i]);
-			if (!pFlagArr[i] && couldInEdgeIntersectMapFace(pBasic->pInMesh, edge)) {
-				break;
-			}
-		}
-		if (i >= pBorderEdges->count) {
-			return false; //checked all edges
-		}
-		border.start = pBorderEdges->pCorners[i];
-	}
-	FaceCorner corner = border.start;
+	FaceCorner corner = pStart->corner;
+	BorderEdgeTableEntry *pEntry  = pStart;
 	//bool wind = getPieceFaceIdxEntry(pIdxTable, corner.face)->pInFace->wind;
 	do {
-		if (border.len != 0 &&
-			corner.face == border.start.face && corner.corner == border.start.corner
-		) {
-			break;
+		if (border.len != 0) {//dont run this on first edge
+			if (
+				corner.face == pStart->corner.face &&
+				corner.corner == pStart->corner.corner
+			) {
+				break;//full loop
+			}
+			pEntry = borderEdgeAddOrGet(pBorderEdgeTable, corner, false);
 		}
-		I32 borderEdgeIdx = getBorderEdgeIdx(pBorderEdges, corner);
-		if (borderEdgeIdx != -1) {
-			STUC_ASSERT("", pFlagArr[borderEdgeIdx] == false);
-			pFlagArr[borderEdgeIdx] = true;
+		if (pEntry) {
+			STUC_ASSERT("", pEntry->checked == false);
+			pEntry->checked = true;
 			border.len++;
 		}
-		STUC_ASSERT("", border.len < pBorderEdges->count);
+		STUC_ASSERT("", border.len <= edgesMax);
 		I32 adjCorner = 0;
 		//this is using the table for the pre-split piece.
 		//this is fine, as faces arn't marked removed until the end of this func
@@ -1215,7 +1183,7 @@ bool findAndAddBorder(
 		);
 		STUC_ASSERT(
 			"if edge isn't in border arr, there should be an adj face",
-			borderEdgeIdx == -1 ^ !pAdjFace
+			!pEntry ^ !pAdjFace
 		);
 		if (pAdjFace) {
 			corner.face = pAdjFace->pInFace->idx;
@@ -1236,7 +1204,7 @@ void addAdjFaces(
 	const MapToMeshBasic *pBasic,
 	EncasingInFaceArr *pNewInFaces,
 	HTable *pIdxTable,
-	BorderEdgeArr *pBorderEdges,
+	HTable *pBorderEdges,
 	const FaceRange *pFace
 ) {
 	StucAlloc *pAlloc = &pBasic->pCtx->alloc;
@@ -1249,7 +1217,7 @@ void addAdjFaces(
 			NULL
 		);
 		if (!pAdjFace) {
-			addBorderEdge(pBasic, pBorderEdges, corner);
+			borderEdgeAddOrGet(pBorderEdges, corner, true);
 			continue;
 		}
 		if (pAdjFace->pendingRemove) {
@@ -1267,8 +1235,8 @@ void addAdjFaces(
 		STUC_ASSERT("", pAdjFace->pInFace);
 
 		pNewInFaces->pArr[pNewInFaces->count] = *pAdjFace->pInFace;
-		pAdjFace->pendingRemove = true;
 		pNewInFaces->count++;
+		pAdjFace->pendingRemove = true;
 	}
 }
 
@@ -1289,6 +1257,36 @@ PieceFaceIdx *getFirstRemainingFace(HTable *pIdxTable) {
 }
 
 static
+void fillBorderArr(
+	const MapToMeshBasic *pBasic,
+	InPiece *pNewInPiece,
+	HTable *pIdxTable,
+	HTable *pBorderEdges
+) {
+	LinAlloc *pAlloc = stucHTableAllocGet(pBorderEdges, 0);
+	I32 edgeCount = stucLinAllocGetCount(pAlloc);
+	LinAllocIter iter = {0};
+	stucLinAllocIterInit(pAlloc, (Range) { 0, INT32_MAX }, &iter);
+	for (; !stucLinAllocIterAtEnd(&iter); stucLinAllocIterInc(&iter)) {
+		BorderEdgeTableEntry *pEntry = stucLinAllocGetItem(&iter);
+		if (pEntry->checked) {
+			continue;
+		}
+		I32 edge = stucGetMeshEdge(&pBasic->pInMesh->core, pEntry->corner);
+		if (couldInEdgeIntersectMapFace(pBasic->pInMesh, edge)) {
+			findAndAddBorder(
+				pBasic,
+				pNewInPiece,
+				pIdxTable,
+				pBorderEdges,
+				edgeCount,
+				pEntry
+			);
+		}
+	}
+}
+
+static
 void splitAdjFacesIntoPiece(
 	const MapToMeshBasic *pBasic,
 	const InPiece *pInPiece,
@@ -1298,8 +1296,14 @@ void splitAdjFacesIntoPiece(
 ) {
 	StucAlloc *pAlloc = &pBasic->pCtx->alloc;
 	EncasingInFaceArr *pNewInFaces = &pNewInPiece->pList->inFaces;
-	BorderEdgeArr borderEdges = {0};
-	initBorderEdgeArr(pBasic, pInPiece, &borderEdges);
+	HTable borderEdges = {0};
+	stucHTableInit(
+		&pBasic->pCtx->alloc,
+		&borderEdges,
+		*pFacesRemaining / 2 + 1,
+		(I32Arr) {.pArr = (I32[]) {sizeof(BorderEdgeTableEntry)}, .count = 1},
+		NULL
+	);
 	{
 		PieceFaceIdx *pStartFace = getFirstRemainingFace(pIdxTable);
 		pNewInFaces->pArr[0] = *pStartFace->pInFace;
@@ -1316,13 +1320,8 @@ void splitAdjFacesIntoPiece(
 	}
 	pNewInPiece->faceCount = pNewInFaces->count;
 	initBorderArr(pBasic, &pNewInPiece->borderArr);
-	bool *pFlagArr = pAlloc->fpCalloc(borderEdges.count, sizeof(bool));
-	do {
-		if (!findAndAddBorder(pBasic, pNewInPiece, pIdxTable, &borderEdges, pFlagArr)) {
-			break;
-		}
-	} while(true);
-	destroyBorderEdgeArr(pBasic, &borderEdges);
+	fillBorderArr(pBasic, pNewInPiece, pIdxTable, &borderEdges);
+	stucHTableDestroy(&borderEdges);
 	
 	// mark faces in new piece as removed
 	for (I32 i = 0; i < pNewInFaces->count; ++i) {

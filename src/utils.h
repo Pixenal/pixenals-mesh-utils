@@ -689,6 +689,15 @@ SearchResult stucHTableGetConst(
 	);
 }
 
+inline
+bool stucHTableCmpFalse(
+	const HTableEntryCore *pEntry,
+	const void *pKeyData,
+	const void *pInitInfo
+) {
+	return false;
+}
+
 U64 stucKeyFromI32(const void *pKeyData);
 
 typedef struct EncasingInFace {
