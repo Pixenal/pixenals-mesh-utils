@@ -251,7 +251,7 @@ void triCacheBuild(const StucAlloc *pAlloc, StucMap pMap) {
 		for (I32 i = 0; i < pMap->pMesh->core.faceCount; ++i) {
 			FaceRange face = stucGetFaceRange(&pMap->pMesh->core, i);
 			FaceTriangulated *pTris = pMap->triCache.pArr + i;
-			stucLinAlloc(&pMap->triCache.alloc, &pTris->pTris, face.size - 2);
+			stucLinAlloc(&pMap->triCache.alloc, (void**)&pTris->pTris, face.size - 2);
 			stucTriangulateFaceFromVerts(pAlloc, &face, pMap->pMesh, pTris);
 		}
 	}
@@ -259,7 +259,7 @@ void triCacheBuild(const StucAlloc *pAlloc, StucMap pMap) {
 
 static
 void triCacheDestroy(const StucAlloc *pAlloc, StucMap pMap) {
-	STUC_ASSERT("", !(pMap->triCache.pArr != NULL ^ pMap->triCache.alloc.valid));
+	STUC_ASSERT("", !((pMap->triCache.pArr != NULL) ^ (pMap->triCache.alloc.valid)));
 	if (pMap->triCache.pArr) {
 		pAlloc->fpFree(pMap->triCache.pArr);
 		stucLinAllocDestroy(&pMap->triCache.alloc);
@@ -508,7 +508,7 @@ Result getCommonAttribs(
 	pCommonArr->pArr = pCtx->alloc.fpCalloc(pCommonArr->size, sizeof(StucCommonAttrib));
 	for (I32 i = 0; i < pMeshAttribs->count; ++i) {
 		Attrib *pAttrib = pMeshAttribs->pArr + i;
-		Attrib *pMapAttrib = NULL;
+		const Attrib *pMapAttrib = NULL;
 		err = stucGetMatchingAttribConst(
 			pCtx,
 			pMapMesh, pMapAttribs,
@@ -780,7 +780,7 @@ typedef struct InPieceInitInfo {
 
 static
 void inPieceInit (
-	const void *pUserData,
+	void *pUserData,
 	HTableEntryCore *pIdxEntryCore,
 	const void *pKeyData,
 	void *pInitInfoVoid,
@@ -839,7 +839,7 @@ void addEncasedEntryToInPieceArr(
 		pIdxTable,
 		0,
 		pMapFace,
-		&pIdxEntry,
+		(void **)&pIdxEntry,
 		true, &(InPieceInitInfo) {.pMapFace = pMapFace, .pInPieceArr = pInPieceArr},
 		stucInPieceMakeKey, NULL, inPieceInit, inPieceCmp
 	);
@@ -917,7 +917,7 @@ typedef struct {
 */
 
 static
-initPieceFaceIdxEntry(
+void initPieceFaceIdxEntry(
 	void *pUserData,
 	HTableEntryCore *pEntry,
 	const void *pKeyData,
@@ -973,7 +973,7 @@ void buildPieceFaceIdxTable(
 				pTable,
 				0,
 				&faceIdx,
-				&pEntry,
+				(void **)&pEntry,
 				true, pInFace,
 				stucKeyFromI32, NULL, initPieceFaceIdxEntry, cmpPieceFaceIdxEntry
 			);
@@ -1007,7 +1007,7 @@ PieceFaceIdx *getAdjFaceInPiece(
 	}
 	STUC_ASSERT("", adj.corner >= 0);
 	PieceFaceIdx *pAdjIdxEntry = NULL;
-	pieceFaceIdxTableGet(pIdxTable, adj.face, &pAdjIdxEntry);
+	pieceFaceIdxTableGet(pIdxTable, adj.face, (void **)&pAdjIdxEntry);
 	if (!pAdjIdxEntry) {
 		if (pAdjCorner) {
 			*pAdjCorner = -1;
@@ -1023,7 +1023,7 @@ PieceFaceIdx *getAdjFaceInPiece(
 	}
 	if (pAdjCorner) {
 		PieceFaceIdx *pIdxEntry = NULL;
-		pieceFaceIdxTableGet(pIdxTable, corner.face, &pIdxEntry);
+		pieceFaceIdxTableGet(pIdxTable, corner.face, (void **)&pIdxEntry);
 		STUC_ASSERT("", pIdxEntry);
 		FaceRange adjFaceRange =
 			stucGetFaceRange(&pBasic->pInMesh->core, pAdjIdxEntry->pInFace->idx);
@@ -1106,13 +1106,13 @@ BorderEdgeTableEntry *borderEdgeAddOrGet(
 		pBorderTable,
 		0,
 		&corner,
-		&pEntry,
+		(void **)&pEntry,
 		add, &corner,
 		borderEdgeMakeKey, NULL, borderEdgeInit, borderEdgeCmp
 	);
 	STUC_ASSERT(
 		"there shouldn't be an existing entry if adding",
-		!(add ^ result == STUC_SEARCH_ADDED)
+		!(add ^ (result == STUC_SEARCH_ADDED))
 	);
 	return pEntry;
 }
@@ -1314,7 +1314,7 @@ void splitAdjFacesIntoPiece(
 			FaceRange face =
 				stucGetFaceRange(&pBasic->pInMesh->core, pNewInFaces->pArr[i].idx);
 			PieceFaceIdx *pIdxEntry = NULL;
-			pieceFaceIdxTableGet(pIdxTable, face.idx, &pIdxEntry);
+			pieceFaceIdxTableGet(pIdxTable, face.idx, (void **)&pIdxEntry);
 			addAdjFaces(pBasic, pNewInFaces, pIdxTable, &borderEdges, &face);
 		} while (i++, i < pNewInFaces->count);
 	}
@@ -1327,7 +1327,7 @@ void splitAdjFacesIntoPiece(
 	for (I32 i = 0; i < pNewInFaces->count; ++i) {
 		I32 face = pNewInFaces->pArr[i].idx;
 		PieceFaceIdx *pIdxEntry = NULL;
-		pieceFaceIdxTableGet(pIdxTable, face, &pIdxEntry);
+		pieceFaceIdxTableGet(pIdxTable, face, (void **)&pIdxEntry);
 		STUC_ASSERT("", pIdxEntry->pendingRemove);
 		pIdxEntry->removed = true;
 		pIdxEntry->pendingRemove = false;
@@ -2194,7 +2194,7 @@ void addBufFaceToOutMesh(
 			pMergeTable,
 			0,
 			&key,
-			&pEntry,
+			(void **)&pEntry,
 			false, NULL,
 			mergeTableMakeKey, NULL, NULL, mergeTableEntryCmp
 		);
@@ -2493,7 +2493,7 @@ Result getOriginIndexedAttrib(
 		case STUC_ATTRIB_ORIGIN_MESH_IN:
 			*ppMatsToAdd = pInIndexedAttrib;
 			break;
-		case STUC_ATTRIB_ORIGIN_COMMON:
+		case STUC_ATTRIB_ORIGIN_COMMON: {
 			const CommonAttribList *pMapCommon = pMapArr->pCommonAttribArr + mapIdx;
 			const CommonAttrib *pCommonAttrib =
 				stucGetCommonAttribFromDomain(pMapCommon, pAttrib->core.name, domain);
@@ -2508,6 +2508,7 @@ Result getOriginIndexedAttrib(
 			}
 			*ppMatsToAdd = config.order ? pInIndexedAttrib : pMapIndexedAttrib;
 			break;
+		}
 		default:
 			STUC_ASSERT("invalid attrib origin for this function", false);
 	}
@@ -2837,7 +2838,7 @@ Result stucQueueMapToMesh(
 		1,
 		ppJobHandle,
 		mapToMeshFromJob,
-		&pArgs
+		(void **)&pArgs
 	);
 	return STUC_SUCCESS;
 }
@@ -2966,7 +2967,7 @@ Result appendSpAttribsToInMesh(
 		STUC_RETURN_ERR(err, "in-mesh contains attribs it shouldn't");
 	}
 	Mesh meshInCpy = {.core = *pMeshIn};
-	Mesh *pMeshInCpyPtr = &meshInCpy;
+	const Mesh *const pMeshInCpyPtr = &meshInCpy;
 	stucAllocAttribsFromMeshArr(
 		pCtx,
 		pWrap,

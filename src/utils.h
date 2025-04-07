@@ -67,12 +67,19 @@ typedef struct TriangulateState {
 	Ear *pEarList;
 	const Mesh *pMesh;
 	const FaceRange *pFace;
-	V2_F32 (* fpGetPoint)(const void *, const FaceRange *, I32);
+	V2_F32 (* fpGetPoint)(const Mesh *, const FaceRange *, I32);
 	FaceTriangulated *pTris;
 	bool *pRemoved;
 	I32 triCount;
 	bool wind;
 } TriangulateState;
+
+InsideStatus stucIsPointInHalfPlane(
+	V2_F32 point,
+	V2_F32 lineA,
+	V2_F32 halfPlane,
+	bool wind
+);
 
 STUC_FORCE_INLINE
 bool doesEarIntersectFace(
@@ -106,7 +113,7 @@ bool doesEarIntersectFace(
 	return false;
 }
 
-inline
+static inline
 I32 stucGetNextRemaining(
 	const TriangulateState *pState,
 	I32 corner,
@@ -123,7 +130,7 @@ I32 stucGetNextRemaining(
 	return -1;
 }
 
-inline
+static inline
 I32 stucGetPrevRemaining(
 	const TriangulateState *pState,
 	I32 corner,
@@ -157,7 +164,7 @@ Ear *addEarCandidate(TriangulateState *pState, I32 corner) {
 	F32 len = v2F32Len(ac);
 	Ear *pNewEar = NULL;
 	if (!pState->pEarList) {
-		stucLinAlloc(&pState->earAlloc, &pState->pEarList, 1);
+		stucLinAlloc(&pState->earAlloc, (void **)&pState->pEarList, 1);
 		pNewEar = pState->pEarList;
 	}
 	else {
@@ -165,7 +172,7 @@ Ear *addEarCandidate(TriangulateState *pState, I32 corner) {
 		while(pEar->pNext && len > pEar->pNext->len) {
 			pEar = pEar->pNext;
 		}
-		stucLinAlloc(&pState->earAlloc, &pNewEar, 1);
+		stucLinAlloc(&pState->earAlloc, (void **)&pNewEar, 1);
 		if (len < pEar->len) {
 			pEar->pPrev = pNewEar;
 			pNewEar->pNext = pEar;
@@ -193,7 +200,7 @@ void addAdjEarCandidates(TriangulateState *pState, Ear *pEar) {
 	addEarCandidate(pState, cornerPrev);
 }
 
-inline
+static inline
 Ear *addEar(TriangulateState *pState) {
 	Ear *pEar = pState->pEarList;
 	U8 *pTri = pState->pTris->pTris + pState->triCount * 3;
@@ -222,13 +229,79 @@ void cacheHalfPlanes(TriangulateState *pState) {
 }
 */
 
-inline
+static inline
 void stucRemoveEar(TriangulateState *pState) {
 	Ear *pEar = pState->pEarList;
 	if (pEar->pNext) {
 		pEar->pNext->pPrev = NULL;
 	}
 	pState->pEarList = pEar->pNext;
+}
+
+static inline
+bool isMarkedSkip(I32 *pSkip, I32 skipCount, I32 idx) {
+	for (I32 i = 0; i < skipCount; ++i) {
+		if (idx == pSkip[i]) {
+			return true;
+		}
+	}
+	return false;
+}
+//finds corner on convex hull of face, & determines wind direction from that
+//returns 0 for clockwise, 1 for counterclockwise, & 2 if degenerate
+STUC_FORCE_INLINE
+I32 stucCalcFaceWind(
+	const FaceRange *pFace,
+	const Mesh *pMesh,
+	V2_F32 (* fpGetPoint) (const Mesh *, const FaceRange *, I32)
+) {
+	STUC_ASSERT("", pFace->start >= 0 && pFace->size >= 3);
+	I32 skip[32] = {0};
+	I32 skipCount = 0;
+	do {
+		I32 lowestCorner = 0;
+		V2_F32 lowestCoord = { FLT_MAX, FLT_MAX };
+		for (I32 i = 0; i < pFace->size; ++i) {
+			if (isMarkedSkip(skip, skipCount, i)) {
+				continue;
+			}
+			V2_F32 pos = fpGetPoint(pMesh, pFace, i);
+			if (pos.d[0] > lowestCoord.d[0]) {
+				continue;
+			}
+			else if (pos.d[0] == lowestCoord.d[0] &&
+			         pos.d[1] >= lowestCoord.d[1]) {
+				continue;
+			}
+			lowestCorner = i;
+			lowestCoord = pos;
+		}
+		I32 prev = lowestCorner == 0 ? pFace->size - 1 : lowestCorner - 1;
+		I32 next = (lowestCorner + 1) % pFace->size;
+		V2_F32 a = fpGetPoint(pMesh, pFace, prev);
+		V2_F32 b = fpGetPoint(pMesh, pFace, lowestCorner);
+		V2_F32 c = fpGetPoint(pMesh, pFace, next);
+		//alt formula for determinate,
+		//shorter and less likely to cause numerical error
+		F32 det =
+			(b.d[0] - a.d[0]) * (c.d[1] - a.d[1]) -
+			(c.d[0] - a.d[0]) * (b.d[1] - a.d[1]);
+		if (det) {
+			return det > .0f;
+		}
+		//abc is degenerate, find another corner
+		skip[skipCount] = lowestCorner;
+		skipCount++;
+	} while(skipCount < pFace->size);
+	return 2;
+}
+static inline
+I32 stucCalcFaceWindFromVerts(const FaceRange *pFace, const Mesh *pMesh) {
+	return stucCalcFaceWind(pFace, pMesh, stucGetVertPosAsV2);
+}
+static inline
+I32 stucCalcFaceWindFromUvs(const FaceRange *pFace, const Mesh *pMesh) {
+	return stucCalcFaceWind(pFace, pMesh, stucGetUvPos);
 }
 
 STUC_FORCE_INLINE
@@ -276,7 +349,7 @@ void stucTriangulateFace(
 	return;
 }
 
-inline
+static inline
 void stucTriangulateFaceFromVerts(
 	const StucAlloc *pAlloc,
 	const FaceRange *pFace,
@@ -286,7 +359,7 @@ void stucTriangulateFaceFromVerts(
 	stucTriangulateFace(pAlloc, pFace, pMesh, stucGetVertPosAsV2, pTris);
 }
 
-inline
+static inline
 void stucTriangulateFaceFromUvs(
 	const StucAlloc *pAlloc,
 	const FaceRange *pFace,
@@ -301,7 +374,7 @@ V3_F32 stucGetBarycentricInTri(
 	const Mesh *pMesh,
 	const FaceRange *pFace,
 	V2_F32 (* fpGetPoint)(const Mesh *, const FaceRange *, I32),
-	const I8 *pTriCorners,
+	const U8 *pTriCorners,
 	V2_F32 vert
 ) {
 	V2_F32 tri[3] = {0};
@@ -312,21 +385,21 @@ V3_F32 stucGetBarycentricInTri(
 
 }
 
-inline
+static inline
 V3_F32 stucGetBarycentricInTriFromVerts(
 	const Mesh *pMesh,
 	const FaceRange *pFace,
-	const I8 *pTriCorners,
+	const U8 *pTriCorners,
 	V2_F32 vert
 ) {
 	return stucGetBarycentricInTri(pMesh, pFace, stucGetVertPosAsV2, pTriCorners, vert);
 }
 
-inline
+static inline
 V3_F32 stucGetBarycentricInTriFromUvs(
 	const Mesh *pMesh,
 	const FaceRange *pFace,
-	const I8 *pTriCorners,
+	const U8 *pTriCorners,
 	V2_F32 vert
 ) {
 	return stucGetBarycentricInTri(pMesh, pFace, stucGetUvPos, pTriCorners, vert);
@@ -365,7 +438,7 @@ V3_F32 stucGetBarycentricInFace(
 	return vertBc;
 }
 
-inline
+static inline
 V3_F32 stucGetBarycentricInFaceFromVerts(
 	const Mesh *pMesh,
 	const FaceRange *pFace,
@@ -381,7 +454,7 @@ V3_F32 stucGetBarycentricInFaceFromVerts(
 	);
 }
 
-inline
+static inline
 V3_F32 stucGetBarycentricInFaceFromUvs(
 	const Mesh *pMesh,
 	const FaceRange *pFace,
@@ -472,71 +545,7 @@ Mat3x3 stucGetInterpolatedTbn(
 	const I8 *pTriCorners,
 	V3_F32 bc
 );
-inline
-bool isMarkedSkip(I32 *pSkip, I32 skipCount, I32 idx) {
-	for (I32 i = 0; i < skipCount; ++i) {
-		if (idx == pSkip[i]) {
-			return true;
-		}
-	}
-	return false;
-}
-//finds corner on convex hull of face, & determines wind direction from that
-//returns 0 for clockwise, 1 for counterclockwise, & 2 if degenerate
-STUC_FORCE_INLINE
-I32 stucCalcFaceWind(
-	const FaceRange *pFace,
-	const Mesh *pMesh,
-	V2_F32 (* fpGetPoint) (const Mesh *, const FaceRange *, I32)
-) {
-	STUC_ASSERT("", pFace->start >= 0 && pFace->size >= 3);
-	I32 skip[32] = {0};
-	I32 skipCount = 0;
-	do {
-		I32 lowestCorner = 0;
-		V2_F32 lowestCoord = { FLT_MAX, FLT_MAX };
-		for (I32 i = 0; i < pFace->size; ++i) {
-			if (isMarkedSkip(skip, skipCount, i)) {
-				continue;
-			}
-			V2_F32 pos = fpGetPoint(pMesh, pFace, i);
-			if (pos.d[0] > lowestCoord.d[0]) {
-				continue;
-			}
-			else if (pos.d[0] == lowestCoord.d[0] &&
-			         pos.d[1] >= lowestCoord.d[1]) {
-				continue;
-			}
-			lowestCorner = i;
-			lowestCoord = pos;
-		}
-		I32 prev = lowestCorner == 0 ? pFace->size - 1 : lowestCorner - 1;
-		I32 next = (lowestCorner + 1) % pFace->size;
-		V2_F32 a = fpGetPoint(pMesh, pFace, prev);
-		V2_F32 b = fpGetPoint(pMesh, pFace, lowestCorner);
-		V2_F32 c = fpGetPoint(pMesh, pFace, next);
-		//alt formula for determinate,
-		//shorter and less likely to cause numerical error
-		F32 det =
-			(b.d[0] - a.d[0]) * (c.d[1] - a.d[1]) -
-			(c.d[0] - a.d[0]) * (b.d[1] - a.d[1]);
-		if (det) {
-			return det > .0f;
-		}
-		//abc is degenerate, find another corner
-		skip[skipCount] = lowestCorner;
-		skipCount++;
-	} while(skipCount < pFace->size);
-	return 2;
-}
-inline
-I32 stucCalcFaceWindFromVerts(const FaceRange *pFace, const Mesh *pMesh) {
-	return stucCalcFaceWind(pFace, pMesh, stucGetVertPosAsV2);
-}
-inline
-I32 stucCalcFaceWindFromUvs(const FaceRange *pFace, const Mesh *pMesh) {
-	return stucCalcFaceWind(pFace, pMesh, stucGetUvPos);
-}
+
 I32 stucGetBorderFaceMemType(I32 mapFaceSize, I32 bufFaceSize);
 I32 stucGetBorderFaceSize(I32 memType);
 Result stucAllocBorderFace(I32 memType, BorderTableAlloc *pHandles, void **ppOut);
@@ -555,12 +564,6 @@ Result stucDoJobInParallel(
 	Result (* func)(void *)
 );
 //U32 stucGetEncasedFaceHash(I32 mapFace, V2_I16 tile, I32 tableSize);
-InsideStatus stucIsPointInHalfPlane(
-	V2_F32 point,
-	V2_F32 lineA,
-	V2_F32 halfPlane,
-	bool wind
-);
 
 typedef struct HTableEntryCore {
 	struct HTableEntryCore *pNext;
@@ -602,7 +605,7 @@ void stucHTableInit(
 void stucHTableDestroy(HTable *pHandle);
 LinAlloc *stucHTableAllocGet(HTable *pHandle, I32 idx);
 const LinAlloc *stucHTableAllocGetConst(const HTable *pHandle, I32 idx);
-inline
+static inline
 HTableBucket *stucHTableBucketGet(HTable *pHandle, U64 key) {
 	U64 hash = stucFnvHash((U8 *)&key, sizeof(key), pHandle->size);
 	return pHandle->pTable + hash;
@@ -635,7 +638,7 @@ SearchResult stucHTableGet(
 			return STUC_SEARCH_NOT_FOUND;
 		}
 		I32 linIdx =
-			stucLinAlloc(pHandle->allocHandles + alloc, &pBucket->pList, 1);
+			stucLinAlloc(pHandle->allocHandles + alloc, (void **)&pBucket->pList, 1);
 		fpInitEntry(pHandle->pUserData, pBucket->pList, pKeyData, pInitInfo, linIdx);
 		*ppEntry = pBucket->pList;
 		return STUC_SEARCH_ADDED;
@@ -653,7 +656,7 @@ SearchResult stucHTableGet(
 				return STUC_SEARCH_NOT_FOUND;
 			}
 			I32 linIdx =
-				stucLinAlloc(pHandle->allocHandles + alloc, &pEntry->pNext, 1);
+				stucLinAlloc(pHandle->allocHandles + alloc, (void **)&pEntry->pNext, 1);
 			fpInitEntry(pHandle->pUserData, pEntry->pNext, pKeyData, pInitInfo, linIdx);
 			*ppEntry = pEntry->pNext;
 			return STUC_SEARCH_ADDED;
@@ -689,7 +692,7 @@ SearchResult stucHTableGetConst(
 	);
 }
 
-inline
+static inline
 bool stucHTableCmpFalse(
 	const HTableEntryCore *pEntry,
 	const void *pKeyData,
@@ -1049,7 +1052,7 @@ typedef struct InPieceKey {
 	V2_I16 tile;
 } InPieceKey;
 
-inline
+static inline
 U64 stucInPieceMakeKey(const void *pKeyData) {
 	const InPieceKey *pKey = pKeyData;
 	STUC_ASSERT("tile isn't 16 bit anymore?", sizeof(pKey->tile.d[0]) == 2);
@@ -1059,8 +1062,8 @@ U64 stucInPieceMakeKey(const void *pKeyData) {
 		(U64)pKey->tile.d[1];
 }
 
-inline
-const I8 *stucGetTri(const FaceTriangulated *pFaceTris, I32 idx) {
+static inline
+const U8 *stucGetTri(const FaceTriangulated *pFaceTris, I32 idx) {
 	return pFaceTris->pTris + idx * 3;
 }
 

@@ -529,7 +529,7 @@ Result stucMergeObjArr(
 	bool setCommon
 ) {
 	Result err = STUC_SUCCESS;
-	Mesh **ppSrcs = pCtx->alloc.fpCalloc(objCount, sizeof(void *));
+	const Mesh **ppSrcs = pCtx->alloc.fpCalloc(objCount, sizeof(void *));
 	MeshCounts totalCount = {0};
 	for (I32 i = 0; i < objCount; ++i) {
 		ppSrcs[i] = (Mesh *)pObjArr[i].pData;
@@ -753,8 +753,9 @@ I32 stucGetDomainSize(const Mesh *pMesh, StucDomain domain) {
 			return pMesh->edgeBufSize;
 		case STUC_DOMAIN_VERT:
 			return pMesh->vertBufSize;
+		default:
+			STUC_ASSERT("invalid domain", false);
 	}
-	STUC_ASSERT("invalid domain", false);
 	return 0;
 }
 
@@ -768,6 +769,8 @@ I32 stucDomainCountGetIntern(const StucMesh *pMesh, StucDomain domain) {
 			return pMesh->edgeCount;
 		case STUC_DOMAIN_VERT:
 			return pMesh->vertCount;
+		default:
+			STUC_ASSERT("invalid domain", false);
 	}
 	STUC_ASSERT("invalid domain", false);
 	return 0;

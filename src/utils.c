@@ -805,7 +805,7 @@ InsideStatus stucIsPointInHalfPlane(
 		return STUC_INSIDE_STATUS_ON_LINE;
 	}
 	else {
-		return dot > .0f ^ wind ? STUC_INSIDE_STATUS_INSIDE : STUC_INSIDE_STATUS_OUTSIDE;
+		return (dot > .0f) ^ wind ? STUC_INSIDE_STATUS_INSIDE : STUC_INSIDE_STATUS_OUTSIDE;
 	}
 }
 
