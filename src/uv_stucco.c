@@ -247,7 +247,7 @@ void triCacheBuild(const StucAlloc *pAlloc, StucMap pMap) {
 	if (ngons) {
 		pMap->triCache.pArr =
 			pAlloc->fpCalloc(pMap->pMesh->core.faceCount, sizeof(FaceTriangulated));
-		stucLinAllocInit(pAlloc, &pMap->triCache.alloc, 1, 16, false);
+		stucLinAllocInit(pAlloc, &pMap->triCache.alloc, 3, 16, false);
 		for (I32 i = 0; i < pMap->pMesh->core.faceCount; ++i) {
 			FaceRange face = stucGetFaceRange(&pMap->pMesh->core, i);
 			FaceTriangulated *pTris = pMap->triCache.pArr + i;
