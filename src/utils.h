@@ -96,7 +96,6 @@ bool doesEarIntersectFace(
 			continue;
 		}
 		V2_F32 point = pState->fpGetPoint(pState->pMesh, pState->pFace, i);
-		InsideStatus status = STUC_INSIDE_STATUS_NONE;
 		if (stucIsPointInHalfPlane(point, aPos, abHalfPlane, wind) == STUC_INSIDE_STATUS_OUTSIDE
 		) {
 			continue;
@@ -736,7 +735,6 @@ typedef struct EncasedMapFace {
 
 typedef struct EncasedMapFaceTableState {
 	const MapToMeshBasic *pBasic;
-	I32 entryCount;
 } EncasedMapFaceTableState;
 
 /*
@@ -754,7 +752,6 @@ typedef struct {
 typedef struct FindEncasedFacesJobArgs {
 	JobArgs core;
 	HTable encasedFaces;
-	I32 entryCount;
 } FindEncasedFacesJobArgs;
 
 typedef struct EncasedEntryIdx {

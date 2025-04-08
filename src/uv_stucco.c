@@ -788,7 +788,7 @@ void inPieceInit (
 ) {
 	EncasedEntryIdx *pIdxEntry = (EncasedEntryIdx *)pIdxEntryCore;
 	InPieceArr *pInPieceArr = ((InPieceInitInfo *)pInitInfoVoid)->pInPieceArr;
-	const EncasedMapFace *pKey = pKeyData;
+	const InPieceKey *pKey = pKeyData;
 	pIdxEntry->mapFace = pKey->mapFace;
 	pIdxEntry->tile = pKey->tile;
 	pIdxEntry->entryIdx = pInPieceArr->count;
@@ -807,7 +807,7 @@ bool inPieceCmp(
 	const void *pInitInfo
 ) {
 	const EncasedEntryIdx *pIdxEntry = (EncasedEntryIdx *)pIdxEntryCore;
-	const EncasedMapFace *pMapFace = pKeyData;
+	const InPieceKey *pMapFace = pKeyData;
 	return
 		pIdxEntry->mapFace == pMapFace->mapFace &&
 		_(pIdxEntry->tile V2I16EQL pMapFace->tile);
@@ -838,7 +838,7 @@ void addEncasedEntryToInPieceArr(
 	SearchResult result = stucHTableGet(
 		pIdxTable,
 		0,
-		pMapFace,
+		&(InPieceKey) {.mapFace = pMapFace->mapFace, .tile = pMapFace->tile},
 		(void **)&pIdxEntry,
 		true, &(InPieceInitInfo) {.pMapFace = pMapFace, .pInPieceArr = pInPieceArr},
 		stucInPieceMakeKey, NULL, inPieceInit, inPieceCmp
@@ -859,13 +859,14 @@ void linkEncasedTableEntries(
 	const StucAlloc *pAlloc = &pBasic->pCtx->alloc;
 	pInPieceArr->size = pInPieceArr->count = 0;
 	for (I32 i = 0; i < jobCount; ++i) {
-		pInPieceArr->size += pJobArgs->entryCount;
+		LinAlloc *pTableAlloc = stucHTableAllocGet(&pJobArgs[i].encasedFaces, 0);
+		pInPieceArr->size += stucLinAllocGetCount(pTableAlloc);
 	}
 	if (pInPieceArr->size == 0) {
 		*pEmpty = true;
 		return;
 	}
-	pInPieceArr->pArr = pAlloc->fpCalloc(pInPieceArr->size, sizeof(void *));
+	pInPieceArr->pArr = pAlloc->fpCalloc(pInPieceArr->size, sizeof(InPiece));
 	HTable idxTable = {0};
 	stucHTableInit(
 		pAlloc,
@@ -1152,7 +1153,7 @@ bool findAndAddBorder(
 	BorderEdgeTableEntry *pStart
 ) {
 	const Mesh *pInMesh = pBasic->pInMesh;
-	Border border = {0};
+	Border border = {.start = pStart->corner};
 	FaceCorner corner = pStart->corner;
 	BorderEdgeTableEntry *pEntry  = pStart;
 	//bool wind = getPieceFaceIdxEntry(pIdxTable, corner.face)->pInFace->wind;
@@ -1294,7 +1295,6 @@ void splitAdjFacesIntoPiece(
 	InPiece *pNewInPiece,
 	I32 *pFacesRemaining
 ) {
-	StucAlloc *pAlloc = &pBasic->pCtx->alloc;
 	EncasingInFaceArr *pNewInFaces = &pNewInPiece->pList->inFaces;
 	HTable borderEdges = {0};
 	stucHTableInit(
@@ -1355,11 +1355,12 @@ void splitInPieceEntry(SplitInPiecesJobArgs *pArgs, const InPiece *pInPiece) {
 		} while (pInFaces);
 	}
 
-	InPieceArr *pNewInPieces = &pArgs->newInPieces;
 	I32 facesRemaining = pInPiece->faceCount;
 	do {
-		InPiece newInPiece = {0};
+		InPiece newInPiece = {};
 		newInPiece.pList = pAlloc->fpCalloc(1, sizeof(EncasedMapFace));
+		newInPiece.pList->mapFace = pInPiece->pList->mapFace;
+		newInPiece.pList->tile = pInPiece->pList->tile;
 		EncasingInFaceArr *pNewInFaces = &newInPiece.pList->inFaces;
 		pNewInFaces->count = 0;
 		pNewInFaces->size = 1;
@@ -1413,13 +1414,13 @@ void appendNewPiecesToArr(
 	const StucAlloc *pAlloc = &pBasic->pCtx->alloc;
 	pInPiecesSplit->count = pInPiecesSplit->size = 0;
 	for (I32 i = 0; i < jobCount; ++i) {
-		const InPieceArr *pNewInPieces = getNewInPieceArr(pJobArgs);
+		const InPieceArr *pNewInPieces = getNewInPieceArr(pJobArgs + i);
 		pInPiecesSplit->size += pNewInPieces->count;
 	}
 	STUC_ASSERT("", pInPiecesSplit->size >= 0);
 	pInPiecesSplit->pArr = pAlloc->fpCalloc(pInPiecesSplit->size, sizeof(InPiece));
 	for (I32 i = 0; i < jobCount; ++i) {
-		const InPieceArr *pNewInPieces = getNewInPieceArr(pJobArgs);
+		const InPieceArr *pNewInPieces = getNewInPieceArr(pJobArgs + i);
 		memcpy(
 			pInPiecesSplit->pArr + pInPiecesSplit->count,
 			pNewInPieces->pArr,
@@ -3726,7 +3727,7 @@ StucResult stucObjectInit(
 		pObj->transform = *pTransform;
 	}
 	else {
-		pObj->transform = identM4x4;
+		pObj->transform = STUC_IDENT_MAT4X4;
 	}
 	return err;
 }

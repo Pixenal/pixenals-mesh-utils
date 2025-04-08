@@ -518,7 +518,7 @@ void stucApplyObjTransform(StucObject *pObj) {
 			*pNormal = v3F32Normalize(*pNormal);
 		}
 	}
-	pObj->transform = identM4x4;
+	pObj->transform = STUC_IDENT_MAT4X4;
 }
 
 Result stucMergeObjArr(

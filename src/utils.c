@@ -152,6 +152,7 @@ bool stucCheckIfEdgeIsReceive(const Mesh *pMesh, I32 edge, F32 receiveLen) {
 	return false;
 }
 
+/*
 static
 I32 getOtherVert(I32 i, I32 faceSize, I8 *pVertsRemoved) {
 	STUC_ASSERT("", i >= 0 && faceSize >= 3 && i < faceSize && pVertsRemoved);
@@ -172,7 +173,9 @@ I32 getOtherVert(I32 i, I32 faceSize, I8 *pVertsRemoved) {
 	} while (attempts == 1);
 	return -1;
 }
+*/
 
+/*
 typedef struct TriEdge {
 	struct TriEdge* pNext;
 	I32 tris[2];
@@ -187,7 +190,9 @@ void initTriEdgeEntry(TriEdge* pEntry, I32 verta, I32 vertb, I32 tri) {
 	pEntry->verts[1] = vertb;
 	pEntry->valid = true;
 }
+*/
 
+/*
 static
 void addTriEdgeToTable(
 	const StucAlloc *pAlloc,
@@ -219,6 +224,7 @@ void addTriEdgeToTable(
 		} while(pEntry);
 	}
 }
+*/
 
 typedef struct AdjEntry {
 	I32 face;
