@@ -926,11 +926,18 @@ typedef struct InPieceArr {
 	I32 count;
 } InPieceArr;
 
+typedef struct SplitInPiecesAlloc {
+	LinAlloc encased;
+	LinAlloc inFace;
+	LinAlloc border;
+} SplitInPiecesAlloc;
+
 typedef struct SplitInPiecesJobArgs {
 	JobArgs core;
 	const InPieceArr *pInPieceArr;
 	InPieceArr newInPieces;
 	InPieceArr newInPiecesClip;
+	SplitInPiecesAlloc alloc;
 } SplitInPiecesJobArgs;
 
 typedef struct BufMeshInitJobArgs {

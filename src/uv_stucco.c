@@ -1119,16 +1119,14 @@ BorderEdgeTableEntry *borderEdgeAddOrGet(
 }
 
 static
-void initBorderArr(const MapToMeshBasic *pBasic, BorderArr *pArr) {
-	pArr->size = 2;
-	pArr->pArr = pBasic->pCtx->alloc.fpMalloc(pArr->size * sizeof(Border));
-}
-
-static
 void addBorderToArr(const MapToMeshBasic *pBasic, BorderArr *pArr, Border border) {
 	StucAlloc *pAlloc = &pBasic->pCtx->alloc;
 	STUC_ASSERT("", pArr->count <= pArr->size);
-	if (pArr->count == pArr->size) {
+	if (!pArr->size) {
+		pArr->size = 2;
+		pArr->pArr = pBasic->pCtx->alloc.fpMalloc(pArr->size * sizeof(Border));
+	}
+	else if (pArr->count == pArr->size) {
 		pArr->size *= 2;
 		pArr->pArr = pAlloc->fpRealloc(pArr->pArr, pArr->size * sizeof(Border));
 	}
@@ -1146,7 +1144,7 @@ bool couldInEdgeIntersectMapFace(const Mesh *pInMesh, I32 edge) {
 static
 bool findAndAddBorder(
 	const MapToMeshBasic *pBasic,
-	InPiece *pNewInPiece,
+	BorderArr *pBorderBuf,
 	HTable *pIdxTable,
 	HTable *pBorderEdgeTable,
 	I32 edgesMax,
@@ -1196,19 +1194,24 @@ bool findAndAddBorder(
 			corner.corner = stucGetCornerNext(corner.corner, &faceRange);
 		}
 	} while(true);
-	addBorderToArr(pBasic, &pNewInPiece->borderArr, border);
+	addBorderToArr(pBasic, pBorderBuf, border);
 	return true;
 }
+
+typedef struct InFaceBuf {
+	PieceFaceIdx **ppArr;
+	I32 size;
+	I32 count;
+} InFaceBuf;
 
 static
 void addAdjFaces(
 	const MapToMeshBasic *pBasic,
-	EncasingInFaceArr *pNewInFaces,
+	InFaceBuf *pInFaceBuf,
 	HTable *pIdxTable,
 	HTable *pBorderEdges,
 	const FaceRange *pFace
 ) {
-	StucAlloc *pAlloc = &pBasic->pCtx->alloc;
 	for (I32 j = 0; j < pFace->size; ++j) {
 		FaceCorner corner = {.face = pFace->idx, .corner = j};
 		PieceFaceIdx *pAdjFace = getAdjFaceInPiece(
@@ -1225,19 +1228,12 @@ void addAdjFaces(
 			//already added to this piece
 			continue; 
 		}
-		STUC_ASSERT("", pNewInFaces->count <= pNewInFaces->size);
-		if (pNewInFaces->count == pNewInFaces->size) {
-			pNewInFaces->size *= 2;
-			pNewInFaces->pArr = pAlloc->fpRealloc(
-				pNewInFaces->pArr,
-				pNewInFaces->size * sizeof(EncasingInFace)
-			);
-		}
 		STUC_ASSERT("", pAdjFace->pInFace);
 
-		pNewInFaces->pArr[pNewInFaces->count] = *pAdjFace->pInFace;
-		pNewInFaces->count++;
 		pAdjFace->pendingRemove = true;
+		STUC_ASSERT("", pInFaceBuf->count < pInFaceBuf->size);
+		pInFaceBuf->ppArr[pInFaceBuf->count] = pAdjFace;
+		pInFaceBuf->count++;
 	}
 }
 
@@ -1258,13 +1254,14 @@ PieceFaceIdx *getFirstRemainingFace(HTable *pIdxTable) {
 }
 
 static
-void fillBorderArr(
+void fillBorderBuf(
 	const MapToMeshBasic *pBasic,
-	InPiece *pNewInPiece,
+	BorderArr *pBorderBuf,
 	HTable *pIdxTable,
 	HTable *pBorderEdges
 ) {
 	LinAlloc *pAlloc = stucHTableAllocGet(pBorderEdges, 0);
+	pBorderBuf->count = 0;
 	I32 edgeCount = stucLinAllocGetCount(pAlloc);
 	LinAllocIter iter = {0};
 	stucLinAllocIterInit(pAlloc, (Range) { 0, INT32_MAX }, &iter);
@@ -1277,7 +1274,7 @@ void fillBorderArr(
 		if (couldInEdgeIntersectMapFace(pBasic->pInMesh, edge)) {
 			findAndAddBorder(
 				pBasic,
-				pNewInPiece,
+				pBorderBuf,
 				pIdxTable,
 				pBorderEdges,
 				edgeCount,
@@ -1289,13 +1286,15 @@ void fillBorderArr(
 
 static
 void splitAdjFacesIntoPiece(
-	const MapToMeshBasic *pBasic,
+	SplitInPiecesJobArgs *pArgs,
+	InFaceBuf *pInFaceBuf,
+	BorderArr *pBorderBuf,
 	const InPiece *pInPiece,
 	HTable *pIdxTable,
 	InPiece *pNewInPiece,
 	I32 *pFacesRemaining
 ) {
-	EncasingInFaceArr *pNewInFaces = &pNewInPiece->pList->inFaces;
+	const MapToMeshBasic *pBasic = pArgs->core.pBasic;
 	HTable borderEdges = {0};
 	stucHTableInit(
 		&pBasic->pCtx->alloc,
@@ -1304,39 +1303,63 @@ void splitAdjFacesIntoPiece(
 		(I32Arr) {.pArr = (I32[]) {sizeof(BorderEdgeTableEntry)}, .count = 1},
 		NULL
 	);
+	pInFaceBuf->count = 0;
 	{
 		PieceFaceIdx *pStartFace = getFirstRemainingFace(pIdxTable);
-		pNewInFaces->pArr[0] = *pStartFace->pInFace;
+		pInFaceBuf->ppArr[0] = pStartFace;
 		pStartFace->pendingRemove = true;
-		pNewInFaces->count++;
+		pInFaceBuf->count++;
 		I32 i = 0;
 		do {
-			FaceRange face =
-				stucGetFaceRange(&pBasic->pInMesh->core, pNewInFaces->pArr[i].idx);
+			FaceRange face = stucGetFaceRange(
+				&pBasic->pInMesh->core,
+				pInFaceBuf->ppArr[i]->pInFace->idx
+			);
 			PieceFaceIdx *pIdxEntry = NULL;
 			pieceFaceIdxTableGet(pIdxTable, face.idx, (void **)&pIdxEntry);
-			addAdjFaces(pBasic, pNewInFaces, pIdxTable, &borderEdges, &face);
-		} while (i++, i < pNewInFaces->count);
+			addAdjFaces(pBasic, pInFaceBuf, pIdxTable, &borderEdges, &face);
+		} while (i++, i < pInFaceBuf->count);
 	}
-	pNewInPiece->faceCount = pNewInFaces->count;
-	initBorderArr(pBasic, &pNewInPiece->borderArr);
-	fillBorderArr(pBasic, pNewInPiece, pIdxTable, &borderEdges);
+	pNewInPiece->faceCount = pInFaceBuf->count;
+	fillBorderBuf(pBasic, pBorderBuf, pIdxTable, &borderEdges);
+	if (pBorderBuf->count) {
+		pNewInPiece->borderArr.count = pBorderBuf->count;
+		stucLinAlloc(
+			&pArgs->alloc.border,
+			(void **)&pNewInPiece->borderArr.pArr,
+			pNewInPiece->borderArr.count
+		);
+		memcpy(
+			pNewInPiece->borderArr.pArr,
+			pBorderBuf->pArr,
+			pBorderBuf->count * sizeof(Border)
+		);
+	}
 	stucHTableDestroy(&borderEdges);
 	
-	// mark faces in new piece as removed
-	for (I32 i = 0; i < pNewInFaces->count; ++i) {
-		I32 face = pNewInFaces->pArr[i].idx;
-		PieceFaceIdx *pIdxEntry = NULL;
-		pieceFaceIdxTableGet(pIdxTable, face, (void **)&pIdxEntry);
-		STUC_ASSERT("", pIdxEntry->pendingRemove);
-		pIdxEntry->removed = true;
-		pIdxEntry->pendingRemove = false;
+	// copy buf into new in-piece, & mark in-faces as removed in idx-table
+	pNewInPiece->pList->inFaces.count = pInFaceBuf->count;
+	stucLinAlloc(
+		&pArgs->alloc.inFace,
+		(void **)&pNewInPiece->pList->inFaces.pArr,
+		pNewInPiece->pList->inFaces.count
+	);
+	for (I32 i = 0; i < pInFaceBuf->count; ++i) {
+		STUC_ASSERT("", pInFaceBuf->ppArr[i]->pendingRemove);
+		pNewInPiece->pList->inFaces.pArr[i] = *pInFaceBuf->ppArr[i]->pInFace;
+		pInFaceBuf->ppArr[i]->removed = true;
+		pInFaceBuf->ppArr[i]->pendingRemove = false;
 	}
-	*pFacesRemaining -= pNewInFaces->count;
+	*pFacesRemaining -= pInFaceBuf->count;
 }
 
 static
-void splitInPieceEntry(SplitInPiecesJobArgs *pArgs, const InPiece *pInPiece) {
+void splitInPieceEntry(
+	SplitInPiecesJobArgs *pArgs,
+	const InPiece *pInPiece,
+	InFaceBuf *pInFaceBuf,
+	BorderArr *pBorderBuf
+) {
 	StucAlloc *pAlloc = &pArgs->core.pBasic->pCtx->alloc;
 
 	HTable idxTable = {0};
@@ -1355,18 +1378,27 @@ void splitInPieceEntry(SplitInPiecesJobArgs *pArgs, const InPiece *pInPiece) {
 		} while (pInFaces);
 	}
 
+	STUC_ASSERT("", pInPiece->faceCount > 0);
+	if (!pInFaceBuf->size) {
+		pInFaceBuf->size = pInPiece->faceCount;
+		pInFaceBuf->ppArr = pAlloc->fpMalloc(pInFaceBuf->size * sizeof(void *));
+	}
+	else if (pInFaceBuf->size < pInPiece->faceCount) {
+		pInFaceBuf->size = pInPiece->faceCount;
+		pInFaceBuf->ppArr =
+			pAlloc->fpRealloc(pInFaceBuf->ppArr, pInFaceBuf->size * sizeof(void *));
+	}
+
 	I32 facesRemaining = pInPiece->faceCount;
 	do {
 		InPiece newInPiece = {};
-		newInPiece.pList = pAlloc->fpCalloc(1, sizeof(EncasedMapFace));
+		stucLinAlloc(&pArgs->alloc.encased, (void **)&newInPiece.pList, 1);
 		newInPiece.pList->mapFace = pInPiece->pList->mapFace;
 		newInPiece.pList->tile = pInPiece->pList->tile;
-		EncasingInFaceArr *pNewInFaces = &newInPiece.pList->inFaces;
-		pNewInFaces->count = 0;
-		pNewInFaces->size = 1;
-		pNewInFaces->pArr = pAlloc->fpMalloc(pNewInFaces->size * sizeof(EncasingInFace));
 		splitAdjFacesIntoPiece(
-			pArgs->core.pBasic,
+			pArgs,
+			pInFaceBuf,
+			pBorderBuf,
 			pInPiece,
 			&idxTable,
 			&newInPiece,
@@ -1386,6 +1418,7 @@ void splitInPieceEntry(SplitInPiecesJobArgs *pArgs, const InPiece *pInPiece) {
 		pNewInPieces->count++;
 		STUC_ASSERT("", facesRemaining >= 0 && facesRemaining < pInPiece->faceCount);
 	} while(facesRemaining);
+	stucHTableDestroy(&idxTable);
 }
 
 static
@@ -1393,12 +1426,25 @@ Result splitInPieces(void *pArgsVoid) {
 	Result err = STUC_SUCCESS;
 	SplitInPiecesJobArgs *pArgs = pArgsVoid;
 	const StucAlloc *pAlloc = &pArgs->core.pBasic->pCtx->alloc;
-	pArgs->newInPieces.size = 1;
+	I32 rangeSize = pArgs->core.range.end - pArgs->core.range.start;
+	pArgs->newInPieces.size = rangeSize;
+	pArgs->newInPiecesClip.size = rangeSize;
 	pArgs->newInPieces.pArr = pAlloc->fpMalloc(pArgs->newInPieces.size * sizeof(InPiece));
-	pArgs->newInPiecesClip.size = 1;
-	pArgs->newInPiecesClip.pArr = pAlloc->fpMalloc(pArgs->newInPiecesClip.size * sizeof(InPiece));
+	pArgs->newInPiecesClip.pArr =
+		pAlloc->fpMalloc(pArgs->newInPiecesClip.size * sizeof(InPiece));
+	stucLinAllocInit(pAlloc, &pArgs->alloc.encased, sizeof(EncasedMapFace), rangeSize, true);
+	stucLinAllocInit(pAlloc, &pArgs->alloc.inFace, sizeof(EncasingInFace), rangeSize, true);
+	stucLinAllocInit(pAlloc, &pArgs->alloc.border, sizeof(Border), rangeSize, true);
+	InFaceBuf inFaceBuf = {0};
+	BorderArr borderBuf = {0};
 	for (I32 i = pArgs->core.range.start; i < pArgs->core.range.end; ++i) {
-		splitInPieceEntry(pArgs, pArgs->pInPieceArr->pArr + i);
+		splitInPieceEntry(pArgs, pArgs->pInPieceArr->pArr + i, &inFaceBuf, &borderBuf);
+	}
+	if (inFaceBuf.ppArr) {
+		pAlloc->fpFree(inFaceBuf.ppArr);
+	}
+	if (borderBuf.pArr) {
+		pAlloc->fpFree(borderBuf.pArr);
 	}
 	return err;
 }
@@ -1430,10 +1476,37 @@ void appendNewPiecesToArr(
 	}
 }
 
+static
+void bufMeshArrDestroy(StucContext pCtx, BufMeshArr *pArr) {
+	for (I32 i = 0; i < pArr->count; ++i) {
+		if (pArr->arr[i].faces.pArr) {
+			pCtx->alloc.fpFree(pArr->arr[i].faces.pArr);
+		}
+		if (pArr->arr[i].corners.pArr) {
+			pCtx->alloc.fpFree(pArr->arr[i].corners.pArr);
+		}
+		if (pArr->arr[i].inOrMapVerts.pArr) {
+			pCtx->alloc.fpFree(pArr->arr[i].inOrMapVerts.pArr);
+		}
+		if (pArr->arr[i].onEdgeVerts.pArr) {
+			pCtx->alloc.fpFree(pArr->arr[i].onEdgeVerts.pArr);
+		}
+		if (pArr->arr[i].overlapVerts.pArr) {
+			pCtx->alloc.fpFree(pArr->arr[i].overlapVerts.pArr);
+		}
+		if (pArr->arr[i].intersectVerts.pArr) {
+			pCtx->alloc.fpFree(pArr->arr[i].intersectVerts.pArr);
+		}
+		pArr->arr[i] = (BufMesh) {0};
+	}
+}
+
 void inPieceArrDestroy(const StucContext pCtx, InPieceArr *pArr) {
-	pCtx->alloc.fpFree(pArr->pArr);
-	pArr->pArr = NULL;
-	pArr->count = pArr->size = 0;
+	if (pArr->pArr) {
+		pCtx->alloc.fpFree(pArr->pArr);
+	}
+	*pArr = (InPieceArr) {0};
+	//bufmeshes are stored on stack, so we don't free that
 }
 
 typedef struct BufMeshJobInitInfo {
@@ -1877,13 +1950,19 @@ Result inPieceArrInitBufMeshes(
 	return err;
 }
 
+typedef struct SplitInPiecesAllocArr {
+	SplitInPiecesAlloc *pArr;
+	I32 count;
+} SplitInPiecesAllocArr;
+
 //destroys in-piece arr after splitting
 static
 Result inPieceArrSplit(
 	MapToMeshBasic *pBasic,
 	InPieceArr *pInPieces,
 	InPieceArr *pInPiecesSplit,
-	InPieceArr *pInPiecesSplitClip
+	InPieceArr *pInPiecesSplitClip,
+	SplitInPiecesAllocArr *pSplitAlloc
 ) {
 	Result err = STUC_SUCCESS;
 	I32 jobCount = 0;
@@ -1908,8 +1987,11 @@ Result inPieceArrSplit(
 	appendNewPiecesToArr(pBasic, pInPiecesSplitClip, jobCount, jobArgs, getNewInPiecesClip);
 
 	for (I32 i = 0; i < jobCount; ++i) {
+		pSplitAlloc->pArr[i] = jobArgs[i].alloc;
 		inPieceArrDestroy(pBasic->pCtx, &jobArgs[i].newInPieces);
+		inPieceArrDestroy(pBasic->pCtx, &jobArgs[i].newInPiecesClip);
 	}
+	pSplitAlloc->count = jobCount;
 	return err;
 }
 
@@ -2271,6 +2353,12 @@ void addFacesAndCornersToOutMesh(
 			);
 		}
 	}
+	if (outBuf.buf.pArr) {
+		pBasic->pCtx->alloc.fpFree(outBuf.buf.pArr);
+	}
+	if (outBuf.final.pArr) {
+		pBasic->pCtx->alloc.fpFree(outBuf.final.pArr);
+	}
 }
 
 static
@@ -2371,8 +2459,27 @@ Result mapToMeshInternal(
 		BufMeshArr bufMeshesClip = {0};
 		InPieceArr inPiecesSplit = {.pBufMeshes = &bufMeshes};
 		InPieceArr inPiecesSplitClip = {.pBufMeshes = &bufMeshesClip};
-		err = inPieceArrSplit(&basic, &inPieceArr, &inPiecesSplit, &inPiecesSplitClip);
+		SplitInPiecesAllocArr splitAlloc = {
+			.pArr = (SplitInPiecesAlloc[MAX_SUB_MAPPING_JOBS]){0}
+		};
+		err = inPieceArrSplit(
+			&basic,
+			&inPieceArr,
+			&inPiecesSplit, &inPiecesSplitClip,
+			&splitAlloc
+		);
 		for (I32 i = 0; i < findEncasedJobCount; ++i) {
+			LinAlloc *pEncasedAlloc =
+				stucHTableAllocGet(&findEncasedJobArgs[i].encasedFaces, 0);
+			LinAllocIter iter = {0};
+			stucLinAllocIterInit(pEncasedAlloc, (Range) {0, INT32_MAX}, &iter);
+			for (; !stucLinAllocIterAtEnd(&iter); stucLinAllocIterInc(&iter)) {
+				EncasedMapFace *pEntry = stucLinAllocGetItem(&iter);
+				if (pEntry->inFaces.pArr) {
+					basic.pCtx->alloc.fpFree(pEntry->inFaces.pArr);
+					pEntry->inFaces.pArr = NULL;
+				}
+			}
 			stucHTableDestroy(&findEncasedJobArgs[i].encasedFaces);
 		}
 		STUC_RETURN_ERR_IFNOT(err, "");
@@ -2420,8 +2527,22 @@ Result mapToMeshInternal(
 			STUC_DOMAIN_CORNER, stucInterpCornerAttribs
 		);
 
+		for (I32 i = 0; i < splitAlloc.count; ++i) {
+			if (splitAlloc.pArr[i].encased.valid) {
+				stucLinAllocDestroy(&splitAlloc.pArr[i].encased);
+			}
+			if (splitAlloc.pArr[i].inFace.valid) {
+				stucLinAllocDestroy(&splitAlloc.pArr[i].inFace);
+			}
+			if (splitAlloc.pArr[i].border.valid) {
+				stucLinAllocDestroy(&splitAlloc.pArr[i].border);
+			}
+		}
+		stucHTableDestroy(&mergeTable);
 		inPieceArrDestroy(pCtx, &inPiecesSplit);
 		inPieceArrDestroy(pCtx, &inPiecesSplitClip);
+		bufMeshArrDestroy(pCtx, &bufMeshes);
+		bufMeshArrDestroy(pCtx, &bufMeshesClip);
 
 		stucReallocMeshToFit(pCtx, &basic.outMesh);
 		*pOutMesh = basic.outMesh.core;
@@ -3175,49 +3296,49 @@ StucResult stucMeshDestroy(StucContext pCtx, StucMesh *pMesh) {
 			pCtx->alloc.fpFree(pMesh->meshAttribs.pArr[i].core.pData);
 		}
 	}
-	if (pMesh->meshAttribs.count && pMesh->meshAttribs.pArr) {
-		pCtx->alloc.fpFree(pMesh->meshAttribs.pArr);
-	}
-	if(pMesh->pFaces) {
-		pCtx->alloc.fpFree(pMesh->pFaces);
-	}
 	for (I32 i = 0; i < pMesh->faceAttribs.count; ++i) {
 		if (pMesh->faceAttribs.pArr[i].core.pData) {
 			pCtx->alloc.fpFree(pMesh->faceAttribs.pArr[i].core.pData);
 		}
-	}
-	if (pMesh->faceAttribs.count && pMesh->faceAttribs.pArr) {
-		pCtx->alloc.fpFree(pMesh->faceAttribs.pArr);
-	}
-	if (pMesh->pCorners) {
-		pCtx->alloc.fpFree(pMesh->pCorners);
 	}
 	for (I32 i = 0; i < pMesh->cornerAttribs.count; ++i) {
 		if (pMesh->cornerAttribs.pArr[i].core.pData) {
 			pCtx->alloc.fpFree(pMesh->cornerAttribs.pArr[i].core.pData);
 		}
 	}
-	if (pMesh->cornerAttribs.count && pMesh->cornerAttribs.pArr) {
-		pCtx->alloc.fpFree(pMesh->cornerAttribs.pArr);
-	}
-	if (pMesh->pEdges) {
-		pCtx->alloc.fpFree(pMesh->pEdges);
-	}
 	for (I32 i = 0; i < pMesh->edgeAttribs.count; ++i) {
 		if (pMesh->edgeAttribs.pArr[i].core.pData) {
 			pCtx->alloc.fpFree(pMesh->edgeAttribs.pArr[i].core.pData);
 		}
-	}
-	if (pMesh->edgeAttribs.count && pMesh->edgeAttribs.pArr) {
-		pCtx->alloc.fpFree(pMesh->edgeAttribs.pArr);
 	}
 	for (I32 i = 0; i < pMesh->vertAttribs.count; ++i) {
 		if (pMesh->vertAttribs.pArr[i].core.pData) {
 			pCtx->alloc.fpFree(pMesh->vertAttribs.pArr[i].core.pData);
 		}
 	}
-	if (pMesh->vertAttribs.count && pMesh->vertAttribs.pArr) {
+	if (pMesh->meshAttribs.pArr) {
+		pCtx->alloc.fpFree(pMesh->meshAttribs.pArr);
+	}
+	if (pMesh->faceAttribs.pArr) {
+		pCtx->alloc.fpFree(pMesh->faceAttribs.pArr);
+	}
+	if (pMesh->edgeAttribs.pArr) {
+		pCtx->alloc.fpFree(pMesh->edgeAttribs.pArr);
+	}
+	if (pMesh->cornerAttribs.pArr) {
+		pCtx->alloc.fpFree(pMesh->cornerAttribs.pArr);
+	}
+	if (pMesh->vertAttribs.pArr) {
 		pCtx->alloc.fpFree(pMesh->vertAttribs.pArr);
+	}
+	if(pMesh->pFaces) {
+		pCtx->alloc.fpFree(pMesh->pFaces);
+	}
+	if (pMesh->pCorners) {
+		pCtx->alloc.fpFree(pMesh->pCorners);
+	}
+	if (pMesh->pEdges) {
+		pCtx->alloc.fpFree(pMesh->pEdges);
 	}
 	return STUC_SUCCESS;
 }
