@@ -105,20 +105,38 @@ I32 stucIsEdgeSeam(const Mesh *pMesh, I32 edge) {
 		return true; //marking wind borders as seam for now
 	}
 	V2_I8 corners = pMesh->pEdgeCorners[edge];
-	if (windA == windB) {
-		corners.d[1] = stucGetCornerNext(corners.d[1], &faceB);
+	I32 aA = corners.d[0];
+	I32 bA = corners.d[1];
+	I32 bB = stucGetCornerNext(bA, &faceB);
+	V2_F32 uvAA = pMesh->pUvs[faceA.start + aA];
+	V2_F32 uvBB = pMesh->pUvs[faceB.start + bB];
+	if (!_(uvAA V2EQL uvBB)) {
+		return true;
 	}
-	V2_F32 uvA = pMesh->pUvs[faceA.start + corners.d[0]];
-	V2_F32 uvB = pMesh->pUvs[faceB.start + corners.d[1]];
-	if (!_(uvA V2APROXEQL uvB)) {
-		return false;
+	I32 aB = stucGetCornerNext(aA, &faceA);
+	V2_F32 uvAB = pMesh->pUvs[faceA.start + aB];
+	V2_F32 uvBA = pMesh->pUvs[faceB.start + bA];
+	return !_(uvAB V2EQL uvBA);
+	V2_F32 halfPlane = v2F32LineNormal(_(uvAB V2SUB uvAA));
+	V2_F32 uvAC = pMesh->pUvs[faceA.start + stucGetCornerNext(aB, &faceA)];
+	V2_F32 uvBC = pMesh->pUvs[faceB.start + stucGetCornerNext(bB, &faceB)];
+	bool refSign = _(_(uvAC V2SUB uvAA) V2DOT halfPlane) > 0;
+	if (_(_(uvBC V2SUB uvAA) V2DOT halfPlane) > 0 != refSign) {
+		return true;
 	}
-	corners.d[0] = stucGetCornerNext(corners.d[0], &faceA);
-	corners.d[1] = windA == windB ?
-		stucGetCornerPrev(corners.d[1], &faceB) : stucGetCornerNext(corners.d[1], &faceB);
-	uvA = pMesh->pUvs[faceA.start + corners.d[0]];
-	uvB = pMesh->pUvs[faceB.start + corners.d[1]];
-	return !_(uvA V2APROXEQL uvB);
+	if (faceA.size == 4) {
+		V2_F32 uvAD = pMesh->pUvs[faceA.start + stucGetCornerPrev(aA, &faceA)];
+		if (_(_(uvAD V2SUB uvAA) V2DOT halfPlane) > 0 != refSign) {
+			return true;
+		}
+	}
+	if (faceB.size == 4) {
+		V2_F32 uvBD = pMesh->pUvs[faceB.start + stucGetCornerPrev(bA, &faceB)];
+		if (_(_(uvBD V2SUB uvAA) V2DOT halfPlane) > 0 != refSign) {
+			return true;
+		}
+	}
+	return false;
 }
 
 bool stucGetIfPreserveEdge(const Mesh *pMesh, I32 edge) {
