@@ -47,6 +47,47 @@ typedef enum StucCompare {
 	STUC_COMPARE_GREAT
 } StucCompare;
 
+//TODO remove unused fields
+typedef struct HalfPlane {
+	V2_F32 uv;
+	V2_F32 uvNext;
+	V2_F32 dir;
+	V2_F32 dirUnit;
+	V2_F32 halfPlane;
+	F32 len;
+	I32 edge;
+	I8 idx;
+	I8 idxPrev;
+	I8 idxNext;
+	bool flipEdgeDir;
+} HalfPlane;
+
+static inline
+void initHalfPlaneLookup(
+	const Mesh *pMesh,
+	const FaceRange *pInFace,
+	HalfPlane *pCache
+) {
+	for (I32 i = 0; i < pInFace->size; ++i) {
+		pCache[i].idx = (I8)i;
+		pCache[i].idxNext = (I8)stucGetCornerNext(i, pInFace);
+		pCache[i].idxPrev = (I8)stucGetCornerPrev(i, pInFace);
+
+		pCache[i].edge = stucGetMeshEdge(
+			&pMesh->core,
+			(FaceCorner) {.face = pInFace->idx, .corner = i}
+		);
+
+		pCache[i].uv = pMesh->pUvs[pInFace->start + i];
+		pCache[i].uvNext = pMesh->pUvs[pInFace->start + pCache[i].idxNext];
+		
+		pCache[i].dir = _(pCache[i].uvNext V2SUB pCache[i].uv);
+		pCache[i].len = v2F32Len(pCache[i].dir);
+		pCache[i].dirUnit = _(pCache[i].dir V2DIVS pCache[i].len);
+		pCache[i].halfPlane = v2F32LineNormal(pCache[i].dir);
+	}
+}
+
 I32 stucCheckFaceIsInBounds(V2_F32 min, V2_F32 max, FaceRange face, const Mesh *pMesh);
 void stucGetFaceBounds(FaceBounds *pBounds, const V2_F32 *pUvs, FaceRange face);
 I32 stucIsEdgeSeam(const Mesh *pMesh, I32 edge);

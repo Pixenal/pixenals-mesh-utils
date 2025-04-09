@@ -904,6 +904,7 @@ typedef struct PieceFaceIdx {
 	const EncasingInFace *pInFace;
 	bool removed;
 	bool pendingRemove;
+	bool preserve[4];
 } PieceFaceIdx;
 
 /*
@@ -1016,19 +1017,24 @@ PieceFaceIdx *getAdjFaceInPiece(
 		return NULL;
 	}
 	I32 edge = stucGetMeshEdge(&pBasic->pInMesh->core, corner);
-	if (pAdjIdxEntry->removed || couldInEdgeIntersectMapFace(pBasic->pInMesh, edge)) {
+	if (pAdjIdxEntry->removed ||
+		couldInEdgeIntersectMapFace(pBasic->pInMesh, edge)
+	) {
 		if (pAdjCorner) {
 			*pAdjCorner = -1;
 		}
 		return NULL;
 	}
 	if (pAdjCorner) {
-		PieceFaceIdx *pIdxEntry = NULL;
-		pieceFaceIdxTableGet(pIdxTable, corner.face, (void **)&pIdxEntry);
-		STUC_ASSERT("", pIdxEntry);
 		FaceRange adjFaceRange =
 			stucGetFaceRange(&pBasic->pInMesh->core, pAdjIdxEntry->pInFace->idx);
 		adj.corner = stucGetCornerNext(adj.corner, &adjFaceRange);
+		if (pAdjIdxEntry->preserve[adj.corner]) {
+			if (pAdjCorner) {
+				*pAdjCorner = -1;
+			}
+			return NULL;
+		}
 		*pAdjCorner = adj.corner;
 	}
 	return pAdjIdxEntry;
@@ -1141,10 +1147,15 @@ bool couldInEdgeIntersectMapFace(const Mesh *pInMesh, I32 edge) {
 		stucGetIfMatBorderEdge(pInMesh, edge);
 }
 
+typedef struct BorderBuf {
+	BorderArr arr;
+	BorderArr preserveRoots;
+} BorderBuf;
+
 static
 bool findAndAddBorder(
 	const MapToMeshBasic *pBasic,
-	BorderArr *pBorderBuf,
+	BorderBuf *pBorderBuf,
 	HTable *pIdxTable,
 	HTable *pBorderEdgeTable,
 	I32 edgesMax,
@@ -1185,6 +1196,7 @@ bool findAndAddBorder(
 			!pEntry ^ !pAdjFace
 		);
 		if (pAdjFace) {
+			//edge is internal, move to next adjacent
 			corner.face = pAdjFace->pInFace->idx;
 			corner.corner = adjCorner;
 			//wind = pAdjFace->pInFace->wind;
@@ -1194,7 +1206,7 @@ bool findAndAddBorder(
 			corner.corner = stucGetCornerNext(corner.corner, &faceRange);
 		}
 	} while(true);
-	addBorderToArr(pBasic, pBorderBuf, border);
+	addBorderToArr(pBasic, &pBorderBuf->arr, border);
 	return true;
 }
 
@@ -1204,29 +1216,128 @@ typedef struct InFaceBuf {
 	I32 count;
 } InFaceBuf;
 
+typedef enum ReceiveStatus {
+	STUC_RECEIVE_NONE,
+	STUC_RECEIVE_SOME,
+	STUC_RECEIVE_ALL
+} ReceiveStatus;
+
+typedef struct MapCornerLookup {
+	HalfPlane *pHalfPlanes;
+	ReceiveStatus receive;
+} MapCornerLookup;
+
+typedef enum ReceiveIntersectResult {
+	STUC_NO_INTERSECT,
+	STUC_INTERSECTS_RECEIVE,
+	STUC_INTERSECTS_NON_RECEIVE
+} ReceiveIntersectResult;
+
+static
+ReceiveIntersectResult doesCornerIntersectReceive(
+	const MapToMeshBasic *pBasic,
+	const FaceRange *pMapFace, const MapCornerLookup *pMapCorners,
+	const FaceRange *pInFace, FaceCorner inCorner
+) {
+	STUC_ASSERT(
+		"check this before calling",
+		pMapCorners->receive == STUC_RECEIVE_SOME ||
+		pMapCorners->receive == STUC_RECEIVE_ALL
+	);
+	FaceCorner inCornerNext = {
+		.face = pInFace->idx,
+		.corner = stucGetCornerNext(inCorner.corner, pInFace)
+	};
+	V3_F32 inVert =
+		pBasic->pInMesh->pPos[stucGetMeshVert(&pBasic->pInMesh->core, inCorner)];
+	V3_F32 inVertNext =
+		pBasic->pInMesh->pPos[stucGetMeshVert(&pBasic->pInMesh->core, inCornerNext)];
+	for (I32 i = 0; i < pMapFace->size; ++i) {
+		bool receive = true;
+		if (pMapCorners->receive == STUC_RECEIVE_SOME &&
+			!stucCheckIfEdgeIsReceive(
+				pBasic->pMap->pMesh,
+				pMapCorners->pHalfPlanes[i].edge,
+				pBasic->receiveLen
+		)) {
+			receive = false;
+		}
+		F32 tMapEdge = 0;
+		F32 tInEdge = 0;
+		stucCalcIntersection(
+			inVert, inVertNext,
+			pMapCorners->pHalfPlanes[i].uv, pMapCorners->pHalfPlanes[i].dir,
+			NULL,
+			&tInEdge, &tMapEdge
+		);
+		if (tInEdge >= .0f && tInEdge <= 1.0f &&
+			tMapEdge >= .0f && tMapEdge <= 1.0f
+		) {
+			return receive ? STUC_INTERSECTS_RECEIVE : STUC_INTERSECTS_NON_RECEIVE;
+		}
+	}
+	return STUC_NO_INTERSECT;
+}
+
+static
+bool isEdgeValidPreserve(
+	const MapToMeshBasic *pBasic,
+	const FaceRange *pMapFace,
+	const MapCornerLookup *pMapCorners,
+	const FaceRange *pInFace,
+	FaceCorner inCorner
+) {
+	I32 edge = stucGetMeshEdge(&pBasic->pInMesh->core, inCorner);
+	if (pMapCorners->receive != STUC_RECEIVE_NONE &&
+		stucGetIfPreserveEdge(pBasic->pInMesh, edge)
+	) {
+		ReceiveIntersectResult result = doesCornerIntersectReceive(
+			pBasic,
+			pMapFace, pMapCorners,
+			pInFace, inCorner
+		);
+		if (result == STUC_NO_INTERSECT || result == STUC_INTERSECTS_RECEIVE) {
+			return true;
+		}
+		STUC_ASSERT("", result == STUC_INTERSECTS_NON_RECEIVE);
+	}
+	return false;
+}
+
 static
 void addAdjFaces(
 	const MapToMeshBasic *pBasic,
+	const FaceRange *pMapFace,
+	const MapCornerLookup *pMapCorners,
 	InFaceBuf *pInFaceBuf,
 	HTable *pIdxTable,
 	HTable *pBorderEdges,
-	const FaceRange *pFace
+	PieceFaceIdx *pFace
 ) {
-	for (I32 j = 0; j < pFace->size; ++j) {
-		FaceCorner corner = {.face = pFace->idx, .corner = j};
+	FaceRange inFace = stucGetFaceRange(&pBasic->pInMesh->core, pFace->pInFace->idx);
+	for (I32 i = 0; i < inFace.size; ++i) {
+		FaceCorner corner = {.face = inFace.idx, .corner = i};
+		I32 adjCorner = -1;
 		PieceFaceIdx *pAdjFace = getAdjFaceInPiece(
 			pBasic,
 			pIdxTable,
 			corner,
-			NULL
+			&adjCorner
 		);
 		if (!pAdjFace) {
 			borderEdgeAddOrGet(pBorderEdges, corner, true);
 			continue;
 		}
-		if (pAdjFace->pendingRemove) {
+		else if (pAdjFace->pendingRemove) {
 			//already added to this piece
 			continue; 
+		}
+		else if (isEdgeValidPreserve(pBasic, pMapFace, pMapCorners, &inFace, corner)) {
+			pFace->preserve[i] = true;
+			STUC_ASSERT("", adjCorner != -1);
+			pAdjFace->preserve[adjCorner] = true;
+			borderEdgeAddOrGet(pBorderEdges, corner, true);
+			continue;
 		}
 		STUC_ASSERT("", pAdjFace->pInFace);
 
@@ -1256,12 +1367,13 @@ PieceFaceIdx *getFirstRemainingFace(HTable *pIdxTable) {
 static
 void fillBorderBuf(
 	const MapToMeshBasic *pBasic,
-	BorderArr *pBorderBuf,
+	BorderBuf *pBorderBuf,
 	HTable *pIdxTable,
 	HTable *pBorderEdges
 ) {
 	LinAlloc *pAlloc = stucHTableAllocGet(pBorderEdges, 0);
-	pBorderBuf->count = 0;
+	pBorderBuf->arr.count = 0;
+	pBorderBuf->preserveRoots.count = 0;
 	I32 edgeCount = stucLinAllocGetCount(pAlloc);
 	LinAllocIter iter = {0};
 	stucLinAllocIterInit(pAlloc, (Range) { 0, INT32_MAX }, &iter);
@@ -1287,8 +1399,10 @@ void fillBorderBuf(
 static
 void splitAdjFacesIntoPiece(
 	SplitInPiecesJobArgs *pArgs,
+	const FaceRange *pMapFace,
+	MapCornerLookup *pMapCorners,
 	InFaceBuf *pInFaceBuf,
-	BorderArr *pBorderBuf,
+	BorderBuf *pBorderBuf,
 	const InPiece *pInPiece,
 	HTable *pIdxTable,
 	InPiece *pNewInPiece,
@@ -1311,19 +1425,26 @@ void splitAdjFacesIntoPiece(
 		pInFaceBuf->count++;
 		I32 i = 0;
 		do {
-			FaceRange face = stucGetFaceRange(
-				&pBasic->pInMesh->core,
-				pInFaceBuf->ppArr[i]->pInFace->idx
-			);
 			PieceFaceIdx *pIdxEntry = NULL;
-			pieceFaceIdxTableGet(pIdxTable, face.idx, (void **)&pIdxEntry);
-			addAdjFaces(pBasic, pInFaceBuf, pIdxTable, &borderEdges, &face);
+			pieceFaceIdxTableGet(
+				pIdxTable,
+				pInFaceBuf->ppArr[i]->pInFace->idx,
+				(void **)&pIdxEntry
+			);
+			addAdjFaces(
+				pBasic,
+				pMapFace, pMapCorners,
+				pInFaceBuf,
+				pIdxTable,
+				&borderEdges,
+				pIdxEntry
+			);
 		} while (i++, i < pInFaceBuf->count);
 	}
 	pNewInPiece->faceCount = pInFaceBuf->count;
 	fillBorderBuf(pBasic, pBorderBuf, pIdxTable, &borderEdges);
-	if (pBorderBuf->count) {
-		pNewInPiece->borderArr.count = pBorderBuf->count;
+	if (pBorderBuf->arr.count) {
+		pNewInPiece->borderArr.count = pBorderBuf->arr.count;
 		stucLinAlloc(
 			&pArgs->alloc.border,
 			(void **)&pNewInPiece->borderArr.pArr,
@@ -1331,8 +1452,8 @@ void splitAdjFacesIntoPiece(
 		);
 		memcpy(
 			pNewInPiece->borderArr.pArr,
-			pBorderBuf->pArr,
-			pBorderBuf->count * sizeof(Border)
+			pBorderBuf->arr.pArr,
+			pBorderBuf->arr.count * sizeof(Border)
 		);
 	}
 	stucHTableDestroy(&borderEdges);
@@ -1354,13 +1475,38 @@ void splitAdjFacesIntoPiece(
 }
 
 static
+ReceiveStatus getMapFaceReceiveStatus(
+	const MapToMeshBasic *pBasic,
+	const FaceRange *pFace
+) {
+	I32 count = 0;
+	for (I32 i = 0; i < pFace->size; ++i) {
+		I32 edge = stucGetMeshEdge(
+			&pBasic->pMap->pMesh->core,
+			(FaceCorner) {.face = pFace->idx, .corner = i}
+		);
+		if (stucCheckIfEdgeIsReceive(pBasic->pInMesh, edge, pBasic->receiveLen)) {
+			count++;
+		}
+	}
+	if (!count) {
+		return STUC_RECEIVE_NONE;
+	}
+	else if (count != pFace->size) {
+		return STUC_RECEIVE_SOME;
+	}
+	return STUC_RECEIVE_ALL;
+}
+
+static
 void splitInPieceEntry(
 	SplitInPiecesJobArgs *pArgs,
 	const InPiece *pInPiece,
 	InFaceBuf *pInFaceBuf,
-	BorderArr *pBorderBuf
+	BorderBuf *pBorderBuf
 ) {
-	StucAlloc *pAlloc = &pArgs->core.pBasic->pCtx->alloc;
+	const MapToMeshBasic *pBasic = pArgs->core.pBasic;
+	const StucAlloc *pAlloc = &pBasic->pCtx->alloc;
 
 	HTable idxTable = {0};
 	stucHTableInit(
@@ -1389,6 +1535,14 @@ void splitInPieceEntry(
 			pAlloc->fpRealloc(pInFaceBuf->ppArr, pInFaceBuf->size * sizeof(void *));
 	}
 
+	FaceRange mapFace =
+		stucGetFaceRange(&pBasic->pMap->pMesh->core, pInPiece->pList->mapFace);
+	MapCornerLookup mapCorners = {
+		.pHalfPlanes = pAlloc->fpCalloc(mapFace.size, sizeof(HalfPlane)),
+		.receive = getMapFaceReceiveStatus(pBasic, &mapFace)
+	};
+	initHalfPlaneLookup(pBasic->pMap->pMesh, &mapFace, mapCorners.pHalfPlanes);
+
 	I32 facesRemaining = pInPiece->faceCount;
 	do {
 		InPiece newInPiece = {};
@@ -1397,6 +1551,8 @@ void splitInPieceEntry(
 		newInPiece.pList->tile = pInPiece->pList->tile;
 		splitAdjFacesIntoPiece(
 			pArgs,
+			&mapFace,
+			&mapCorners,
 			pInFaceBuf,
 			pBorderBuf,
 			pInPiece,
@@ -1418,6 +1574,7 @@ void splitInPieceEntry(
 		pNewInPieces->count++;
 		STUC_ASSERT("", facesRemaining >= 0 && facesRemaining < pInPiece->faceCount);
 	} while(facesRemaining);
+	pAlloc->fpFree(mapCorners.pHalfPlanes);
 	stucHTableDestroy(&idxTable);
 }
 
@@ -1436,15 +1593,18 @@ Result splitInPieces(void *pArgsVoid) {
 	stucLinAllocInit(pAlloc, &pArgs->alloc.inFace, sizeof(EncasingInFace), rangeSize, true);
 	stucLinAllocInit(pAlloc, &pArgs->alloc.border, sizeof(Border), rangeSize, true);
 	InFaceBuf inFaceBuf = {0};
-	BorderArr borderBuf = {0};
+	BorderBuf borderBuf = {0};
 	for (I32 i = pArgs->core.range.start; i < pArgs->core.range.end; ++i) {
 		splitInPieceEntry(pArgs, pArgs->pInPieceArr->pArr + i, &inFaceBuf, &borderBuf);
 	}
 	if (inFaceBuf.ppArr) {
 		pAlloc->fpFree(inFaceBuf.ppArr);
 	}
-	if (borderBuf.pArr) {
-		pAlloc->fpFree(borderBuf.pArr);
+	if (borderBuf.arr.pArr) {
+		pAlloc->fpFree(borderBuf.arr.pArr);
+	}
+	if (borderBuf.preserveRoots.pArr) {
+		pAlloc->fpFree(borderBuf.preserveRoots.pArr);
 	}
 	return err;
 }
