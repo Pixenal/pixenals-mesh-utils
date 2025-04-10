@@ -100,7 +100,6 @@ StucResult stucMergeObjArr(
 );
 StucResult stucDestroyObjArr(StucContext pCtx, I32 objCount, StucObject *pObjArr);
 FaceRange stucGetFaceRange(const StucMesh *pMesh, I32 idx);
-StucResult stucBuildTangents(Mesh *pMesh);
 StucResult stucValidateMesh(const StucMesh *pMesh, bool checkEdges);
 void stucAliasMeshCoreNoAttribs(StucMesh *pDest, StucMesh *pSrc);
 I32 stucGetDomainSize(const Mesh *pMesh, StucDomain domain);

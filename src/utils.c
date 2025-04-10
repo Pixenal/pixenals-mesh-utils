@@ -8,6 +8,8 @@ SPDX-License-Identifier: Apache-2.0
 #include <assert.h>
 #include <string.h>
 
+#include <mikktspace.h>
+
 #include <utils.h>
 #include <math_utils.h>
 #include <context.h>
@@ -933,3 +935,107 @@ const LinAlloc *stucHTableAllocGetConst(const HTable *pHandle, I32 idx) {
 U64 stucKeyFromI32(const void *pKeyData) {
 	return *(I32 *)pKeyData;
 }
+
+static
+int mikktGetNumFaces(const SMikkTSpaceContext *pCtx) {
+	TangentJobArgs *pArgs = pCtx->m_pUserData;
+	return pArgs->faces.count;
+}
+
+static
+int mikktGetNumVertsOfFace(const SMikkTSpaceContext *pCtx, const int iFace) {
+	TangentJobArgs *pArgs = pCtx->m_pUserData;
+	I32 inFaceIdx = mikktGetInFace(pArgs, iFace);
+	return stucGetFaceRange(&pArgs->core.pBasic->pInMesh->core, inFaceIdx).size;
+}
+
+static
+I32 mikktGetInFace(const TangentJobArgs *pArgs, I32 iFace) {
+	return pArgs->pTPieces->pInFaces[pArgs->core.range.start + iFace];
+}
+
+static
+I32 mikktGetInFaceStart(const TangentJobArgs *pArgs, I32 inFaceIdx) {
+	return pArgs->core.pBasic->pInMesh->core.pFaces[inFaceIdx];
+}
+
+static
+void mikktGetPos(
+	const SMikkTSpaceContext *pCtx,
+	F32 *pFvPosOut,
+	const int iFace,
+	const int iVert
+) {
+	TangentJobArgs *pArgs = pCtx->m_pUserData;
+	I32 inFaceIdx = mikktGetInFace(pArgs, iFace);
+	I32 inFaceStart = mikktGetInFaceStart(pArgs, inFaceIdx);
+	I32 vertIdx = pArgs->core.pBasic->pInMesh->core.pCorners[inFaceStart + iVert];
+	*(V3_F32 *)pFvPosOut = pArgs->core.pBasic->pInMesh->pPos[vertIdx];
+}
+
+static
+void mikktGetNormal(
+	const SMikkTSpaceContext *pCtx,
+	F32 *pFvNormOut,
+	const int iFace,
+	const int iVert
+) {
+	TangentJobArgs *pArgs = pCtx->m_pUserData;
+	I32 inFaceIdx = mikktGetInFace(pArgs, iFace);
+	I32 inFaceStart = mikktGetInFaceStart(pArgs, inFaceIdx);
+	*(V3_F32 *)pFvNormOut = pArgs->core.pBasic->pInMesh->pNormals[inFaceStart + iVert];
+}
+
+static
+void mikktGetTexCoord(
+	const SMikkTSpaceContext *pCtx,
+	F32 *pFvTexcOut,
+	const int iFace,
+	const int iVert
+) {
+	TangentJobArgs *pArgs = pCtx->m_pUserData;
+	I32 inFaceIdx = mikktGetInFace(pArgs, iFace);
+	I32 inFaceStart = mikktGetInFaceStart(pArgs, inFaceIdx);
+	*(V2_F32 *)pFvTexcOut = pArgs->core.pBasic->pInMesh->pUvs[inFaceStart + iVert];
+}
+
+static
+void mikktSetTSpaceBasic(
+	const SMikkTSpaceContext *pCtx,
+	const F32 *pFvTangent,
+	const F32 fSign,
+	const int iFace,
+	const int iVert
+) {
+	TangentJobArgs *pArgs = pCtx->m_pUserData;
+	I32 corner = pArgs->faces.pArr[iFace] + iVert;
+	pArgs->pTangents[corner] = *(V3_F32 *)pFvTangent;
+	pArgs->pTSigns[corner] = fSign;
+}
+
+Result stucBuildTangents(void *pArgsVoid) {
+	Result err = STUC_SUCCESS;
+	TangentJobArgs *pArgs = pArgsVoid;
+	const StucAlloc *pAlloc = &pArgs->core.pBasic->pCtx->alloc;
+
+	pArgs->pTangents = pAlloc->fpCalloc(pArgs->cornerCount, sizeof(V3_F32));
+	pArgs->pTSigns = pAlloc->fpCalloc(pArgs->cornerCount, sizeof(F32));
+
+	SMikkTSpaceInterface mikktInterface = {
+		.m_getNumFaces = mikktGetNumFaces,
+		.m_getNumVerticesOfFace = mikktGetNumVertsOfFace,
+		.m_getPosition = mikktGetPos,
+		.m_getNormal = mikktGetNormal,
+		.m_getTexCoord = mikktGetTexCoord,
+		.m_setTSpaceBasic = mikktSetTSpaceBasic
+	};
+	SMikkTSpaceContext mikktContext = {
+		.m_pInterface = &mikktInterface,
+		.m_pUserData = pArgs
+	};
+	if (!genTangSpaceDefault(&mikktContext)) {
+		STUC_RETURN_ERR(err, "mikktspace func 'genTangSpaceDefault' returned error");
+	}
+	return err;
+}
+

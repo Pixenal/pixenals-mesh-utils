@@ -13,6 +13,22 @@ SPDX-License-Identifier: Apache-2.0
 #include <types.h>
 #include <thread_pool.h>
 
+#define STUC_DYN_ARR_ADD(t, pBasic, pDynArr, newIdx) \
+	STUC_ASSERT("", pDynArr->count <= pDynArr->size);\
+	if (!pDynArr->size) {\
+		STUC_ASSERT("", !pDynArr->pArr);\
+		pDynArr->size = 4;\
+		pDynArr->pArr = pBasic->pCtx->alloc.fpMalloc(pDynArr->size * sizeof(t));\
+	}\
+	else if (pDynArr->count == pDynArr->size) {\
+		pDynArr->size *= 2;\
+		pDynArr->pArr =\
+			pBasic->pCtx->alloc.fpRealloc(pDynArr->pArr, pDynArr->size * sizeof(t));\
+	}\
+	newIdx = pDynArr->count;\
+	pDynArr->count++;
+
+
 typedef struct FaceBounds {
 	V2_I32 min, max;
 	V2_F32 fMin, fMax;
@@ -664,7 +680,6 @@ SearchResult stucHTableGet(
 	bool (* fpCompareEntry)(const HTableEntryCore *, const void *, const void *)
 ) {
 	STUC_ASSERT("", pHandle->pTable && pHandle->size);
-	STUC_ASSERT("", (pInitInfo || !addEntry) && ppEntry);
 	STUC_ASSERT(
 		"",
 		alloc < STUC_HTABLE_ALLOC_HANDLES_MAX && pHandle->allocHandles[alloc].valid
@@ -680,13 +695,17 @@ SearchResult stucHTableGet(
 		I32 linIdx =
 			stucLinAlloc(pHandle->allocHandles + alloc, (void **)&pBucket->pList, 1);
 		fpInitEntry(pHandle->pUserData, pBucket->pList, pKeyData, pInitInfo, linIdx);
-		*ppEntry = pBucket->pList;
+		if (ppEntry) {
+			*ppEntry = pBucket->pList;
+		}
 		return STUC_SEARCH_ADDED;
 	}
 	HTableEntryCore *pEntry = pBucket->pList;
 	do {
 		if (fpCompareEntry(pEntry, pKeyData, pInitInfo)) {
-			*ppEntry = pEntry;
+			if (ppEntry) {
+				*ppEntry = pEntry;
+			}
 			return STUC_SEARCH_FOUND;
 		}
 		if (!pEntry->pNext) {
@@ -698,7 +717,9 @@ SearchResult stucHTableGet(
 			I32 linIdx =
 				stucLinAlloc(pHandle->allocHandles + alloc, (void **)&pEntry->pNext, 1);
 			fpInitEntry(pHandle->pUserData, pEntry->pNext, pKeyData, pInitInfo, linIdx);
-			*ppEntry = pEntry->pNext;
+			if (ppEntry) {
+				*ppEntry = pEntry->pNext;
+			}
 			return STUC_SEARCH_ADDED;
 		}
 		pEntry = pEntry->pNext;
@@ -1116,3 +1137,83 @@ typedef struct CachedBc {
 	V3_F32 bc;
 	bool valid;
 } CachedBc;
+
+typedef struct SrcFaces {
+	I32 in;
+	I32 map;
+} SrcFaces;
+
+SrcFaces stucGetSrcFacesForBufCorner(
+	const MapToMeshBasic *pBasic,
+	const InPiece *pInPiece,
+	const BufMesh *pBufMesh,
+	FaceCorner corner
+);
+
+void stucGetBufMeshForVertMergeEntry(
+	const InPieceArr *pInPieces,
+	const InPieceArr *pInPiecesClip,
+	const VertMerge *pVert,
+	const InPiece **ppInPiece,
+	const BufMesh **ppBufMesh
+);
+
+static inline
+I32 stucRangeGetSize(Range range) {
+	I32 size = range.end - range.start;
+	STUC_ASSERT("'Range' type doesn't support empty range", size > 0);
+	return size;
+}
+
+typedef struct TPieceBuf {
+	U32 mergedWith : 31;
+	U32 merged : 1;
+	U32 idx : 31;
+	U32 added : 1;
+} TPieceBuf;
+
+typedef struct TPieceBufArr {
+	TPieceBuf *pArr;
+	I32 size;
+	I32 count;
+} TPieceBufArr;
+
+typedef struct TPieceInFace {
+	U32 idx : 29;
+	U32 size : 3; //used for in-faces, so max face size of 4
+} TPieceInFace;
+
+typedef struct TPieceInFaceArr {
+	TPieceInFace *pArr;
+	I32 size;
+	I32 count;
+} TPieceInFaceArr;
+
+typedef struct TPiece {
+	 TPieceInFaceArr inFaces;
+} TPiece;
+
+typedef struct TPieceArr {
+	TPiece *pArr;
+	I32 size;
+	I32 count;
+	I32 *pInFaces;
+	I32 faceCount;
+} TPieceArr;
+
+typedef struct TPieceVert {
+	HTableEntryCore core;
+	I32 vert;
+	I32 tPiece;
+} TPieceVert;
+
+typedef struct TangentJobArgs {
+	JobArgs core;
+	const TPieceArr *pTPieces;
+	I32Arr faces;
+	I32 cornerCount;
+	V3_F32 *pTangents;
+	F32 *pTSigns;
+} TangentJobArgs;
+
+StucResult stucBuildTangents(void *pArgsVoid);

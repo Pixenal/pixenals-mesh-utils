@@ -6,8 +6,6 @@ SPDX-License-Identifier: Apache-2.0
 #include <stdint.h>
 #include <string.h>
 
-#include <mikktspace.h>
-
 #include <error.h>
 #include <attrib_utils.h>
 #include <mesh.h>
@@ -580,91 +578,6 @@ FaceRange stucGetFaceRange(const StucMesh *pMesh, I32 idx) {
 	face.size = face.end - face.start;
 	STUC_ASSERT("", face.size >= 3);
 	return face;
-}
-
-static
-int mikktGetNumFaces(const SMikkTSpaceContext *pCtx) {
-	Mesh *pMesh = pCtx->m_pUserData;
-	return pMesh->core.faceCount;
-}
-
-static
-int mikktGetNumVertsOfFace(const SMikkTSpaceContext *pCtx, const int iFace) {
-	Mesh *pMesh = pCtx->m_pUserData;
-	FaceRange face = stucGetFaceRange(&pMesh->core, iFace);
-	return face.size;
-}
-
-static
-void mikktGetPos(
-	const SMikkTSpaceContext *pCtx,
-	F32 *pFvPosOut,
-	const int iFace,
-	const int iVert
-) {
-	Mesh *pMesh = pCtx->m_pUserData;
-	FaceRange face = stucGetFaceRange(&pMesh->core, iFace);
-	I32 vertIdx = pMesh->core.pCorners[face.start + iVert];
-	*(V3_F32 *)pFvPosOut = pMesh->pPos[vertIdx];
-}
-
-static
-void mikktGetNormal(
-	const SMikkTSpaceContext *pCtx,
-	F32 *pFvNormOut,
-	const int iFace,
-	const int iVert
-) {
-	Mesh *pMesh = pCtx->m_pUserData;
-	FaceRange face = stucGetFaceRange(&pMesh->core, iFace);
-	*(V3_F32 *)pFvNormOut = pMesh->pNormals[face.start + iVert];;
-}
-
-static
-void mikktGetTexCoord(
-	const SMikkTSpaceContext *pCtx,
-	F32 *pFvTexcOut,
-	const int iFace,
-	const int iVert
-) {
-	Mesh *pMesh = pCtx->m_pUserData;
-	FaceRange face = stucGetFaceRange(&pMesh->core, iFace);
-	*(V2_F32 *)pFvTexcOut = pMesh->pUvs[face.start + iVert];
-}
-
-static
-void mikktSetTSpaceBasic(
-	const SMikkTSpaceContext *pCtx,
-	const F32 *pFvTangent,
-	const F32 fSign,
-	const int iFace,
-	const int iVert
-) {
-	Mesh *pMesh = pCtx->m_pUserData;
-	FaceRange face = stucGetFaceRange(&pMesh->core, iFace);
-	I32 corner = face.start + iVert;
-	pMesh->pTangents[corner] = *(V3_F32 *)pFvTangent;
-	pMesh->pTSigns[corner] = fSign;
-}
-
-Result stucBuildTangents(Mesh *pMesh) {
-	Result err = STUC_SUCCESS;
-	SMikkTSpaceInterface mikktInterface = {
-		.m_getNumFaces = mikktGetNumFaces,
-		.m_getNumVerticesOfFace = mikktGetNumVertsOfFace,
-		.m_getPosition = mikktGetPos,
-		.m_getNormal = mikktGetNormal,
-		.m_getTexCoord = mikktGetTexCoord,
-		.m_setTSpaceBasic = mikktSetTSpaceBasic
-	};
-	SMikkTSpaceContext mikktContext = {
-		.m_pInterface = &mikktInterface,
-		.m_pUserData = pMesh
-	};
-	if (!genTangSpaceDefault(&mikktContext)) {
-		STUC_RETURN_ERR(err, "mikktspace func 'genTangSpaceDefault' returned error");
-	}
-	return err;
 }
 
 Result stucValidateMesh(const StucMesh *pMesh, bool checkEdges) {
