@@ -695,6 +695,24 @@ static
 void buildSeamAndPreserveTables(Mesh *pMesh) {
 	for (I32 i = 0; i < pMesh->core.edgeCount; ++i) {
 		pMesh->pSeamEdge[i] = stucIsEdgeSeam(pMesh, i);
+		if (stucGetIfPreserveEdge(pMesh, i)) {
+			V2_I32 faces = pMesh->pEdgeFaces[i];
+			V2_I8 corners = pMesh->pEdgeCorners[i];
+			I32 vert = stucGetMeshVert(
+				&pMesh->core,
+				(FaceCorner) {.face = faces.d[0], .corner = corners.d[0]}
+			);
+			if (pMesh->pNumAdjPreserve[vert] < 3) { //only record up to 3
+				pMesh->pNumAdjPreserve[vert]++;
+			}
+			vert = stucGetMeshVert(
+				&pMesh->core,
+				(FaceCorner) {.face = faces.d[1], .corner = corners.d[1]}
+			);
+			if (pMesh->pNumAdjPreserve[vert] < 3) {
+				pMesh->pNumAdjPreserve[vert]++;
+			}
+		}
 	}
 }
 
@@ -1503,7 +1521,7 @@ ReceiveStatus getMapFaceReceiveStatus(
 			&pBasic->pMap->pMesh->core,
 			(FaceCorner) {.face = pFace->idx, .corner = i}
 		);
-		if (stucCheckIfEdgeIsReceive(pBasic->pInMesh, edge, pBasic->receiveLen)) {
+		if (stucCheckIfEdgeIsReceive(pBasic->pMap->pMesh, edge, pBasic->receiveLen)) {
 			count++;
 		}
 	}

@@ -140,7 +140,9 @@ bool stucCheckIfVertIsPreserve(const Mesh *pMesh, I32 vert) {
 	if (pMesh->pVertPreserve) {
 		STUC_ASSERT("", pMesh->pVertPreserve[vert] % 2 == pMesh->pVertPreserve[vert]);
 	}
-	return pMesh->pVertPreserve ? pMesh->pVertPreserve[vert] : false;
+	bool preserve = pMesh->pVertPreserve ? pMesh->pVertPreserve[vert] : false;
+	STUC_ASSERT("", pMesh->pNumAdjPreserve && pMesh->pNumAdjPreserve[vert] <= 3);
+	return preserve || pMesh->pNumAdjPreserve[vert] > 2;
 }
 
 bool stucCheckIfEdgeIsReceive(const Mesh *pMesh, I32 edge, F32 receiveLen) {
@@ -150,12 +152,12 @@ bool stucCheckIfEdgeIsReceive(const Mesh *pMesh, I32 edge, F32 receiveLen) {
 	}
 	if (receiveLen >= .0f) {
 		STUC_ASSERT("", pMesh->pEdgeLen);
-		return pMesh->pEdgeLen[edge] <= receiveLen;
+		return pMesh->pEdgeLen[edge] >= receiveLen;
 	}
 	else if (pMesh->pEdgeReceive) {
 		return pMesh->pEdgeReceive[edge];
 	}
-	return false;
+	return true;
 }
 
 /*
@@ -1022,4 +1024,3 @@ Result stucBuildTangents(void *pArgsVoid) {
 	}
 	return err;
 }
-
