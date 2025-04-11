@@ -187,7 +187,7 @@ void TEMPsetSpFromAttribName(StucContext pCtx, StucMesh *pMesh, AttribArray *pAr
 		if (!strcmp(pArr->pArr[j].core.name, "StucMaterialIndices") ||
 			!strcmp(pArr->pArr[j].core.name, "materials")
 		) {
-			//strncpy(pArr->pArr[j].core.name, "StucMaterials", STUC_ATTRIB_NAME_MAX_LEN);
+			strncpy(pArr->pArr[j].core.name, "materials", STUC_ATTRIB_NAME_MAX_LEN);
 			pArr->pArr[j].core.use = STUC_ATTRIB_USE_IDX;
 			pMesh->activeAttribs[STUC_ATTRIB_USE_IDX].active = true;
 			pMesh->activeAttribs[STUC_ATTRIB_USE_IDX].idx = (I16)j;
@@ -299,6 +299,8 @@ StucResult stucMapFileLoad(StucContext pCtx, StucMap *pMapHandle, const char *fi
 	//TODO validate meshes, ensure pMatIdx is within mat range, faces are within max corner limit,
 	//F32 values are valid, etc.
 	STUC_THROW_IFNOT(err, "failed to load file from disk", 0);
+
+	strncpy(pMap->indexedAttribs.pArr[0].core.name, "materials", STUC_ATTRIB_NAME_MAX_LEN);
 
 	for (I32 i = 0; i < objCount; ++i) {
 		//TODO TEMP DELETE
@@ -741,7 +743,9 @@ void divideArrAmongstJobs(I32 arrSize, I32 *pJobCount, Range *pRanges) {
 		*pJobCount = 0;
 		return;
 	}
-	I32 jobCount = MAX_SUB_MAPPING_JOBS;
+	STUC_ASSERT("", *pJobCount >= 0);
+	I32 jobCount =  *pJobCount && *pJobCount < MAX_SUB_MAPPING_JOBS ?
+		*pJobCount : MAX_SUB_MAPPING_JOBS;
 	I32 piecesPerJob = arrSize / jobCount;
 	jobCount = !piecesPerJob ? 1 : jobCount;
 	for (I32 i = 0; i < jobCount; ++i) {
@@ -2878,7 +2882,7 @@ Result buildTangentsForInPieces(
 	TPieceArr tPieces = {0};
 	buildTPieces(pBasic, pInPieces, pInPiecesClip, pMergeTable, &tPieces);
 	STUC_ASSERT("", tPieces.pArr);
-	I32 jobCount = 0;
+	I32 jobCount = tPieces.count; //max jobs
 	TangentJobArgs jobArgs[MAX_SUB_MAPPING_JOBS] = {0};
 	makeJobArgs(
 		pBasic,
@@ -2911,7 +2915,10 @@ Result buildTangentsForInPieces(
 			}
 			pBasic->pCtx->alloc.fpFree(tPieces.pArr[i].inFaces.pArr);
 		}
+		//last job may not match jobcount depending on num faces in each t-piece,
+		//so update that here
 		jobArgs[job].core.range.end = tPieces.faceCount;
+		jobCount = job + 1;
 	}
 	pBasic->pCtx->alloc.fpFree(tPieces.pArr);
 	tPieces = (TPieceArr) {.pInFaces = tPieces.pInFaces, .faceCount = tPieces.faceCount};
@@ -2960,6 +2967,7 @@ Result mapToMeshInternal(
 		.maskIdx = maskIdx,
 		.pInFaceTable = pInFaceTable,
 	};
+	printf("A\n");
 	if (pInFaceTable) {
 		stucLinAllocInit(
 			&pCtx->alloc,
@@ -2980,6 +2988,7 @@ Result mapToMeshInternal(
 		&empty
 	);
 	STUC_RETURN_ERR_IFNOT(err, "");
+	printf("B\n");
 	if (!empty) {
 		BufMeshArr bufMeshes = {0};
 		BufMeshArr bufMeshesClip = {0};
@@ -3009,24 +3018,29 @@ Result mapToMeshInternal(
 			stucHTableDestroy(&findEncasedJobArgs[i].encasedFaces);
 		}
 		STUC_RETURN_ERR_IFNOT(err, "");
+		printf("C\n");
 		
 		err = inPieceArrInitBufMeshes(&basic, &inPiecesSplitClip, stucClipMapFace);
 		STUC_RETURN_ERR_IFNOT(err, "");
 		err = inPieceArrInitBufMeshes(&basic, &inPiecesSplit, stucAddMapFaceToBufMesh);
 		STUC_RETURN_ERR_IFNOT(err, "");
+		printf("D\n");
 
 		HTable mergeTable = {0};
 		vertMergeTableInit(&basic, &inPiecesSplit, &inPiecesSplitClip, &mergeTable);
 		mergeVerts(&basic, &inPiecesSplit, false, &mergeTable);
 		mergeVerts(&basic, &inPiecesSplitClip, true, &mergeTable);
+		printf("E\n");
 
 		I32 snappedVerts = 0;
-		snapIntersectVerts(
+		err = snapIntersectVerts(
 			&basic,
 			&inPiecesSplit, &inPiecesSplitClip,
 			&mergeTable,
 			&snappedVerts
 		);
+		STUC_RETURN_ERR_IFNOT(err, "");
+		printf("F\n");
 
 		initOutMesh(&basic, &mergeTable, snappedVerts);
 		addVertsToOutMesh(&basic, &mergeTable, 0);
@@ -3034,31 +3048,39 @@ Result mapToMeshInternal(
 		addFacesAndCornersToOutMesh(&basic, &inPiecesSplit, &mergeTable);
 		addFacesAndCornersToOutMesh(&basic, &inPiecesSplitClip, &mergeTable);
 		stucMeshSetLastFace(pCtx, &basic.outMesh);
+		printf("G\n");
 
-		buildTangentsForInPieces(
+		err = buildTangentsForInPieces(
 			&basic,
 			pMeshIn,
 			&inPiecesSplit, &inPiecesSplitClip,
 			&mergeTable
 		);
+		STUC_RETURN_ERR_IFNOT(err, "");
+		printf("H\n");
 		
-		xformAndInterpVerts(&basic, &inPiecesSplit, &inPiecesSplitClip, &mergeTable, 0);
+		err = xformAndInterpVerts(&basic, &inPiecesSplit, &inPiecesSplitClip, &mergeTable, 0);
+		STUC_RETURN_ERR_IFNOT(err, "");
 		//intersect verts
-		xformAndInterpVerts(&basic, &inPiecesSplit, &inPiecesSplitClip, &mergeTable, 1);
-		interpAttribs(
+		err = xformAndInterpVerts(&basic, &inPiecesSplit, &inPiecesSplitClip, &mergeTable, 1);
+		STUC_RETURN_ERR_IFNOT(err, "");
+		err = interpAttribs(
 			&basic,
 			&inPiecesSplit, &inPiecesSplitClip,
 			&mergeTable,
 			STUC_DOMAIN_FACE, stucInterpFaceAttribs
 		);
+		STUC_RETURN_ERR_IFNOT(err, "");
 		//vert merge lin-idx is replaced with out-vert idx in corner-interp job,
 		// so faces must be interpolated before corners
-		interpAttribs(
+		err = interpAttribs(
 			&basic,
 			&inPiecesSplit, &inPiecesSplitClip,
 			&mergeTable,
 			STUC_DOMAIN_CORNER, stucInterpCornerAttribs
 		);
+		STUC_RETURN_ERR_IFNOT(err, "");
+		printf("I\n");
 
 		for (I32 i = 0; i < splitAlloc.count; ++i) {
 			if (splitAlloc.pArr[i].encased.valid) {
@@ -3076,9 +3098,11 @@ Result mapToMeshInternal(
 		inPieceArrDestroy(pCtx, &inPiecesSplitClip);
 		bufMeshArrDestroy(pCtx, &bufMeshes);
 		bufMeshArrDestroy(pCtx, &bufMeshesClip);
+		printf("J\n");
 
 		stucReallocMeshToFit(pCtx, &basic.outMesh);
 		*pOutMesh = basic.outMesh.core;
+		printf("K\n");
 	}
 	STUC_CATCH(0, err, ;);
 	return err;

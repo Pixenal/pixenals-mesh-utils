@@ -11,6 +11,7 @@ SPDX-License-Identifier: Apache-2.0
 #include <debug_and_perf.h>
 #include <types.h>
 #include <alloc.h>
+#include <math_utils.h>
 
 //is it worth just putting pData at the start of Attrib,
 //so you can just have pNormalAttrib and remove pNormal.
@@ -117,13 +118,32 @@ StucResult stucValidateMesh(const StucMesh *pMesh, bool checkEdges);
 void stucAliasMeshCoreNoAttribs(StucMesh *pDest, StucMesh *pSrc);
 I32 stucGetDomainSize(const Mesh *pMesh, StucDomain domain);
 I32 stucDomainCountGetIntern(const StucMesh *pMesh, StucDomain domain);
-I32 stucGetCornerPrev(I32 corner, const FaceRange *pFace);
-I32 stucGetCornerNext(I32 corner, const FaceRange *pFace);
+static inline
+I32 stucGetCornerPrev(I32 corner, const FaceRange *pFace) {
+	I32 prev = corner ? corner - 1 : pFace->size - 1;
+	STUC_ASSERT("", prev >= 0 && prev < pFace->size);
+	return prev;
+}
+static inline
+I32 stucGetCornerNext(I32 corner, const FaceRange *pFace) {
+	STUC_ASSERT("", corner < pFace->size);
+	I32 next = (corner + 1) % pFace->size;
+	STUC_ASSERT("", next >= 0);
+	return next;
+}
 bool stucGetIfSeamEdge(const Mesh *pMesh, I32 edge);
 bool stucGetIfMatBorderEdge(const Mesh *pMesh, I32 edge);
 void stucGetAdjCorner(const Mesh *pMesh, FaceCorner corner, FaceCorner *pAdjCorner);
-Stuc_V2_F32 stucGetVertPosAsV2(const Mesh *pMesh, const FaceRange *pFace, I32 corner);
-Stuc_V2_F32 stucGetUvPos(const Mesh *pMesh, const FaceRange *pFace, I32 corner);
+static inline
+V2_F32 stucGetVertPosAsV2(const Mesh *pMesh, const FaceRange *pFace, I32 corner) {
+	STUC_ASSERT("", corner >= 0 && corner < pFace->size);
+	return *(V2_F32 *)&pMesh->pPos[pMesh->core.pCorners[pFace->start + corner]];
+}
+static inline
+V2_F32 stucGetUvPos(const Mesh *pMesh, const FaceRange *pFace, I32 corner) {
+	STUC_ASSERT("", corner >= 0 && corner < pFace->size);
+	return pMesh->pUvs[pFace->start + corner];
+}
 I32 stucGetMeshVert(const StucMesh *pMesh, FaceCorner corner);
 I32 stucGetMeshEdge(const StucMesh *pMesh, FaceCorner corner);
 bool checkForNgonsInMesh(const StucMesh *pMesh);

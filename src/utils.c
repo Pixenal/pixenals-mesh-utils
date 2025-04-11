@@ -497,7 +497,6 @@ bool stucCalcIntersection(
 	if (det2 == .0f) {
 		return false;
 	}
-	STUC_ASSERT("", det2 != .0f);
 	F32 t = _(ac V2DET cd) / det2;
 	if (pPoint) {
 		*pPoint = _(a V3ADD _(ab V3MULS t));
@@ -510,7 +509,6 @@ bool stucCalcIntersection(
 		if (det2 == .0f) {
 			return false;
 		}
-		STUC_ASSERT("", det2 != .0f);
 		V2_F32 ca = _(*(V2_F32 *)&a V2SUB c);
 		*pt2 = _(ca V2DET *(V2_F32 *)&ab) / det2;
 	}

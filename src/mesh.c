@@ -686,19 +686,6 @@ I32 stucGetVirtualBufIdx(BufMesh *pBufMesh, I32 corner) {
 }
 #endif
 
-I32 stucGetCornerPrev(I32 corner, const FaceRange *pFace) {
-	I32 prev = corner ? corner - 1 : pFace->size - 1;
-	STUC_ASSERT("", prev >= 0 && prev < pFace->size);
-	return prev;
-}
-
-I32 stucGetCornerNext(I32 corner, const FaceRange *pFace) {
-	STUC_ASSERT("", corner < pFace->size);
-	I32 next = (corner + 1) % pFace->size;
-	STUC_ASSERT("", next >= 0);
-	return next;
-}
-
 bool stucGetIfSeamEdge(const Mesh *pMesh, I32 edge) {
 	STUC_ASSERT("", pMesh->pSeamEdge);
 	return pMesh->pSeamEdge[edge];
@@ -729,16 +716,6 @@ void stucGetAdjCorner(const Mesh *pMesh, FaceCorner corner, FaceCorner *pAdjCorn
 	);
 	pAdjCorner->corner = corners.d[which];
 	pAdjCorner->face = faces.d[which];
-}
-
-V2_F32 stucGetVertPosAsV2(const Mesh *pMesh, const FaceRange *pFace, I32 corner) {
-	STUC_ASSERT("", corner >= 0 && corner < pFace->size);
-	return *(V2_F32 *)&pMesh->pPos[pMesh->core.pCorners[pFace->start + corner]];
-}
-
-V2_F32 stucGetUvPos(const Mesh *pMesh, const FaceRange *pFace, I32 corner) {
-	STUC_ASSERT("", corner >= 0 && corner < pFace->size);
-	return pMesh->pUvs[pFace->start + corner];
 }
 
 I32 stucGetMeshVert(const StucMesh *pMesh, FaceCorner corner) {

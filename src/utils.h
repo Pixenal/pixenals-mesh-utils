@@ -1234,3 +1234,14 @@ typedef struct TangentJobArgs {
 } TangentJobArgs;
 
 StucResult stucBuildTangents(void *pArgsVoid);
+
+/*
+STUC_FORCE_INLINE
+bool stucDoFacesIntersect(
+	const Mesh *pMeshA, const FaceRange *pFaceA,
+	const Mesh *pMeshB, const FaceRange *pFaceB,
+	V2_F32 (* fpGetPointA)(const Mesh *, const FaceRange *, I32),
+	V2_F32 (* fpGetPointB)(const Mesh *, const FaceRange *, I32)
+) {
+}
+*/
