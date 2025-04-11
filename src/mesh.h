@@ -99,7 +99,20 @@ StucResult stucMergeObjArr(
 	bool setCommon
 );
 StucResult stucDestroyObjArr(StucContext pCtx, I32 objCount, StucObject *pObjArr);
-FaceRange stucGetFaceRange(const StucMesh *pMesh, I32 idx);
+static inline
+FaceRange stucGetFaceRange(const StucMesh *pMesh, I32 idx) {
+	STUC_ASSERT("", idx >= 0 && idx < pMesh->faceCount);
+	FaceRange face = {
+		.idx = idx,
+		.start = pMesh->pFaces[idx],
+		.end = pMesh->pFaces[idx + 1]
+	};
+	STUC_ASSERT("", face.start >= 0 && face.end <= pMesh->cornerCount);
+	STUC_ASSERT("", face.start < face.end);
+	face.size = face.end - face.start;
+	STUC_ASSERT("", face.size >= 3);
+	return face;
+}
 StucResult stucValidateMesh(const StucMesh *pMesh, bool checkEdges);
 void stucAliasMeshCoreNoAttribs(StucMesh *pDest, StucMesh *pSrc);
 I32 stucGetDomainSize(const Mesh *pMesh, StucDomain domain);

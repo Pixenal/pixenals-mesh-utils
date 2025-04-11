@@ -267,6 +267,16 @@ void triCacheDestroy(const StucAlloc *pAlloc, StucMap pMap) {
 	}
 }
 
+static
+void buildFaceBBoxes(const StucAlloc *pAlloc, StucMap pMap) {
+	const Mesh *pMesh = pMap->pMesh;
+	pMap->pFaceBBoxes = pAlloc->fpMalloc(pMesh->core.faceCount * sizeof(BBox));
+	for (I32 i = 0; i < pMesh->core.faceCount; ++i) {
+		FaceRange face = stucGetFaceRange(&pMesh->core, i);
+		pMap->pFaceBBoxes[i] = stucBBoxGet(pMesh, &face);
+	}
+}
+
 StucResult stucMapFileLoad(StucContext pCtx, StucMap *pMapHandle, const char *filePath) {
 	StucResult err = STUC_NOT_SET;
 	StucMap pMap = pCtx->alloc.fpCalloc(1, sizeof(MapFile));
@@ -398,11 +408,12 @@ StucResult stucMapFileLoad(StucContext pCtx, StucMap *pMapHandle, const char *fi
 	pMap->pMesh = pMapMesh;
 
 	triCacheBuild(&pCtx->alloc, pMap);
+	buildFaceBBoxes(&pCtx->alloc, pMap);
 
 	//the quadtree is created before USGs are assigned to verts,
 	//as the tree's used to speed up the process
 	printf("File loaded. Creating quad tree\n");
-	err = stucCreateQuadTree(pCtx, &pMap->quadTree, pMap->pMesh);
+	err = stucCreateQuadTree(pCtx, &pMap->quadTree, pMap->pMesh, pMap->pFaceBBoxes);
 	STUC_THROW_IFNOT(err, "failed to create quadtree", 0);
 
 	if (pMap->usgArr.count) {
@@ -466,6 +477,9 @@ StucResult stucMapFileUnload(StucContext pCtx, StucMap pMap) {
 		pCtx->alloc.fpFree((Mesh *)pMap->pMesh);
 	}
 	triCacheDestroy(&pCtx->alloc, pMap);
+	if (pMap->pFaceBBoxes) {
+		pCtx->alloc.fpFree(pMap->pFaceBBoxes);
+	}
 	if (pMap->usgArr.pSquares) {
 		pCtx->alloc.fpFree((Mesh *)pMap->usgArr.pSquares);
 	}
@@ -3511,7 +3525,13 @@ Result mapMapArrToMesh(
 				pMeshIn->pVertPreserve = NULL;
 			}
 			MapFile squares = { .pMesh = pMap->usgArr.pSquares };
-			err = stucCreateQuadTree(pCtx, &squares.quadTree, squares.pMesh);
+			buildFaceBBoxes(&pCtx->alloc, &squares);
+			err = stucCreateQuadTree(
+				pCtx,
+				&squares.quadTree,
+				squares.pMesh,
+				squares.pFaceBBoxes
+			);
 			STUC_THROW_IFNOT(err, "failed to create usg quadtree", 0);
 			StucMesh squaresOut = { 0 };
 			err = mapToMeshInternal(

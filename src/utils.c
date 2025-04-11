@@ -17,43 +17,29 @@ SPDX-License-Identifier: Apache-2.0
 #include <error.h>
 #include <thread_pool.h>
 
-I32 stucCheckFaceIsInBounds(V2_F32 min, V2_F32 max, FaceRange face, const Mesh *pMesh) {
-	STUC_ASSERT("", pMesh && pMesh->pPos && pMesh->core.pCorners);
-	STUC_ASSERT("", face.size >= 3 && face.start >= 0 && face.end >= 0 && face.idx >= 0);
-	STUC_ASSERT("", v2F32IsFinite(min) && v2F32IsFinite(max));
-	V2_F32 faceMin = {0};
-	V2_F32 faceMax = {0};
-	faceMin.d[0] = faceMin.d[1] = FLT_MAX;
-	faceMax.d[0] = faceMax.d[1] = 0;
-	for (I32 i = 0; i < face.size; ++i) {
-		I32 vertIdx = pMesh->core.pCorners[face.start + i];
-		V3_F32 *pVert = pMesh->pPos + vertIdx;
-		STUC_ASSERT("", pVert && v3F32IsFinite(*pVert));
-		if (pVert->d[0] < faceMin.d[0]) {
-			faceMin.d[0] = pVert->d[0];
+BBox stucBBoxGet(const Mesh *pMesh, FaceRange *pFace) {
+	BBox bbox = {.min = {.d = {FLT_MAX, FLT_MAX}}, .max = {.d = {-FLT_MAX, -FLT_MAX}}};
+	for (I32 i = 0; i < pFace->size; ++i) {
+		I32 vertIdx = pMesh->core.pCorners[pFace->start + i];
+		V3_F32 pos = pMesh->pPos[vertIdx];
+		//STUC_ASSERT("", pVert && v3F32IsFinite(*pVert)); //TODO validate this earlier
+		if (pos.d[0] < bbox.min.d[0]) {
+			bbox.min.d[0] = pos.d[0];
 		}
-		if (pVert->d[1] < faceMin.d[1]) {
-			faceMin.d[1] = pVert->d[1];
+		if (pos.d[1] < bbox.min.d[1]) {
+			bbox.min.d[1] = pos.d[1];
 		}
-		if (pVert->d[0] > faceMax.d[0]) {
-			faceMax.d[0] = pVert->d[0];
+		if (pos.d[0] > bbox.max.d[0]) {
+			bbox.max.d[0] = pos.d[0];
 		}
-		if (pVert->d[1] > faceMax.d[1]) {
-			faceMax.d[1] = pVert->d[1];
+		if (pos.d[1] > bbox.max.d[1]) {
+			bbox.max.d[1] = pos.d[1];
 		}
 	}
-	//Faces can be flat (they may be facing sideways in a map for instance)
-	STUC_ASSERT("", _(faceMax V2GREATEQL faceMin));
-	V2_I32 inside = {0};
-	inside.d[0] =
-		(faceMin.d[0] >= min.d[0] && faceMin.d[0] < max.d[0]) ||
-		(faceMax.d[0] >= min.d[0] && faceMax.d[0] < max.d[0]) ||
-		(faceMin.d[0] < min.d[0] && faceMax.d[0] >= max.d[0]);
-	inside.d[1] =
-		(faceMin.d[1] >= min.d[1] && faceMin.d[1] < max.d[1]) ||
-		(faceMax.d[1] >= min.d[1] && faceMax.d[1] < max.d[1]) ||
-		(faceMin.d[1] < min.d[1] && faceMax.d[1] >= max.d[1]);
-	return inside.d[0] && inside.d[1];
+	//>= not >,
+	//because faces can be flat (they may be facing sideways in a map for instance)
+	STUC_ASSERT("", _(bbox.max V2GREATEQL bbox.min));
+	return bbox;
 }
 
 U32 stucFnvHash(const U8 *value, I32 valueSize, U32 size) {
@@ -68,29 +54,29 @@ U32 stucFnvHash(const U8 *value, I32 valueSize, U32 size) {
 	return hash;
 }
 
-void stucGetFaceBounds(FaceBounds *pBounds, const V2_F32 *pUvs, FaceRange face) {
+void stucGetInFaceBounds(FaceBounds *pBounds, const V2_F32 *pUvs, FaceRange face) {
 	STUC_ASSERT("", pBounds && pUvs);
 	STUC_ASSERT("", face.size >= 3 && face.start >= 0);
 	STUC_ASSERT("", face.end >= 0 && face.idx >= 0);
-	pBounds->fMin.d[0] = pBounds->fMin.d[1] = FLT_MAX;
-	pBounds->fMax.d[0] = pBounds->fMax.d[1] = -FLT_MAX;
+	pBounds->fBBox.min.d[0] = pBounds->fBBox.min.d[1] = FLT_MAX;
+	pBounds->fBBox.max.d[0] = pBounds->fBBox.max.d[1] = -FLT_MAX;
 	for (I32 i = 0; i < face.size; ++i) {
 		const V2_F32 uv = pUvs[face.start + i];
 		STUC_ASSERT("", v2F32IsFinite(uv));
-		if (uv.d[0] < pBounds->fMin.d[0]) {
-			pBounds->fMin.d[0] = uv.d[0];
+		if (uv.d[0] < pBounds->fBBox.min.d[0]) {
+			pBounds->fBBox.min.d[0] = uv.d[0];
 		}
-		if (uv.d[1] < pBounds->fMin.d[1]) {
-			pBounds->fMin.d[1] = uv.d[1];
+		if (uv.d[1] < pBounds->fBBox.min.d[1]) {
+			pBounds->fBBox.min.d[1] = uv.d[1];
 		}
-		if (uv.d[0] > pBounds->fMax.d[0]) {
-			pBounds->fMax.d[0] = uv.d[0];
+		if (uv.d[0] > pBounds->fBBox.max.d[0]) {
+			pBounds->fBBox.max.d[0] = uv.d[0];
 		}
-		if (uv.d[1] > pBounds->fMax.d[1]) {
-			pBounds->fMax.d[1] = uv.d[1];
+		if (uv.d[1] > pBounds->fBBox.max.d[1]) {
+			pBounds->fBBox.max.d[1] = uv.d[1];
 		}
 	}
-	STUC_ASSERT("", _(pBounds->fMax V2GREATEQL pBounds->fMin));
+	STUC_ASSERT("", _(pBounds->fBBox.max V2GREATEQL pBounds->fBBox.min));
 }
 
 I32 stucIsEdgeSeam(const Mesh *pMesh, I32 edge) {

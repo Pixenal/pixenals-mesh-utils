@@ -566,20 +566,6 @@ Result stucDestroyObjArr(StucContext pCtx, I32 objCount, StucObject *pObjArr) {
 	return err;
 }
 
-FaceRange stucGetFaceRange(const StucMesh *pMesh, I32 idx) {
-	STUC_ASSERT("", idx >= 0 && idx < pMesh->faceCount);
-	FaceRange face = {
-		.idx = idx,
-		.start = pMesh->pFaces[idx],
-		.end = pMesh->pFaces[idx + 1]
-	};
-	STUC_ASSERT("", face.start >= 0 && face.end <= pMesh->cornerCount);
-	STUC_ASSERT("", face.start < face.end);
-	face.size = face.end - face.start;
-	STUC_ASSERT("", face.size >= 3);
-	return face;
-}
-
 Result stucValidateMesh(const StucMesh *pMesh, bool checkEdges) {
 	Result err = STUC_SUCCESS;
 	STUC_RETURN_ERR_IFNOT_COND(err, pMesh->faceCount && pMesh->pFaces, "");

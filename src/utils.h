@@ -28,11 +28,15 @@ SPDX-License-Identifier: Apache-2.0
 	newIdx = pDynArr->count;\
 	pDynArr->count++;
 
+typedef struct BBox {
+	V2_F32 min;
+	V2_F32 max;
+} BBox;
 
 typedef struct FaceBounds {
 	V2_I32 min, max;
-	V2_F32 fMin, fMax;
-	V2_F32 fMinSmall, fMaxSmall;
+	BBox fBBox;
+	BBox fBBoxSmall;
 } FaceBounds;
 
 typedef struct BaseTriVerts {
@@ -104,8 +108,21 @@ void initHalfPlaneLookup(
 	}
 }
 
-I32 stucCheckFaceIsInBounds(V2_F32 min, V2_F32 max, FaceRange face, const Mesh *pMesh);
-void stucGetFaceBounds(FaceBounds *pBounds, const V2_F32 *pUvs, FaceRange face);
+BBox stucBBoxGet(const Mesh *pMesh, FaceRange *pFace);
+static inline
+bool stucIsBBoxInBBox(BBox bboxA, BBox bboxB) {
+	V2_I32 inside = {0};
+	inside.d[0] =
+		(bboxB.min.d[0] >= bboxA.min.d[0] && bboxB.min.d[0] < bboxA.max.d[0]) ||
+		(bboxB.max.d[0] >= bboxA.min.d[0] && bboxB.max.d[0] < bboxA.max.d[0]) ||
+		(bboxB.min.d[0] < bboxA.min.d[0] && bboxB.max.d[0] >= bboxA.max.d[0]);
+	inside.d[1] =
+		(bboxB.min.d[1] >= bboxA.min.d[1] && bboxB.min.d[1] < bboxA.max.d[1]) ||
+		(bboxB.max.d[1] >= bboxA.min.d[1] && bboxB.max.d[1] < bboxA.max.d[1]) ||
+		(bboxB.min.d[1] < bboxA.min.d[1] && bboxB.max.d[1] >= bboxA.max.d[1]);
+	return inside.d[0] && inside.d[1];
+}
+void stucGetInFaceBounds(FaceBounds *pBounds, const V2_F32 *pUvs, FaceRange face);
 I32 stucIsEdgeSeam(const Mesh *pMesh, I32 edge);
 U32 stucFnvHash(const U8 *value, I32 valueSize, U32 size);
 bool stucGetIfPreserveEdge(const Mesh *pMesh, I32 edge);
