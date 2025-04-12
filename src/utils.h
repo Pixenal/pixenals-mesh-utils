@@ -58,7 +58,7 @@ typedef enum InsideStatus {
 	STUC_INSIDE_STATUS_NONE,
 	STUC_INSIDE_STATUS_OUTSIDE,
 	STUC_INSIDE_STATUS_INSIDE,
-	STUC_INSIDE_STATUS_ON_LINE,
+	STUC_INSIDE_STATUS_ON_LINE
 } InsideStatus;
 
 typedef enum StucCompare {
@@ -1106,6 +1106,9 @@ typedef struct VertMerge {
 	MergeTableKey key;
 	VertMergeCorner bufCorner;
 	VertMergeTransform transform;
+	U32 cornerCount : 31;
+	U32 preserve : 1;
+	U32 removed : 1;
 	I32 outVert;
 	I32 linIdx;
 } VertMerge;
@@ -1146,8 +1149,8 @@ U64 stucInPieceMakeKey(const void *pKeyData) {
 }
 
 static inline
-const U8 *stucGetTri(const FaceTriangulated *pFaceTris, I32 idx) {
-	return pFaceTris->pTris + idx * 3;
+const U8 *stucGetTri(const FaceTriangulated *pFaceTris, I32 face, I32 idx) {
+	return pFaceTris ? pFaceTris[face].pTris + idx * 3 : NULL;
 }
 
 typedef struct CachedBc {

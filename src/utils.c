@@ -137,12 +137,20 @@ bool stucGetIfPreserveEdge(const Mesh *pMesh, I32 edge) {
 
 bool stucCheckIfVertIsPreserve(const Mesh *pMesh, I32 vert) {
 	STUC_ASSERT("", pMesh && vert >= 0);
-	if (pMesh->pVertPreserve) {
-		STUC_ASSERT("", pMesh->pVertPreserve[vert] % 2 == pMesh->pVertPreserve[vert]);
-	}
-	bool preserve = pMesh->pVertPreserve ? pMesh->pVertPreserve[vert] : false;
-	STUC_ASSERT("", pMesh->pNumAdjPreserve && pMesh->pNumAdjPreserve[vert] <= 3);
-	return preserve || pMesh->pNumAdjPreserve[vert] > 2;
+	bool preserveVert = pMesh->pVertPreserve ? pMesh->pVertPreserve[vert] : false;
+	STUC_ASSERT("", pMesh->pNumAdjPreserve);
+	I32 numAdjSeam = pMesh->pNumAdjPreserve[vert] & 0xf;
+	I32 numAdjPreserve = pMesh->pNumAdjPreserve[vert] >> 4 & 0xf;
+	STUC_ASSERT("", numAdjSeam <= 3 && numAdjPreserve <= 3);
+	return
+		preserveVert ||
+		//if a vert is adj to both a seam & a preserve edge, we keep it.
+		// this avoids split edges in the final mesh.
+		//note that an edge is only preserve if not a seam.
+		numAdjSeam && numAdjPreserve ||
+		//verts with 1, 3 or more (not 2) adj preserve edges are also kept,
+		//(they're junction points, removing them would cause holes)
+		numAdjPreserve == 1 || numAdjPreserve == 3;
 }
 
 bool stucCheckIfEdgeIsReceive(const Mesh *pMesh, I32 edge, F32 receiveLen) {

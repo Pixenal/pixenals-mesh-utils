@@ -250,9 +250,11 @@ void triCacheBuild(const StucAlloc *pAlloc, StucMap pMap) {
 		stucLinAllocInit(pAlloc, &pMap->triCache.alloc, 3, 16, false);
 		for (I32 i = 0; i < pMap->pMesh->core.faceCount; ++i) {
 			FaceRange face = stucGetFaceRange(&pMap->pMesh->core, i);
-			FaceTriangulated *pTris = pMap->triCache.pArr + i;
-			stucLinAlloc(&pMap->triCache.alloc, (void**)&pTris->pTris, face.size - 2);
-			stucTriangulateFaceFromVerts(pAlloc, &face, pMap->pMesh, pTris);
+			if (face.size > 4) {
+				FaceTriangulated *pTris = pMap->triCache.pArr + i;
+				stucLinAlloc(&pMap->triCache.alloc, (void **)&pTris->pTris, face.size - 2);
+				stucTriangulateFaceFromVerts(pAlloc, &face, pMap->pMesh, pTris);
+			}
 		}
 	}
 }
@@ -692,25 +694,57 @@ void buildEdgeAdj(Mesh *pMesh) {
 }
 
 static
+void incNumAdjSeam(const Mesh *pMesh, I32 vert) {
+	I32 numSeam = pMesh->pNumAdjPreserve[vert] & 0xf;
+	if (numSeam < 3) {
+		numSeam++;
+		pMesh->pNumAdjPreserve[vert] &= 0xf0;
+		pMesh->pNumAdjPreserve[vert] |= numSeam;
+	}
+}
+
+static
+void incNumAdjPreserve(const Mesh *pMesh, I32 vert) {
+	I32 numPreserve = pMesh->pNumAdjPreserve[vert] >> 4 & 0xf;
+	if (numPreserve < 3) { //only record up to 3
+		numPreserve++;
+		pMesh->pNumAdjPreserve[vert] &= 0xf;
+		pMesh->pNumAdjPreserve[vert] |= numPreserve << 4;
+	}
+}
+
+static
 void buildSeamAndPreserveTables(Mesh *pMesh) {
 	for (I32 i = 0; i < pMesh->core.edgeCount; ++i) {
-		pMesh->pSeamEdge[i] = stucIsEdgeSeam(pMesh, i);
-		if (stucGetIfPreserveEdge(pMesh, i)) {
+		bool seam = stucIsEdgeSeam(pMesh, i);
+		bool preserve = stucGetIfPreserveEdge(pMesh, i);
+		if (seam || preserve) {
 			V2_I32 faces = pMesh->pEdgeFaces[i];
 			V2_I8 corners = pMesh->pEdgeCorners[i];
 			I32 vert = stucGetMeshVert(
 				&pMesh->core,
 				(FaceCorner) {.face = faces.d[0], .corner = corners.d[0]}
 			);
-			if (pMesh->pNumAdjPreserve[vert] < 3) { //only record up to 3
-				pMesh->pNumAdjPreserve[vert]++;
+			if (seam) {
+				pMesh->pSeamEdge[i] = seam;
+				incNumAdjSeam(pMesh, vert);
 			}
-			vert = stucGetMeshVert(
-				&pMesh->core,
-				(FaceCorner) {.face = faces.d[1], .corner = corners.d[1]}
-			);
-			if (pMesh->pNumAdjPreserve[vert] < 3) {
-				pMesh->pNumAdjPreserve[vert]++;
+			else if (preserve) {
+				incNumAdjPreserve(pMesh, vert);
+			}
+			if (faces.d[1] >= 0) {
+				vert = stucGetMeshVert(
+					&pMesh->core,
+					(FaceCorner) {
+					.face = faces.d[1], .corner = corners.d[1]
+				}
+				);
+				if (seam) {
+					incNumAdjSeam(pMesh, vert);
+				}
+				else if (preserve) {
+					incNumAdjPreserve(pMesh, vert);
+				}
 			}
 		}
 	}
@@ -1054,7 +1088,8 @@ PieceFaceIdx *getAdjFaceInPiece(
 	}
 	I32 edge = stucGetMeshEdge(&pBasic->pInMesh->core, corner);
 	if (pAdjIdxEntry->removed ||
-		couldInEdgeIntersectMapFace(pBasic->pInMesh, edge)
+		//if pending remove, preserve edge is internal, so ignore
+		couldInEdgeIntersectMapFace(pBasic->pInMesh, edge) && !pAdjIdxEntry->pendingRemove
 	) {
 		if (pAdjCorner) {
 			*pAdjCorner = -1;
@@ -1860,6 +1895,7 @@ void mergeTableEntryInit(
 	pEntry->key = *pKey;
 	pEntry->bufCorner = *pBufCorner;
 	pEntry->linIdx = linIdx;
+	pEntry->cornerCount = 1;
 }
 
 static
@@ -2019,7 +2055,7 @@ void mergeTableAddVert(
 	const MergeTableKey *pKey,
 	VertMergeCorner *pInitInfo
 ) {
-	void *pEntry = NULL;
+	VertMerge *pEntry = NULL;
 	SearchResult result = stucHTableGet(
 		pTable,
 		pKey->type == STUC_BUF_VERT_INTERSECT,
@@ -2029,6 +2065,9 @@ void mergeTableAddVert(
 		mergeTableMakeKey, NULL, mergeTableEntryInit, mergeTableEntryCmp
 	);
 	STUC_ASSERT("", result == STUC_SEARCH_ADDED || result == STUC_SEARCH_FOUND);
+	if (result == STUC_SEARCH_FOUND) {
+		pEntry->cornerCount++;
+	}
 }
 
 static
@@ -2459,12 +2498,6 @@ void addBufFaceToOutMesh(
 	pOutBuf->buf.count = 0;
 	BufFace bufFace = pBufMesh->faces.pArr[faceIdx];
 	for (I32 i = 0; i < bufFace.size; ++i) {
-		STUC_ASSERT("", pOutBuf->buf.count <= pOutBuf->buf.size);
-		if (pOutBuf->buf.count == pOutBuf->buf.size) {
-			pOutBuf->buf.size *= 2;
-			pOutBuf->buf.pArr =
-				pAlloc->fpRealloc(pOutBuf->buf.pArr, pOutBuf->buf.size * sizeof(I32));
-		}
 		FaceCorner bufCorner = {.face = faceIdx, .corner = i};
 		MergeTableKey key = { 0 };
 		mergeTableGetVertKey(pBasic, pInPiece, pBufMesh, bufCorner, &key);
@@ -2479,6 +2512,9 @@ void addBufFaceToOutMesh(
 		);
 		STUC_ASSERT("", pEntry && result == STUC_SEARCH_FOUND);
 		BufVertType type = bufMeshGetType(pBufMesh, bufCorner);
+		if (pEntry->removed) {
+			continue;
+		}
 		if (type == STUC_BUF_VERT_INTERSECT) {
 			while (
 				pEntry->key.type == STUC_BUF_VERT_INTERSECT &&
@@ -2486,6 +2522,12 @@ void addBufFaceToOutMesh(
 			) {
 				pEntry = ((VertMergeIntersect *)pEntry)->pSnapTo;
 			}
+		}
+		STUC_ASSERT("", pOutBuf->buf.count <= pOutBuf->buf.size);
+		if (pOutBuf->buf.count == pOutBuf->buf.size) {
+			pOutBuf->buf.size *= 2;
+			pOutBuf->buf.pArr =
+				pAlloc->fpRealloc(pOutBuf->buf.pArr, pOutBuf->buf.size * sizeof(I32));
 		}
 		//using lin-idx (vert merge table) for now,
 		//this is to allow easy access during fac eand corner attrib interp.
