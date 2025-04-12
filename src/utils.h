@@ -828,11 +828,6 @@ typedef struct {
 } EncasedFacesTable;
 */
 
-typedef struct FindEncasedFacesJobArgs {
-	JobArgs core;
-	HTable encasedFaces;
-} FindEncasedFacesJobArgs;
-
 typedef struct EncasedEntryIdx {
 	struct EncasedEntryIdx *pNext;
 	I32 mapFace;
@@ -997,13 +992,18 @@ typedef struct BufMeshArr {
 	I32 count;
 } BufMeshArr;
 
-
 typedef struct InPieceArr {
 	BufMeshArr *pBufMeshes;
 	InPiece *pArr;
 	I32 size;
 	I32 count;
 } InPieceArr;
+
+typedef struct FindEncasedFacesJobArgs {
+	JobArgs core;
+	HTable encasedFaces;
+	InPieceArr inPiecesMono;
+} FindEncasedFacesJobArgs;
 
 typedef struct SplitInPiecesAlloc {
 	LinAlloc encased;
