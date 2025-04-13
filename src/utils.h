@@ -848,7 +848,7 @@ typedef struct {
 
 typedef struct Border {
 	FaceCorner start;
-	I32 len; //for sanity check
+	I32 len;
 } Border;
 
 typedef struct BorderArr {
@@ -1018,18 +1018,6 @@ typedef struct SplitInPiecesJobArgs {
 	InPieceArr newInPiecesClip;
 	SplitInPiecesAlloc alloc;
 } SplitInPiecesJobArgs;
-
-typedef struct BufMeshInitJobArgs {
-	JobArgs core;
-	Result (* fpAddPiece)(
-		const MapToMeshBasic *,
-		I32,
-		const InPiece *,
-		BufMesh *
-	);
-	const InPieceArr *pInPiecesSplit;
-	BufMesh bufMesh;
-} BufMeshInitJobArgs;
 
 typedef struct InVertKey {
 	I32 inVert;

@@ -1746,7 +1746,8 @@ typedef struct BufMeshJobInitInfo {
 		const MapToMeshBasic *,
 		I32,
 		const InPiece *,
-		BufMesh *
+		BufMesh *,
+		BorderCache *
 	);
 } BufMeshJobInitInfo;
 
@@ -2164,7 +2165,8 @@ Result inPieceArrInitBufMeshes(
 		const MapToMeshBasic *,
 		I32,
 		const InPiece *,
-		BufMesh *
+		BufMesh *,
+		BorderCache *
 	)
 ) {
 	Result err = STUC_SUCCESS;
