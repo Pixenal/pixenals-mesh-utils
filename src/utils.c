@@ -937,15 +937,15 @@ int mikktGetNumFaces(const SMikkTSpaceContext *pCtx) {
 }
 
 static
+I32 mikktGetInFace(const TangentJobArgs *pArgs, I32 iFace) {
+	return pArgs->pTPieces->pInFaces[pArgs->core.range.start + iFace];
+}
+
+static
 int mikktGetNumVertsOfFace(const SMikkTSpaceContext *pCtx, const int iFace) {
 	TangentJobArgs *pArgs = pCtx->m_pUserData;
 	I32 inFaceIdx = mikktGetInFace(pArgs, iFace);
 	return stucGetFaceRange(&pArgs->core.pBasic->pInMesh->core, inFaceIdx).size;
-}
-
-static
-I32 mikktGetInFace(const TangentJobArgs *pArgs, I32 iFace) {
-	return pArgs->pTPieces->pInFaces[pArgs->core.range.start + iFace];
 }
 
 static
