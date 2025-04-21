@@ -13,20 +13,36 @@ SPDX-License-Identifier: Apache-2.0
 #include <types.h>
 #include <thread_pool.h>
 
-#define STUC_DYN_ARR_ADD(t, pBasic, pDynArr, newIdx) \
-	STUC_ASSERT("", pDynArr->count <= pDynArr->size);\
-	if (!pDynArr->size) {\
-		STUC_ASSERT("", !pDynArr->pArr);\
-		pDynArr->size = 4;\
-		pDynArr->pArr = pBasic->pCtx->alloc.fpMalloc(pDynArr->size * sizeof(t));\
+#define STUC_DYN_ARR_RESIZE(t, pAlloc, pDynArr, newSize)\
+	STUC_ASSERT("", newSize > 0);\
+	if (!(pDynArr)->size) {\
+		STUC_ASSERT("", !(pDynArr)->pArr);\
+		(pDynArr)->size = newSize;\
+		(pDynArr)->pArr = (pAlloc)->fpMalloc((pDynArr)->size * sizeof(t));\
 	}\
-	else if (pDynArr->count == pDynArr->size) {\
-		pDynArr->size *= 2;\
-		pDynArr->pArr =\
-			pBasic->pCtx->alloc.fpRealloc(pDynArr->pArr, pDynArr->size * sizeof(t));\
+	else if (newSize >= (pDynArr)->size) {\
+		(pDynArr)->size *= 2;\
+		if (newSize > (pDynArr)->size) {\
+			(pDynArr)->size = newSize;\
+		}\
+		(pDynArr)->pArr =\
+			(pAlloc)->fpRealloc((pDynArr)->pArr, (pDynArr)->size * sizeof(t));\
+	}
+
+#define STUC_DYN_ARR_ADD(t, pAlloc, pDynArr, newIdx)\
+	STUC_ASSERT("", (pDynArr)->count <= (pDynArr)->size);\
+	if (!(pDynArr)->size) {\
+		STUC_ASSERT("", !(pDynArr)->pArr);\
+		(pDynArr)->size = 4;\
+		(pDynArr)->pArr = (pAlloc)->fpMalloc((pDynArr)->size * sizeof(t));\
 	}\
-	newIdx = pDynArr->count;\
-	pDynArr->count++;
+	else if ((pDynArr)->count == (pDynArr)->size) {\
+		(pDynArr)->size *= 2;\
+		(pDynArr)->pArr =\
+			(pAlloc)->fpRealloc((pDynArr)->pArr, (pDynArr)->size * sizeof(t));\
+	}\
+	newIdx = (pDynArr)->count;\
+	(pDynArr)->count++;
 
 typedef struct BBox {
 	V2_F32 min;
@@ -651,6 +667,12 @@ typedef struct I32Arr {
 	I32 size;
 	I32 count;
 } I32Arr;
+
+typedef struct I8Arr {
+	I8 *pArr;
+	I32 size;
+	I32 count;
+} I8Arr;
 
 #define STUC_HTABLE_ALLOC_HANDLES_MAX 2
 
