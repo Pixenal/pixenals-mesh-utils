@@ -2765,7 +2765,7 @@ void addOrMergeFaceTPieces(
 			return; //no entries were found for this face
 		}
 		//all entries are new, so append new tPiece to arr
-		STUC_DYN_ARR_ADD(TPieceBuf, pBasic, pTPieces, tPiece);
+		STUC_DYN_ARR_ADD(TPieceBuf, &pBasic->pCtx->alloc, pTPieces, tPiece);
 		pTPieces->pArr[tPiece] = (TPieceBuf) {0};
 	}
 	else {
@@ -2883,7 +2883,7 @@ void buildTPieces(
 			pEntry->tPiece = bufIdx;
 			TPieceBuf *pBuf = tPiecesBuf.pArr + bufIdx;
 			if (!pBuf->added) {
-				STUC_DYN_ARR_ADD(TPiece, pBasic, pTPieces, pBuf->idx);
+				STUC_DYN_ARR_ADD(TPiece, &pBasic->pCtx->alloc, pTPieces, pBuf->idx);
 				pTPieces->pArr[pBuf->idx] = (TPiece) {0};
 				pBuf->added = true;
 			}
@@ -2891,7 +2891,7 @@ void buildTPieces(
 			I32 faceArrIdx = -1;
 			STUC_DYN_ARR_ADD(
 				TPieceInFace,
-				pBasic,
+				&pBasic->pCtx->alloc,
 				(&pTPieces->pArr[pBuf->idx].inFaces),
 				faceArrIdx
 			);
@@ -2966,7 +2966,12 @@ Result buildTangentsForInPieces(
 			STUC_ASSERT("", tPieces.pArr[i].inFaces.pArr);
 			for (I32 j = 0; j < tPieces.pArr[i].inFaces.count; ++j) {
 				I32 faceJobLocal = -1;
-				STUC_DYN_ARR_ADD(I32, pBasic, (&jobArgs[job].faces), faceJobLocal);
+				STUC_DYN_ARR_ADD(
+					I32,
+					&pBasic->pCtx->alloc,
+					(&jobArgs[job].faces),
+					faceJobLocal
+				);
 				STUC_ASSERT("", faceJobLocal != -1);
 				jobArgs[job].faces.pArr[faceJobLocal] = jobArgs[job].cornerCount;
 
@@ -3109,6 +3114,9 @@ Result mapToMeshInternal(
 		addVertsToOutMesh(&basic, &mergeTable, 1);//intersect verts
 		addFacesAndCornersToOutMesh(&basic, &inPiecesSplit, &mergeTable);
 		addFacesAndCornersToOutMesh(&basic, &inPiecesSplitClip, &mergeTable);
+		if (!basic.outMesh.core.faceCount) {
+			goto cleanUp;
+		}
 		stucMeshSetLastFace(pCtx, &basic.outMesh);
 		printf("G\n");
 
@@ -3144,6 +3152,10 @@ Result mapToMeshInternal(
 		STUC_RETURN_ERR_IFNOT(err, "");
 		printf("I\n");
 
+		stucReallocMeshToFit(pCtx, &basic.outMesh);
+		*pOutMesh = basic.outMesh.core;
+		printf("J\n");
+	cleanUp:
 		for (I32 i = 0; i < splitAlloc.count; ++i) {
 			if (splitAlloc.pArr[i].encased.valid) {
 				stucLinAllocDestroy(&splitAlloc.pArr[i].encased);
@@ -3160,10 +3172,6 @@ Result mapToMeshInternal(
 		inPieceArrDestroy(pCtx, &inPiecesSplitClip);
 		bufMeshArrDestroy(pCtx, &bufMeshes);
 		bufMeshArrDestroy(pCtx, &bufMeshesClip);
-		printf("J\n");
-
-		stucReallocMeshToFit(pCtx, &basic.outMesh);
-		*pOutMesh = basic.outMesh.core;
 		printf("K\n");
 	}
 	STUC_CATCH(0, err, ;);

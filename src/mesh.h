@@ -135,6 +135,11 @@ bool stucGetIfSeamEdge(const Mesh *pMesh, I32 edge);
 bool stucGetIfMatBorderEdge(const Mesh *pMesh, I32 edge);
 void stucGetAdjCorner(const Mesh *pMesh, FaceCorner corner, FaceCorner *pAdjCorner);
 static inline
+V3_F32 stucGetVertPos(const Mesh *pMesh, const FaceRange *pFace, I32 corner) {
+	STUC_ASSERT("", corner >= 0 && corner < pFace->size);
+	return pMesh->pPos[pMesh->core.pCorners[pFace->start + corner]];
+}
+static inline
 V2_F32 stucGetVertPosAsV2(const Mesh *pMesh, const FaceRange *pFace, I32 corner) {
 	STUC_ASSERT("", corner >= 0 && corner < pFace->size);
 	return *(V2_F32 *)&pMesh->pPos[pMesh->core.pCorners[pFace->start + corner]];
