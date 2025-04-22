@@ -44,83 +44,6 @@ void stucCreateMesh(const StucContext pCtx, StucObject *pObj, StucObjectType typ
 	((StucMesh *)pObj->pData)->type.type = type;
 }
 
-#ifndef TEMP_DISABLE
-static
-void reallocBufMesh(
-	StucContext pCtx,
-	BufMesh *pMesh,
-	BufMeshDomain *pBufDomain
-) {
-	MeshDomain *pDomain = (MeshDomain *)pBufDomain;
-	I32 realBorderEnd = *pDomain->pBufSize - 1 - *pBufDomain->pBorderCount;
-	I32 oldSize = *pDomain->pBufSize;
-	*pDomain->pBufSize *= 2;
-	I32 diff = *pDomain->pBufSize - oldSize;
-	STUC_ASSERT("", *pDomain->pBufSize > oldSize);
-	for (I32 i = 0; i < 2; ++i) {
-		if (!pDomain->ppList[i]) {
-			continue;
-		}
-		I32 oldFirstElement = (*pDomain->ppList[i])[realBorderEnd + 1];
-		I32 oldLastElement = (*pDomain->ppList[i])[oldSize - 1];
-		*pDomain->ppList[i] =
-			pCtx->alloc.fpRealloc(*pDomain->ppList[i], sizeof(I32) * *pDomain->pBufSize);
-		if (*pBufDomain->pBorderCount) {
-			I32 *pStart = *pDomain->ppList[i] + realBorderEnd + 1;
-			memmove(pStart + diff, pStart, sizeof(I32) * *pBufDomain->pBorderCount);
-			I32 newFirstElement = (*pDomain->ppList[i])[realBorderEnd + 1 + diff];
-			I32 newLastElement = (*pDomain->ppList[i])[*pDomain->pBufSize - 1];
-			STUC_ASSERT("", newFirstElement == oldFirstElement);
-			STUC_ASSERT("", newLastElement == oldLastElement);
-		}
-	}
-	stucReallocAndMoveAttribs(
-		&pCtx->alloc,
-		pMesh,
-		pDomain->pAttribArr,
-		realBorderEnd + 1,
-		diff,
-		*pBufDomain->pBorderCount,
-		*pDomain->pBufSize
-	);
-	//0xffffffff for set all
-	stucAssignActiveAliases(pCtx, &pMesh->mesh, 0xffffffff, pBufDomain->domain.domain);
-}
-
-static
-BufMeshIdx getNewBufMeshIdx(
-	StucContext pCtx,
-	BufMesh *pMesh,
-	BufMeshDomain *pBufDomain,
-	const bool border,
-	bool *pRealloced
-) {
-	MeshDomain *pDomain = (MeshDomain *)pBufDomain;
-	I32 realBorderEnd = *pDomain->pBufSize - 1 - *pBufDomain->pBorderCount;
-	//TODO assertions like these need to be converted to release exceptions
-	STUC_ASSERT("", *pDomain->pCount <= realBorderEnd);
-	if (*pDomain->pCount == realBorderEnd) {
-		reallocBufMesh(pCtx, pMesh, pBufDomain);
-		*pRealloced = true;
-	}
-	else {
-		*pRealloced = false;
-	}
-	BufMeshIdx idx = {0};
-	if (border){
-		idx.idx = *pBufDomain->pBorderCount;
-		idx.realIdx = *pDomain->pBufSize - 1 - idx.idx;
-		++*pBufDomain->pBorderCount;
-	}
-	else {
-		idx.idx = *pDomain->pCount;
-		idx.realIdx = idx.idx;
-		++*pDomain->pCount;
-	}
-	return idx;
-}
-#endif
-
 static
 void getFaceDomain(Mesh *pMesh, MeshDomain *pDomain) {
 	pDomain->domain = STUC_DOMAIN_FACE;
@@ -167,18 +90,6 @@ void reallocMesh(StucContext pCtx, Mesh *pMesh, MeshDomain *pDomain) {
 		}
 		*pDomain->ppList[i] =
 			pCtx->alloc.fpRealloc(*pDomain->ppList[i], *pDomain->pBufSize * sizeof(I32));
-		/*
-		if (pMesh->core.type.type == STUC_OBJECT_DATA_MESH_BUF &&
-			pDomain->domain == STUC_DOMAIN_VERT
-		) {
-			BufVertInfoArr *pVertInfo = &((BufMesh *)pMesh)->vertInfo;
-			pVertInfo->pArr = pCtx->alloc.fpRealloc(
-				pVertInfo->pArr, pMesh->vertBufSize * sizeof(BufVertInfo)
-			);
-			pVertInfo->pTypeArr =
-				pCtx->alloc.fpRealloc(pVertInfo->pTypeArr, pMesh->vertBufSize);
-		}
-		*/
 	}
 	stucReallocAttribArr(
 		pCtx,
@@ -213,97 +124,6 @@ I32 getNewMeshIdx(
 	++*pDomain->pCount;
 	return idx;
 }
-
-#ifndef TEMP_DISABLE
-BufMeshIdx stucBufMeshAddFace(
-	StucContext pCtx,
-	BufMesh *pMesh,
-	bool border,
-	bool *pRealloced
-) {
-	BufMeshDomain domain = {0};
-	getFaceDomain((Mesh *)pMesh, (MeshDomain *)&domain);
-	domain.pBorderCount = &pMesh->borderFaceCount;
-	BufMeshIdx idx =
-		getNewBufMeshIdx(pCtx, pMesh, &domain, border, pRealloced);
-	return idx;
-}
-
-BufMeshIdx stucBufMeshAddCorner(
-	StucContext pCtx,
-	BufMesh *pMesh,
-	bool border,
-	bool *pRealloced
-) {
-	BufMeshDomain domain = {0};
-	getCornerDomain((Mesh *)pMesh, (MeshDomain *)&domain);
-	domain.pBorderCount = &pMesh->borderCornerCount;
-	BufMeshIdx idx =
-		getNewBufMeshIdx(pCtx, pMesh, &domain, border, pRealloced);
-	return idx;
-}
-
-BufMeshIdx stucBufMeshAddEdge(
-	StucContext pCtx,
-	BufMesh *pMesh,
-	bool border,
-	bool *pRealloced
-) {
-	BufMeshDomain domain = {0};
-	getEdgeDomain((Mesh *)pMesh, (MeshDomain *)&domain);
-	domain.pBorderCount = &pMesh->borderEdgeCount;
-	BufMeshIdx idx =
-		getNewBufMeshIdx(pCtx, pMesh, &domain, border, pRealloced);
-	return idx;
-}
-
-BufMeshIdx stucBufMeshAddVert(
-	StucContext pCtx,
-	BufMesh *pMesh,
-	bool border,
-	bool *pRealloced
-) {
-	BufMeshDomain domain = {0};
-	getVertDomain((Mesh *)pMesh, (MeshDomain *)&domain);
-	domain.pBorderCount = &pMesh->borderVertCount;
-	BufMeshIdx idx =
-		getNewBufMeshIdx(pCtx, pMesh, &domain, border, pRealloced);
-	return idx;
-}
-
-BufMeshIdx stucConvertBorderFaceIdx(const BufMesh *pMesh, I32 face) {
-	STUC_ASSERT("", face >= 0 && face <= pMesh->borderFaceCount);
-	BufMeshIdx idx = {
-		.idx = face,
-		.realIdx = ((Mesh *)pMesh)->faceBufSize - 1 - face
-	};
-	return idx;
-}
-BufMeshIdx stucConvertBorderCornerIdx(const BufMesh *pMesh, I32 corner) {
-	STUC_ASSERT("", corner >= 0 && corner <= pMesh->borderCornerCount);
-	BufMeshIdx idx = {
-		.idx = corner,
-		.realIdx = ((Mesh *)pMesh)->cornerBufSize - 1 - corner
-	};
-	return idx;
-}
-BufMeshIdx stucConvertBorderEdgeIdx(const BufMesh *pMesh, I32 edge) {
-	STUC_ASSERT("", edge >= 0 && edge <= pMesh->borderEdgeCount);
-	BufMeshIdx idx = {
-		.idx = edge,
-		.realIdx = ((Mesh *)pMesh)->edgeBufSize - 1 - edge
-	};
-	return idx;
-}
-BufMeshIdx stucConvertBorderVertIdx(const BufMesh *pMesh, I32 vert) {
-	STUC_ASSERT("", vert >= 0 && vert <= pMesh->borderVertCount);
-	BufMeshIdx idx = {
-		.idx = vert,
-		.realIdx = ((Mesh *)pMesh)->vertBufSize - 1 - vert
-	};
-	return idx;
-}
-#endif
 
 I32 stucMeshAddFace(const StucContext pCtx, Mesh *pMesh, bool *pRealloced) {
 	MeshDomain domain = {0};
@@ -376,22 +196,6 @@ void stucMeshSetLastFace(const StucContext pCtx, Mesh *pMesh) {
 	//meshAddFace() increments this, so we need to undo that
 	pMesh->core.faceCount--; 
 }
-
-#ifndef TEMP_DISABLE
-void stucBufMeshSetLastFaces(StucContext pCtx, BufMesh *pBufMesh) {
-	Mesh *pMesh = &pBufMesh->mesh;
-	bool realloced = false;
-	BufMeshIdx lastFace =
-		stucBufMeshAddFace(pCtx, pBufMesh, false, &realloced);
-	pMesh->core.pFaces[lastFace.realIdx] = pMesh->core.cornerCount;
-	//bufMeshAddFace() increments this, so we need to undo that
-	pMesh->core.faceCount--; 
-
-	lastFace = stucBufMeshAddFace(pCtx, pBufMesh, true, &realloced);
-	pMesh->core.pFaces[lastFace.realIdx] = pBufMesh->borderCornerCount;
-	pBufMesh->borderFaceCount--;
-}
-#endif
 
 bool stucCheckIfMesh(const StucObjectData type) {
 	switch (type.type) {
@@ -674,17 +478,6 @@ I32 stucDomainCountGetIntern(const StucMesh *pMesh, StucDomain domain) {
 	STUC_ASSERT("invalid domain", false);
 	return 0;
 }
-
-#ifndef TEMP_DISABLE
-I32 stucGetVirtualBufIdx(BufMesh *pBufMesh, I32 corner) {
-	I32 idxVirtual = pBufMesh->mesh.cornerBufSize - corner - 1;
-	STUC_ASSERT(
-		"",
-		idxVirtual >= 0 && idxVirtual < pBufMesh->borderCornerCount
-	);
-	return idxVirtual;
-}
-#endif
 
 bool stucGetIfSeamEdge(const Mesh *pMesh, I32 edge) {
 	STUC_ASSERT("", pMesh->pSeamEdge);

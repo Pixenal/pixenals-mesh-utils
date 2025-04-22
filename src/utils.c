@@ -168,80 +168,6 @@ bool stucCheckIfEdgeIsReceive(const Mesh *pMesh, I32 edge, F32 receiveLen) {
 	return true;
 }
 
-/*
-static
-I32 getOtherVert(I32 i, I32 faceSize, I8 *pVertsRemoved) {
-	STUC_ASSERT("", i >= 0 && faceSize >= 3 && i < faceSize && pVertsRemoved);
-	I32 ib = (i + 1) % faceSize;
-	//search from i + 1 to facesize, and if non found,
-	//then run again from 0 to facesize. If non found then,
-	//return error
-	I32 attempts = 0;
-	do {
-		attempts++;
-		for (; ib < faceSize; ++ib) {
-			STUC_ASSERT("", pVertsRemoved[ib] >= 0);
-			if (!pVertsRemoved[ib]) {
-				return ib;
-			}
-		}
-		ib = 0;
-	} while (attempts == 1);
-	return -1;
-}
-*/
-
-/*
-typedef struct TriEdge {
-	struct TriEdge* pNext;
-	I32 tris[2];
-	I32 verts[2];
-	bool valid;
-} TriEdge;
-
-static
-void initTriEdgeEntry(TriEdge* pEntry, I32 verta, I32 vertb, I32 tri) {
-	pEntry->tris[0] = tri;
-	pEntry->verts[0] = verta;
-	pEntry->verts[1] = vertb;
-	pEntry->valid = true;
-}
-*/
-
-/*
-static
-void addTriEdgeToTable(
-	const StucAlloc *pAlloc,
-	I32 tableSize,
-	TriEdge *pEdgeTable,
-	I32 verta, I32 vertb,
-	I32 tri
-) {
-	U32 sum = verta + vertb;
-	I32 hash = stucFnvHash((U8 *)&sum, sizeof(sum), tableSize);
-	TriEdge *pEntry = pEdgeTable + hash;
-	if (!pEntry->valid) {
-		initTriEdgeEntry(pEntry, verta, vertb, tri);
-	}
-	else {
-		do {
-			if ((pEntry->verts[0] == verta || pEntry->verts[0] == vertb) &&
-				(pEntry->verts[1] == verta || pEntry->verts[1] == vertb)) {
-
-				pEntry->tris[1] = tri;
-				break;
-			}
-			if (!pEntry->pNext) {
-				pEntry = pEntry->pNext = pAlloc->fpCalloc(1, sizeof(TriEdge));
-				initTriEdgeEntry(pEntry, verta, vertb, tri);
-				break;
-			}
-			pEntry = pEntry->pNext;
-		} while(pEntry);
-	}
-}
-*/
-
 typedef struct AdjEntry {
 	I32 face;
 	I32 corner;
@@ -561,51 +487,6 @@ void stucSetBitArr(UBitField8 *pArr, I32 idx, I32 value, I32 len) {
 		pArr[byte] &= mask;
 	}
 }
-#ifndef TEMP_DISABLE
-void stucSetBorderFaceMapAttrib(
-	BorderFace *pEntry,
-	UBitField8 *pArr,
-	I32 corner,
-	I32 value
-) {
-	I32 len = 3 + pEntry->memType;
-	stucSetBitArr(pArr, corner, value, len);
-}
-#endif
-
-/*
-void stucFInsertionSort(I32 *pIdxTable, I32 count, F32 *pSort) {
-	//insertion sort
-	F32 a = pSort[0];
-	F32 b = pSort[1];
-	I32 order = a < b;
-	pIdxTable[0] = !order;
-	pIdxTable[1] = order;
-	I32 bufSize = 2;
-	for (I32 i = bufSize; i < count; ++i) {
-		bool insert = false;
-		I32 j;
-		for (j = bufSize - 1; j >= 0; --j) {
-			insert = pSort[i] < pSort[pIdxTable[j]] &&
-			         pSort[i] > pSort[pIdxTable[j - 1]];
-			if (insert) {
-				break;
-			}
-		}
-		if (!insert) {
-			pIdxTable[bufSize] = i;
-		}
-		else {
-			for (I32 m = bufSize; m > j; --m) {
-				pIdxTable[m] = pIdxTable[m - 1];
-				STUC_ASSERT("", m <= bufSize && m > j);
-			}
-			pIdxTable[j] = i;
-		}
-		bufSize++;
-	}
-}
-*/
 
 Mat3x3 stucGetInterpolatedTbn(
 	const Mesh *pMesh,
@@ -649,105 +530,6 @@ I32 stucGetBorderFaceMemType(I32 mapFaceSize, I32 bufFaceSize) {
 	STUC_ASSERT("Border face size > 64", false);
 	return 0;
 }
-
-#ifndef TEMP_DISABLE
-I32 stucGetBorderFaceSize(I32 memType) {
-	STUC_ASSERT("", memType >= 0 && memType <= 3);
-	switch (memType) {
-	case 0:
-		return sizeof(BorderFaceSmall);
-	case 1:
-		return sizeof(BorderFaceMid);
-	case 2:
-		return sizeof(BorderFaceLarge);
-	}
-	STUC_ASSERT("This shouldn't be hit", false);
-	return 0;
-}
-
-Result stucAllocBorderFace(I32 memType, BorderTableAlloc *pHandles, void **ppOut) {
-	Result err = STUC_SUCCESS;
-	void *pHandle = NULL;
-	switch (memType) {
-		case 0:
-			pHandle = pHandles->pSmall;
-			break;
-		case 1:
-			pHandle = pHandles->pMid;
-			break;
-		case 2:
-			pHandle = pHandles->pLarge;
-			break;
-		default:
-			STUC_THROW(err, "invalid memtype", 0);
-			break;
-	}
-	err = stucLinAlloc(pHandle, ppOut, 1);
-	STUC_THROW_IFNOT(err, "error allocating border face entry", 0);
-	STUC_CATCH(0, err, ;);
-	return err;
-}
-
-void stucGetBorderFaceBitArrs(BorderFace *pEntry, BorderFaceBitArrs *pArrs) {
-	switch (pEntry->memType) {
-		case 0: {
-			BorderFaceSmall *pCast = (BorderFaceSmall *)pEntry;
-			pArrs->pBaseCorner = pCast->baseCorner;
-			pArrs->pStucCorner = pCast->stucCorner;
-			pArrs->pSegment = pCast->segment;
-			pArrs->pIsStuc = pCast->isStuc;
-			pArrs->pOnLine = pCast->onLine;
-			pArrs->pOnInVert = pCast->onInVert;
-			return;
-		}
-		case 1: {
-			BorderFaceMid *pCast = (BorderFaceMid *)pEntry;
-			pArrs->pBaseCorner = pCast->baseCorner;
-			pArrs->pStucCorner = pCast->stucCorner;
-			pArrs->pSegment = pCast->segment;
-			pArrs->pIsStuc = pCast->isStuc;
-			pArrs->pOnLine = pCast->onLine;
-			pArrs->pOnInVert = pCast->onInVert;
-			return;
-		}
-		case 2: {
-			BorderFaceLarge *pCast = (BorderFaceLarge *)pEntry;
-			pArrs->pBaseCorner = pCast->baseCorner;
-			pArrs->pStucCorner = pCast->stucCorner;
-			pArrs->pSegment = pCast->segment;
-			pArrs->pIsStuc = pCast->isStuc;
-			pArrs->pOnLine = pCast->onLine;
-			pArrs->pOnInVert = pCast->onInVert;
-			return;
-		}
-	}
-}
-
-void stucBorderTableDestroyAlloc(BorderTableAlloc *pTableAlloc) {
-	if (pTableAlloc->pSmall) {
-		stucLinAllocDestroy(pTableAlloc->pSmall);
-	}
-	if (pTableAlloc->pMid) {
-		stucLinAllocDestroy(pTableAlloc->pMid);
-	}
-	if (pTableAlloc->pLarge) {
-		stucLinAllocDestroy(pTableAlloc->pLarge);
-	}
-}
-
-V3_F32 stucGetBufCornerUvw(
-	const MapToMeshBasic *pBasic,
-	const BufMesh *pMesh,
-	I32 corner
-) {
-	V3_F32 bufUvw = { .d = {
-		0, 0,
-		pMesh->pW[corner] * pBasic->wScale}
-	};
-	*(V2_F32 *)&bufUvw = pMesh->mesh.pUvs[corner];
-	return bufUvw;
-}
-#endif
 
 static
 Result sendOffJobs(
@@ -805,13 +587,6 @@ Result stucDoJobInParallel(
 	}
 	return err;
 }
-
-/*
-U32 stucGetEncasedFaceHash(I32 mapFace, V2_I16 tile, I32 tableSize) {
-	U32 key = (U32)mapFace + stucFnvHash((U8 *)tile.d, sizeof(tile.d), UINT32_MAX);
-	return stucFnvHash((U8 *)&key, sizeof(key), tableSize);
-}
-*/
 
 InsideStatus stucIsPointInHalfPlane(
 	V2_F32 point,

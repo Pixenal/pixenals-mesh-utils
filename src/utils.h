@@ -61,15 +61,6 @@ typedef struct BaseTriVerts {
 	F32 scale[4];
 } BaseTriVerts;
 
-typedef struct BorderFaceBitArrs {
-	UBitField8 *pBaseCorner;
-	UBitField8 *pStucCorner;
-	UBitField8 *pSegment;
-	UBitField8 *pIsStuc;
-	UBitField8 *pOnLine;
-	UBitField8 *pOnInVert;
-} BorderFaceBitArrs;
-
 typedef enum InsideStatus {
 	STUC_INSIDE_STATUS_NONE,
 	STUC_INSIDE_STATUS_OUTSIDE,
@@ -584,14 +575,6 @@ bool stucCalcIntersection(
 );
 I32 stucIdxBitArray(UBitField8 *pArr, I32 idx, I32 len);
 void stucSetBitArr(UBitField8 *pArr, I32 idx, I32 value, I32 len);
-#ifndef TEMP_DISABLE
-void stucSetBorderFaceMapAttrib(
-	BorderFace *pEntry,
-	UBitField8 *pArr,
-	I32 corner,
-	I32 value
-);
-#endif
 STUC_FORCE_INLINE
 void stucInsertionSort(
 	I32 *pIdxArr,
@@ -635,18 +618,6 @@ Mat3x3 stucGetInterpolatedTbn(
 	V3_F32 bc
 );
 
-I32 stucGetBorderFaceMemType(I32 mapFaceSize, I32 bufFaceSize);
-I32 stucGetBorderFaceSize(I32 memType);
-Result stucAllocBorderFace(I32 memType, BorderTableAlloc *pHandles, void **ppOut);
-#ifndef TEMP_DISABLE
-void stucGetBorderFaceBitArrs(BorderFace *pEntry, BorderFaceBitArrs *pArrs);
-void stucBorderTableDestroyAlloc(BorderTableAlloc *pTableAlloc);
-V3_F32 stucGetBufCornerUvw(
-	const MapToMeshBasic *pBasic,
-	const BufMesh *pMesh,
-	I32 corner
-);
-#endif
 Result stucDoJobInParallel(
 	const MapToMeshBasic *pBasic,
 	I32 jobCount, void *pJobArgs, I32 argStructSize,

@@ -10,7 +10,6 @@ SPDX-License-Identifier: Apache-2.0
 
 #include <io.h>
 #include <map_to_job_mesh.h>
-#include <combine_job_meshes.h>
 #include <map.h>
 #include <context.h>
 #include <alloc.h>
@@ -21,26 +20,17 @@ SPDX-License-Identifier: Apache-2.0
 #include <image_utils.h>
 #include <error.h>
 
-// TODO
-// - Reduce the bits written to the UVGP file for vert and corner indices, based on the total amount, in order to save space.
-//   No point storing them as 32 bit if there's only like 4,000 verts
-// - Split compressed data into chunks maybe?
-//
-// - Add blending options to interface, that control how MeshIn attributes blend with
-//   those from the Map. Also add an option to disable or enable interpolation.
-//   Add these to the StucAttrib struct.
-//
-//TODO a highly distorted meshIn can cause invalid geometry
-//(enough to crash blender). When meshIn is quads atleast
-//(I've not tested with tris). Find out why
+//TODO Reduce the bits written to the UVGP file for vert and corner indices, based on the total amount, in order to save space.
+//	No point storing them as 32 bit if there's only like 4,000 verts
+//TODO Split compressed data into chunks maybe?
 //TODO add option to vary z projection depth with uv stretch (for wires and such)
 //TODO Add an option for subdivision like smoothing (for instances where
-//the map is higher res than the base mesh). So that the surface can be
-//smoothed, without needing to induce the perf cost of actually subdividing
-//the base mesh. Is this possible?
+//	the map is higher res than the base mesh). So that the surface can be
+//	smoothed, without needing to induce the perf cost of actually subdividing
+//	the base mesh. Is this possible?
 //TODO add user define void * args to custom callbacks
 //TODO allow for layered mapping. eg, map-faces assigned layer 0 are only mapped
-//to in-faces with a layer attribute of 0
+//	to in-faces with a layer attribute of 0
 //TODO make naming for MeshIn consistent
 
 static
@@ -634,49 +624,6 @@ StucResult stucDestroyCommonAttribs(
 	return err;
 }
 
-#ifndef TEMP_DISABLE
-static
-Result sendOffMappingJobs(
-	MapToMeshBasic *pBasic,
-	I32 *pJobCount,
-	void ***pppJobHandles,
-	FindEncasedFacesJobArgs **ppJobArgs
-) {
-	Result err = STUC_SUCCESS;
-	*pJobCount = MAX_SUB_MAPPING_JOBS;
-	*pJobCount += *pJobCount == 0;
-	I32 facesPerThread = pBasic->pInMesh->core.faceCount / *pJobCount;
-	bool singleThread = !facesPerThread;
-	*pJobCount = singleThread ? 1 : *pJobCount;
-	void *jobArgPtrs[MAX_THREADS] = {0};
-	I32 borderTableSize = pBasic->pMap->pMesh->core.faceCount / 5 + 2; //+ 2 incase is 0
-	*ppJobArgs = pBasic->pCtx->alloc.fpCalloc(*pJobCount, sizeof(FindEncasedFacesJobArgs));
-	printf("fromjobsendoff: BorderTableSize: %d\n", borderTableSize);
-	for (I32 i = 0; i < *pJobCount; ++i) {
-		I32 meshStart = facesPerThread * i;
-		I32 meshEnd = i == *pJobCount - 1 ?
-			pBasic->pInMesh->core.faceCount : meshStart + facesPerThread;
-		(*ppJobArgs)[i].pBasic = pBasic;
-		(*ppJobArgs)[i].borderTable.size = borderTableSize;
-		(*ppJobArgs)[i].inFaceRange.start = meshStart;
-		(*ppJobArgs)[i].inFaceRange.end = meshEnd;
-		(*ppJobArgs)[i].pActiveJobs = pJobCount;
-		(*ppJobArgs)[i].id = i;
-		jobArgPtrs[i] = *ppJobArgs + i;
-	}
-	*pppJobHandles = pBasic->pCtx->alloc.fpCalloc(*pJobCount, sizeof(void *));
-	err = pBasic->pCtx->threadPool.pJobStackPushJobs(
-		pBasic->pCtx->pThreadPoolHandle,
-		*pJobCount,
-		*pppJobHandles,
-		stucMapToJobMesh,
-		jobArgPtrs
-	);
-	STUC_RETURN_ERR_IFNOT(err, "");
-	return err;
-}
-#endif
-
 static
 void buildEdgeAdj(Mesh *pMesh) {
 	const StucMesh *pCore = &pMesh->core;
@@ -763,20 +710,6 @@ bool checkIfNoFacesHaveMaskIdx(const Mesh *pMesh, I8 maskIdx) {
 	return true;
 }
 
-#ifndef TEMP_DISABLE
-static
-void mappingJobArgsDestroy(MapToMeshBasic *pBasic, I32 jobCount, FindEncasedFacesJobArgs *pJobArgs) {
-	for (I32 i = 0; i < jobCount; ++i) {
-		BufMesh *pBufMesh = &pJobArgs[i].bufMesh;
-		stucMeshDestroy(pBasic->pCtx, &pBufMesh->mesh.core);
-		if (pJobArgs[i].borderTable.pTable) {
-			pBasic->pCtx->alloc.fpFree(pJobArgs[i].borderTable.pTable);
-		}
-		stucBorderTableDestroyAlloc(&pJobArgs[i].borderTableAlloc);
-	}
-}
-#endif
-
 static
 void setJobArgsCore(
 	const MapToMeshBasic *pBasic,
@@ -830,18 +763,6 @@ static
 I32 encasedTableJobsGetRange(const MapToMeshBasic *pBasic, void *pInitInfo) {
 	return pBasic->pInMesh->core.faceCount;
 }
-
-/*
-static
-EncasedEntryIdxBucket *getEntryIdxBucket(
-	EncasedEntryIdxTable *pIdxTable,
-	I32 mapFace,
-	V2_I16 tile
-) {
-	U32 hash = stucGetEncasedFaceHash(mapFace, tile, pIdxTable->size);
-	return pIdxTable->pTable + hash;
-}
-*/
 
 typedef struct InPieceInitInfo {
 	EncasedMapFace *pMapFace;
@@ -977,17 +898,6 @@ typedef struct PieceFaceIdx {
 	bool preserve[4];
 } PieceFaceIdx;
 
-/*
-typedef struct {
-	struct PieceFaceIdx *pList;
-} PieceFaceIdxBucket;
-
-typedef struct {
-	PieceFaceIdxBucket *pTable;
-	I32 size;
-} PieceFaceIdxTable;
-*/
-
 static
 void initPieceFaceIdxEntry(
 	void *pUserData,
@@ -1008,28 +918,6 @@ bool cmpPieceFaceIdxEntry(
 ) {
 	return ((PieceFaceIdx *)pEntry)->pInFace->idx == *(I32 *)pKeyData;
 }
-
-/*
-static
-U32 getPieceFaceIdxTableHash(PieceFaceIdxTable *pTable, I32 face) {
-	U32 key = face;
-	return stucFnvHash((U8 *)&key, sizeof(key), pTable->size);
-}
-*/
-
-/*
-static
-PieceFaceIdx *getPieceFaceIdxEntry(HTable *pTable, I32 face) {
-	PieceFaceIdx *pEntry = stucHTableBucketGet(pTable, face)->pList;
-	while (pEntry) {
-		if (pEntry->pInFace->idx == face) {
-			return pEntry;
-		}
-		pEntry = pEntry->core.pNext;
-	}
-	return NULL;
-}
-*/
 
 static
 void buildPieceFaceIdxTable(
@@ -1117,25 +1005,6 @@ typedef struct BorderEdgeTableEntry {
 	bool checked;
 } BorderEdgeTableEntry;
 
-/*
-typedef struct BorderEdgeBucket {
-	BorderEdgeTableEntry *pList;
-} BorderEdgeBucket;
-
-typedef struct BorderEdgeTable {
-	BorderEdgeBucket *pTable;
-	LinAlloc alloc;
-	I32 size;
-} BorderEdgeTable;
-
-typedef struct BorderEdgeArr {
-	BorderEdgeTable table;
-	FaceCorner *pCorners;
-	I32 size;
-	I32 count;
-} BorderEdgeArr;
-*/
-
 static
 void borderEdgeInit(
 	void *pUserData,
@@ -1163,15 +1032,6 @@ static
 U64 borderEdgeMakeKey(const void *pKeyData) {
 	return (U64)*(I32 *)pKeyData;
 }
-
-/*
-static
-BorderEdgeBucket *getBorderEdgeBucket(BorderEdgeTable *pTable, FaceCorner corner) {
-	U32 key = corner.face + corner.corner;
-	U32 hash = stucFnvHash((U8 *)&key, sizeof(key), pTable->size);
-	return pTable->pTable + hash;
-}
-*/
 
 static
 BorderEdgeTableEntry *borderEdgeAddOrGet(
