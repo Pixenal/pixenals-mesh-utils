@@ -6,7 +6,7 @@ SPDX-License-Identifier: Apache-2.0
 #include <stdint.h>
 #include <string.h>
 
-#include <error.h>
+#include <pixenals_error_utils.h>
 #include <attrib_utils.h>
 #include <mesh.h>
 #include <context.h>

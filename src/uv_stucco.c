@@ -12,13 +12,13 @@ SPDX-License-Identifier: Apache-2.0
 #include <map_to_job_mesh.h>
 #include <map.h>
 #include <context.h>
-#include <alloc.h>
-#include <thread_pool.h>
+#include <pixenals_alloc_utils.h>
+#include <pixenals_thread_utils.h>
 #include <uv_stucco.h>
 #include <attrib_utils.h>
 #include <utils.h>
 #include <image_utils.h>
-#include <error.h>
+#include <pixenals_error_utils.h>
 
 //TODO Reduce the bits written to the UVGP file for vert and corner indices, based on the total amount, in order to save space.
 //	No point storing them as 32 bit if there's only like 4,000 verts

@@ -8,10 +8,10 @@ SPDX-License-Identifier: Apache-2.0
 #include <float.h>
 
 #include <uv_stucco_intern.h>
-#include <math_utils.h>
+#include <pixenals_math_utils.h>
 #include <mesh.h>
 #include <types.h>
-#include <thread_pool.h>
+#include <pixenals_thread_utils.h>
 
 typedef Stuc_String String;
 

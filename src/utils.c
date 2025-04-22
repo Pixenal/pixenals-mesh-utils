@@ -11,11 +11,11 @@ SPDX-License-Identifier: Apache-2.0
 #include <mikktspace.h>
 
 #include <utils.h>
-#include <math_utils.h>
+#include <pixenals_math_utils.h>
 #include <context.h>
 #include <attrib_utils.h>
-#include <error.h>
-#include <thread_pool.h>
+#include <pixenals_error_utils.h>
+#include <pixenals_thread_utils.h>
 
 BBox stucBBoxGet(const Mesh *pMesh, FaceRange *pFace) {
 	BBox bbox = {.min = {.d = {FLT_MAX, FLT_MAX}}, .max = {.d = {-FLT_MAX, -FLT_MAX}}};
