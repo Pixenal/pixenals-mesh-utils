@@ -74,7 +74,7 @@ typedef struct FaceTriangulated {
 
 typedef struct TriCache {
 	FaceTriangulated *pArr;
-	LinAlloc alloc;
+	PixalcLinAlloc alloc;
 } TriCache;
 
 void stucCreateMesh(const StucContext pCtx, StucObject *pObj, StucObjectType type);
@@ -90,45 +90,45 @@ void stucAddToMeshCounts(
 	MeshCounts *pBoundsCounts,
 	const Mesh *pMeshSrc
 );
-StucResult stucCopyMesh(StucMesh *pDestMesh, const StucMesh *pSrcMesh);
+StucErr stucCopyMesh(StucMesh *pDestMesh, const StucMesh *pSrcMesh);
 void stucApplyObjTransform(StucObject *pObj);
-StucResult stucMergeObjArr(
+StucErr stucMergeObjArr(
 	StucContext pCtx,
 	Mesh *pMesh,
 	I32 objCount,
 	const StucObject *pObjArr,
 	bool setCommon
 );
-StucResult stucDestroyObjArr(StucContext pCtx, I32 objCount, StucObject *pObjArr);
+StucErr stucDestroyObjArr(StucContext pCtx, I32 objCount, StucObject *pObjArr);
 static inline
 FaceRange stucGetFaceRange(const StucMesh *pMesh, I32 idx) {
-	STUC_ASSERT("", idx >= 0 && idx < pMesh->faceCount);
+	PIX_ERR_ASSERT("", idx >= 0 && idx < pMesh->faceCount);
 	FaceRange face = {
 		.idx = idx,
 		.start = pMesh->pFaces[idx],
 		.end = pMesh->pFaces[idx + 1]
 	};
-	STUC_ASSERT("", face.start >= 0 && face.end <= pMesh->cornerCount);
-	STUC_ASSERT("", face.start < face.end);
+	PIX_ERR_ASSERT("", face.start >= 0 && face.end <= pMesh->cornerCount);
+	PIX_ERR_ASSERT("", face.start < face.end);
 	face.size = face.end - face.start;
-	STUC_ASSERT("", face.size >= 3);
+	PIX_ERR_ASSERT("", face.size >= 3);
 	return face;
 }
-StucResult stucValidateMesh(const StucMesh *pMesh, bool checkEdges);
+StucErr stucValidateMesh(const StucMesh *pMesh, bool checkEdges);
 void stucAliasMeshCoreNoAttribs(StucMesh *pDest, StucMesh *pSrc);
 I32 stucGetDomainSize(const Mesh *pMesh, StucDomain domain);
 I32 stucDomainCountGetIntern(const StucMesh *pMesh, StucDomain domain);
 static inline
 I32 stucGetCornerPrev(I32 corner, const FaceRange *pFace) {
 	I32 prev = corner ? corner - 1 : pFace->size - 1;
-	STUC_ASSERT("", prev >= 0 && prev < pFace->size);
+	PIX_ERR_ASSERT("", prev >= 0 && prev < pFace->size);
 	return prev;
 }
 static inline
 I32 stucGetCornerNext(I32 corner, const FaceRange *pFace) {
-	STUC_ASSERT("", corner < pFace->size);
+	PIX_ERR_ASSERT("", corner < pFace->size);
 	I32 next = (corner + 1) % pFace->size;
-	STUC_ASSERT("", next >= 0);
+	PIX_ERR_ASSERT("", next >= 0);
 	return next;
 }
 bool stucGetIfSeamEdge(const Mesh *pMesh, I32 edge);
@@ -136,17 +136,17 @@ bool stucGetIfMatBorderEdge(const Mesh *pMesh, I32 edge);
 void stucGetAdjCorner(const Mesh *pMesh, FaceCorner corner, FaceCorner *pAdjCorner);
 static inline
 V3_F32 stucGetVertPos(const Mesh *pMesh, const FaceRange *pFace, I32 corner) {
-	STUC_ASSERT("", corner >= 0 && corner < pFace->size);
+	PIX_ERR_ASSERT("", corner >= 0 && corner < pFace->size);
 	return pMesh->pPos[pMesh->core.pCorners[pFace->start + corner]];
 }
 static inline
 V2_F32 stucGetVertPosAsV2(const Mesh *pMesh, const FaceRange *pFace, I32 corner) {
-	STUC_ASSERT("", corner >= 0 && corner < pFace->size);
+	PIX_ERR_ASSERT("", corner >= 0 && corner < pFace->size);
 	return *(V2_F32 *)&pMesh->pPos[pMesh->core.pCorners[pFace->start + corner]];
 }
 static inline
 V2_F32 stucGetUvPos(const Mesh *pMesh, const FaceRange *pFace, I32 corner) {
-	STUC_ASSERT("", corner >= 0 && corner < pFace->size);
+	PIX_ERR_ASSERT("", corner >= 0 && corner < pFace->size);
 	return pMesh->pUvs[pFace->start + corner];
 }
 I32 stucGetMeshVert(const StucMesh *pMesh, FaceCorner corner);

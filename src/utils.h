@@ -13,36 +13,7 @@ SPDX-License-Identifier: Apache-2.0
 #include <types.h>
 #include <thread_pool.h>
 
-#define STUC_DYN_ARR_RESIZE(t, pAlloc, pDynArr, newSize)\
-	STUC_ASSERT("", newSize > 0);\
-	if (!(pDynArr)->size) {\
-		STUC_ASSERT("", !(pDynArr)->pArr);\
-		(pDynArr)->size = newSize;\
-		(pDynArr)->pArr = (pAlloc)->fpMalloc((pDynArr)->size * sizeof(t));\
-	}\
-	else if (newSize >= (pDynArr)->size) {\
-		(pDynArr)->size *= 2;\
-		if (newSize > (pDynArr)->size) {\
-			(pDynArr)->size = newSize;\
-		}\
-		(pDynArr)->pArr =\
-			(pAlloc)->fpRealloc((pDynArr)->pArr, (pDynArr)->size * sizeof(t));\
-	}
-
-#define STUC_DYN_ARR_ADD(t, pAlloc, pDynArr, newIdx)\
-	STUC_ASSERT("", (pDynArr)->count <= (pDynArr)->size);\
-	if (!(pDynArr)->size) {\
-		STUC_ASSERT("", !(pDynArr)->pArr);\
-		(pDynArr)->size = 4;\
-		(pDynArr)->pArr = (pAlloc)->fpMalloc((pDynArr)->size * sizeof(t));\
-	}\
-	else if ((pDynArr)->count == (pDynArr)->size) {\
-		(pDynArr)->size *= 2;\
-		(pDynArr)->pArr =\
-			(pAlloc)->fpRealloc((pDynArr)->pArr, (pDynArr)->size * sizeof(t));\
-	}\
-	newIdx = (pDynArr)->count;\
-	(pDynArr)->count++;
+typedef Stuc_String String;
 
 typedef struct BBox {
 	V2_F32 min;
@@ -109,9 +80,9 @@ void initHalfPlaneLookup(
 		pCache[i].uvNext = pMesh->pUvs[pInFace->start + pCache[i].idxNext];
 		
 		pCache[i].dir = _(pCache[i].uvNext V2SUB pCache[i].uv);
-		pCache[i].len = v2F32Len(pCache[i].dir);
+		pCache[i].len = pixmV2F32Len(pCache[i].dir);
 		pCache[i].dirUnit = _(pCache[i].dir V2DIVS pCache[i].len);
-		pCache[i].halfPlane = v2F32LineNormal(pCache[i].dir);
+		pCache[i].halfPlane = pixmV2F32LineNormal(pCache[i].dir);
 	}
 }
 
@@ -144,7 +115,7 @@ typedef struct Ear {
 } Ear;
 
 typedef struct TriangulateState {
-	LinAlloc earAlloc;
+	PixalcLinAlloc earAlloc;
 	Ear *pEarList;
 	const Mesh *pMesh;
 	const FaceRange *pFace;
@@ -169,9 +140,9 @@ bool doesEarIntersectFace(
 	V2_F32 aPos, V2_F32 bPos, V2_F32 cPos
 ) {
 	bool wind = pState->wind;
-	V2_F32 abHalfPlane = v2F32LineNormal(_(bPos V2SUB aPos));
-	V2_F32 bcHalfPlane = v2F32LineNormal(_(cPos V2SUB bPos));
-	V2_F32 caHalfPlane = v2F32LineNormal(_(aPos V2SUB cPos));
+	V2_F32 abHalfPlane = pixmV2F32LineNormal(_(bPos V2SUB aPos));
+	V2_F32 bcHalfPlane = pixmV2F32LineNormal(_(cPos V2SUB bPos));
+	V2_F32 caHalfPlane = pixmV2F32LineNormal(_(aPos V2SUB cPos));
 	for (I32 i = 0; i < pState->pFace->size; ++i) {
 		if (i == a || i == b || i == c) {
 			continue;
@@ -199,14 +170,14 @@ I32 stucGetNextRemaining(
 	I32 corner,
 	const FaceRange *pFace
 ) {
-	STUC_ASSERT("", corner >= 0 && corner < pFace->size);
+	PIX_ERR_ASSERT("", corner >= 0 && corner < pFace->size);
 	I32 start = corner;
 	while (corner = stucGetCornerNext(corner, pFace), corner != start) {
 		if (!pState->pRemoved[corner]) {
 			return corner;
 		}
 	}
-	STUC_ASSERT("no corners remain", false);
+	PIX_ERR_ASSERT("no corners remain", false);
 	return -1;
 }
 
@@ -216,14 +187,14 @@ I32 stucGetPrevRemaining(
 	I32 corner,
 	const FaceRange *pFace
 ) {
-	STUC_ASSERT("", corner >= 0 && corner < pFace->size);
+	PIX_ERR_ASSERT("", corner >= 0 && corner < pFace->size);
 	I32 start = corner;
 	while (corner = stucGetCornerPrev(corner, pFace), corner != start) {
 		if (!pState->pRemoved[corner]) {
 			return corner;
 		}
 	}
-	STUC_ASSERT("no corners remain", false);
+	PIX_ERR_ASSERT("no corners remain", false);
 	return -1;
 }
 
@@ -235,16 +206,16 @@ Ear *addEarCandidate(TriangulateState *pState, I32 corner) {
 	V2_F32 b = pState->fpGetPoint(pState->pMesh, pState->pFace, corner);
 	V2_F32 c = pState->fpGetPoint(pState->pMesh, pState->pFace, cornerNext);
 	V2_F32 ac = _(c V2SUB a);
-	F32 dot = _(ac V2DOT v2F32LineNormal(_(b V2SUB a)));
+	F32 dot = _(ac V2DOT pixmV2F32LineNormal(_(b V2SUB a)));
 	if (dot >= 0 || // ear is concave or degenerate
 		doesEarIntersectFace(pState, cornerPrev, corner, cornerNext, a, b, c)
 	) {
 		return NULL;
 	}
-	F32 len = v2F32Len(ac);
+	F32 len = pixmV2F32Len(ac);
 	Ear *pNewEar = NULL;
 	if (!pState->pEarList) {
-		stucLinAlloc(&pState->earAlloc, (void **)&pState->pEarList, 1);
+		pixalcLinAlloc(&pState->earAlloc, (void **)&pState->pEarList, 1);
 		pNewEar = pState->pEarList;
 	}
 	else {
@@ -252,7 +223,7 @@ Ear *addEarCandidate(TriangulateState *pState, I32 corner) {
 		while(pEar->pNext && len > pEar->pNext->len) {
 			pEar = pEar->pNext;
 		}
-		stucLinAlloc(&pState->earAlloc, (void **)&pNewEar, 1);
+		pixalcLinAlloc(&pState->earAlloc, (void **)&pNewEar, 1);
 		if (len < pEar->len) {
 			pEar->pPrev = pNewEar;
 			pNewEar->pNext = pEar;
@@ -298,7 +269,7 @@ Ear *addEar(TriangulateState *pState) {
 /*
 STUC_FORCE_INLINE
 void cacheHalfPlanes(TriangulateState *pState) {
-	STUC_ASSERT("", pState->pHalfPlanes);
+	PIX_ERR_ASSERT("", pState->pHalfPlanes);
 	for (I32 i = 0; i < pState->pFace->size; ++i) {
 		I32 iNext = stucGetCornerNext(i, pState->pFace);
 		V2_F32 a = pState->fpGetPoint(pState->pMesh, pState->pFace, i);
@@ -335,7 +306,7 @@ I32 stucCalcFaceWind(
 	const Mesh *pMesh,
 	V2_F32 (* fpGetPoint) (const Mesh *, const FaceRange *, I32)
 ) {
-	STUC_ASSERT("", pFace->start >= 0 && pFace->size >= 3);
+	PIX_ERR_ASSERT("", pFace->start >= 0 && pFace->size >= 3);
 	I32 skip[32] = {0};
 	I32 skipCount = 0;
 	do {
@@ -392,7 +363,7 @@ void stucTriangulateFace(
 	V2_F32 (* fpGetPoint)(const Mesh *, const FaceRange *, I32),
 	FaceTriangulated *pTris
 ) {
-	STUC_ASSERT("", pTris->pTris);
+	PIX_ERR_ASSERT("", pTris->pTris);
 	TriangulateState state = {
 		.pMesh = pMesh,
 		.fpGetPoint = fpGetPoint,
@@ -401,18 +372,18 @@ void stucTriangulateFace(
 		.pTris = pTris,
 		.pRemoved = pAlloc->fpCalloc(pFace->size, sizeof(bool))
 	};
-	STUC_ASSERT(
+	PIX_ERR_ASSERT(
 		"degenerate faces shouldn't be passed to this func",
 		state.wind % 2 == state.wind
 	);
 
-	stucLinAllocInit(pAlloc, &state.earAlloc, sizeof(Ear), pFace->size, true);
+	pixalcLinAllocInit(pAlloc, &state.earAlloc, sizeof(Ear), pFace->size, true);
 
 	//add initial ears
 	for (I32 i = 0; i < pFace->size; ++i) {
 		addEarCandidate(&state, i);
 	}
-	STUC_ASSERT("", state.pEarList);
+	PIX_ERR_ASSERT("", state.pEarList);
 	do {
 		Ear *pAddedEar = NULL;
 		if (!state.pRemoved[state.pEarList->corner]) {
@@ -423,9 +394,9 @@ void stucTriangulateFace(
 			addAdjEarCandidates(&state, pAddedEar);
 		}
 	} while(state.triCount < pFace->size - 2);
-	stucLinAllocDestroy(&state.earAlloc);
+	pixalcLinAllocDestroy(&state.earAlloc);
 	pAlloc->fpFree(state.pRemoved);
-	STUC_ASSERT("", state.triCount == pFace->size - 2);
+	PIX_ERR_ASSERT("", state.triCount == pFace->size - 2);
 	return;
 }
 
@@ -461,7 +432,7 @@ V3_F32 stucGetBarycentricInTri(
 	for (I32 i = 0; i < 3; ++i) {
 		tri[i] = fpGetPoint(pMesh, pFace, pTriCorners[i]);
 	}
-	return stucCartesianToBarycentric(tri, &vert);
+	return pixmCartesianToBarycentric(tri, &vert);
 
 }
 
@@ -494,19 +465,19 @@ V3_F32 stucGetBarycentricInFace(
 	I8 *pTriCorners,
 	V2_F32 vert
 ) {
-	STUC_ASSERT("", v2F32IsFinite(vert));
-	STUC_ASSERT("", (pFace->size == 3 || pFace->size == 4) && pTriCorners);
+	PIX_ERR_ASSERT("", pixmV2F32IsFinite(vert));
+	PIX_ERR_ASSERT("", (pFace->size == 3 || pFace->size == 4) && pTriCorners);
 	V2_F32 triA[3] = {0};
 	for (I32 i = 0; i < 3; ++i) {
 		triA[i] = fpGetPoint(pMesh, pFace, i);
 	}
-	V3_F32 vertBc = stucCartesianToBarycentric(triA, &vert);
-	if (pFace->size == 4 && v3F32IsFinite(vertBc) && vertBc.d[1] < 0) {
+	V3_F32 vertBc = pixmCartesianToBarycentric(triA, &vert);
+	if (pFace->size == 4 && pixmV3F32IsFinite(vertBc) && vertBc.d[1] < 0) {
 		//base face is a quad, and vert is outside first tri,
 		//so use the second tri
 		
 		V2_F32 triB[3] = {triA[2], fpGetPoint(pMesh, pFace, 3), triA[0]};
-		vertBc = stucCartesianToBarycentric(triB, &vert);
+		vertBc = pixmCartesianToBarycentric(triB, &vert);
 		pTriCorners[0] = 2;
 		pTriCorners[1] = 3;
 	}
@@ -551,7 +522,7 @@ V3_F32 stucGetBarycentricInFaceFromUvs(
 }
 
 
-StucResult stucBuildEdgeList(StucContext pCtx, Mesh *pMesh);
+StucErr stucBuildEdgeList(StucContext pCtx, Mesh *pMesh);
 void stucProgressBarClear();
 void stucProgressBarPrint(StucContext pCtx, I32 progress);
 void stucStageBegin(void *pCtx, StucStageReport *pReport, const char *pName);
@@ -561,7 +532,7 @@ void stucStageBeginWrap(StucContext pCtx, const char *pName, I32 max);
 void stucStageProgressWrap(StucContext pCtx, I32 progress);
 void stucStageEndWrap(StucContext pCtx);
 void stucSetStageName(StucContext pCtx, const char *pName);
-Mat3x3 stucBuildFaceTbn(FaceRange face, const Mesh *pMesh, const I32 *pCornerOveride);
+M3x3 stucBuildFaceTbn(FaceRange face, const Mesh *pMesh, const I32 *pCornerOveride);
 void stucGetTriScale(I32 size, BaseTriVerts *pTri);
 F32 stucGetT(V2_F32 point, V2_F32 lineA, V2_F32 lineUnit, F32 lineLen);
 bool stucCalcIntersection(
@@ -603,7 +574,7 @@ void stucInsertionSort(
 		else {
 			for (I32 m = bufSize; m > j; --m) {
 				pIdxArr[m] = pIdxArr[m - 1];
-				STUC_ASSERT("", m <= bufSize && m > j);
+				PIX_ERR_ASSERT("", m <= bufSize && m > j);
 			}
 			pIdxArr[j] = i;
 		}
@@ -611,17 +582,17 @@ void stucInsertionSort(
 	}
 }
 //void stucFInsertionSort(I32 *pIdxTable, I32 count, F32 *pSort);
-Mat3x3 stucGetInterpolatedTbn(
+M3x3 stucGetInterpolatedTbn(
 	const Mesh *pMesh,
 	const FaceRange *pFace,
 	const I8 *pTriCorners,
 	V3_F32 bc
 );
 
-Result stucDoJobInParallel(
+StucErr stucDoJobInParallel(
 	const MapToMeshBasic *pBasic,
 	I32 jobCount, void *pJobArgs, I32 argStructSize,
-	Result (* func)(void *)
+	StucErr (* func)(void *)
 );
 //U32 stucGetEncasedFaceHash(I32 mapFace, V2_I16 tile, I32 tableSize);
 
@@ -633,23 +604,11 @@ typedef struct HTableBucket {
 	HTableEntryCore *pList;
 } HTableBucket;
 
-typedef struct I32Arr {
-	I32 *pArr;
-	I32 size;
-	I32 count;
-} I32Arr;
-
-typedef struct I8Arr {
-	I8 *pArr;
-	I32 size;
-	I32 count;
-} I8Arr;
-
 #define STUC_HTABLE_ALLOC_HANDLES_MAX 2
 
 typedef struct HTable {
 	const StucAlloc *pAlloc;
-	LinAlloc allocHandles[STUC_HTABLE_ALLOC_HANDLES_MAX];
+	PixalcLinAlloc allocHandles[STUC_HTABLE_ALLOC_HANDLES_MAX];
 	HTableBucket *pTable;
 	void *pUserData;
 	I32 size;
@@ -669,8 +628,8 @@ void stucHTableInit(
 	void *pUserData
 );
 void stucHTableDestroy(HTable *pHandle);
-LinAlloc *stucHTableAllocGet(HTable *pHandle, I32 idx);
-const LinAlloc *stucHTableAllocGetConst(const HTable *pHandle, I32 idx);
+PixalcLinAlloc *stucHTableAllocGet(HTable *pHandle, I32 idx);
+const PixalcLinAlloc *stucHTableAllocGetConst(const HTable *pHandle, I32 idx);
 static inline
 HTableBucket *stucHTableBucketGet(HTable *pHandle, U64 key) {
 	U64 hash = stucFnvHash((U8 *)&key, sizeof(key), pHandle->size);
@@ -689,12 +648,12 @@ SearchResult stucHTableGet(
 	void (* fpInitEntry)(void *, HTableEntryCore *, const void *, void *, I32),
 	bool (* fpCompareEntry)(const HTableEntryCore *, const void *, const void *)
 ) {
-	STUC_ASSERT("", pHandle->pTable && pHandle->size);
-	STUC_ASSERT(
+	PIX_ERR_ASSERT("", pHandle->pTable && pHandle->size);
+	PIX_ERR_ASSERT(
 		"",
 		alloc < STUC_HTABLE_ALLOC_HANDLES_MAX && pHandle->allocHandles[alloc].valid
 	);
-	STUC_ASSERT("", (!addEntry || fpInitEntry) && fpCompareEntry);
+	PIX_ERR_ASSERT("", (!addEntry || fpInitEntry) && fpCompareEntry);
 	HTableBucket *pBucket = stucHTableBucketGet(pHandle, fpMakeKey(pKeyData));
 	if (!pBucket->pList) {
 		if (!addEntry ||
@@ -703,7 +662,7 @@ SearchResult stucHTableGet(
 			return STUC_SEARCH_NOT_FOUND;
 		}
 		I32 linIdx =
-			stucLinAlloc(pHandle->allocHandles + alloc, (void **)&pBucket->pList, 1);
+			pixalcLinAlloc(pHandle->allocHandles + alloc, (void **)&pBucket->pList, 1);
 		fpInitEntry(pHandle->pUserData, pBucket->pList, pKeyData, pInitInfo, linIdx);
 		if (ppEntry) {
 			*ppEntry = pBucket->pList;
@@ -725,7 +684,7 @@ SearchResult stucHTableGet(
 				return STUC_SEARCH_NOT_FOUND;
 			}
 			I32 linIdx =
-				stucLinAlloc(pHandle->allocHandles + alloc, (void **)&pEntry->pNext, 1);
+				pixalcLinAlloc(pHandle->allocHandles + alloc, (void **)&pEntry->pNext, 1);
 			fpInitEntry(pHandle->pUserData, pEntry->pNext, pKeyData, pInitInfo, linIdx);
 			if (ppEntry) {
 				*ppEntry = pEntry->pNext;
@@ -981,7 +940,7 @@ typedef struct BufMesh {
 } BufMesh;
 
 typedef struct BufMeshArr {
-	BufMesh arr[MAX_SUB_MAPPING_JOBS];
+	BufMesh arr[PIX_THREAD_MAX_SUB_MAPPING_JOBS];
 	I32 count;
 } BufMeshArr;
 
@@ -999,9 +958,9 @@ typedef struct FindEncasedFacesJobArgs {
 } FindEncasedFacesJobArgs;
 
 typedef struct SplitInPiecesAlloc {
-	LinAlloc encased;
-	LinAlloc inFace;
-	LinAlloc border;
+	PixalcLinAlloc encased;
+	PixalcLinAlloc inFace;
+	PixalcLinAlloc border;
 } SplitInPiecesAlloc;
 
 typedef struct SplitInPiecesJobArgs {
@@ -1079,7 +1038,7 @@ typedef struct VertMergeCorner {
 } VertMergeCorner;
 
 typedef struct VertMergeTransform {
-	Mat3x3 tbn;
+	M3x3 tbn;
 } VertMergeTransform;
 
 typedef struct VertMerge {
@@ -1105,8 +1064,8 @@ typedef struct VertMergeBucket {
 } VertMergeBucket;
 
 typedef struct VertMergeTable {
-	LinAlloc alloc;
-	LinAlloc intersectAlloc;
+	PixalcLinAlloc alloc;
+	PixalcLinAlloc intersectAlloc;
 	VertMergeBucket *pTable;
 	I32 size;
 } VertMergeTable;
@@ -1122,7 +1081,7 @@ typedef struct InPieceKey {
 static inline
 U64 stucInPieceMakeKey(const void *pKeyData) {
 	const InPieceKey *pKey = pKeyData;
-	STUC_ASSERT("tile isn't 16 bit anymore?", sizeof(pKey->tile.d[0]) == 2);
+	PIX_ERR_ASSERT("tile isn't 16 bit anymore?", sizeof(pKey->tile.d[0]) == 2);
 	return
 		(U64)pKey->mapFace << 32 |
 		(U64)pKey->tile.d[0] << 16 |
@@ -1162,7 +1121,7 @@ void stucGetBufMeshForVertMergeEntry(
 static inline
 I32 stucRangeGetSize(Range range) {
 	I32 size = range.end - range.start;
-	STUC_ASSERT("'Range' type doesn't support empty range", size > 0);
+	PIX_ERR_ASSERT("'Range' type doesn't support empty range", size > 0);
 	return size;
 }
 
@@ -1217,15 +1176,8 @@ typedef struct TangentJobArgs {
 	F32 *pTSigns;
 } TangentJobArgs;
 
-StucResult stucBuildTangents(void *pArgsVoid);
+StucErr stucBuildTangents(void *pArgsVoid);
 
-/*
-STUC_FORCE_INLINE
-bool stucDoFacesIntersect(
-	const Mesh *pMeshA, const FaceRange *pFaceA,
-	const Mesh *pMeshB, const FaceRange *pFaceB,
-	V2_F32 (* fpGetPointA)(const Mesh *, const FaceRange *, I32),
-	V2_F32 (* fpGetPointB)(const Mesh *, const FaceRange *, I32)
-) {
-}
-*/
+void stucThreadPoolSetDefault(StucContext context);
+void stucAllocSetCustom(PixalcFPtrs *pAlloc, PixalcFPtrs *pCustomAlloc);
+void stucAllocSetDefault(PixalcFPtrs *pAlloc);

@@ -41,7 +41,7 @@ void setDefaultStageReport(StucContext pCtx) {
 	pCtx->stageReport.fpEnd = stucStageEnd;
 }
 
-StucResult stucContextInit(
+StucErr stucContextInit(
 	StucContext *pCtx,
 	StucAlloc *pAlloc,
 	StucThreadPool *pThreadPool,
@@ -91,16 +91,16 @@ StucResult stucContextInit(
 	stucSetDefaultSpAttribNames(*pCtx);
 	stucSetDefaultSpAttribDomains(*pCtx);
 	stucSetDefaultSpAttribTypes(*pCtx);
-	return STUC_SUCCESS;
+	return PIX_ERR_SUCCESS;
 }
 
-StucResult stucContextDestroy(StucContext pCtx) {
+StucErr stucContextDestroy(StucContext pCtx) {
 	pCtx->threadPool.fpDestroy(pCtx->pThreadPoolHandle);
 	pCtx->alloc.fpFree(pCtx);
-	return STUC_SUCCESS;
+	return PIX_ERR_SUCCESS;
 }
 
-StucResult stucMapFileExport(
+StucErr stucMapFileExport(
 	StucContext pCtx,
 	const char *pPath,
 	I32 objCount,
@@ -121,7 +121,7 @@ StucResult stucMapFileExport(
 }
 
 //TODO replace these with StucUsg and StucObj arr structs, that combine arr and count
-StucResult stucMapFileLoadForEdit(
+StucErr stucMapFileLoadForEdit(
 	StucContext pCtx,
 	const char *filePath,
 	I32 *pObjCount,
@@ -148,7 +148,7 @@ StucResult stucMapFileLoadForEdit(
 
 static
 void buildEdgeLenList(StucContext pCtx, Mesh *pMesh) {
-	STUC_ASSERT("", pMesh->pEdgeLen);
+	PIX_ERR_ASSERT("", pMesh->pEdgeLen);
 	V3_F32 *pPosCache = pCtx->alloc.fpMalloc(pMesh->core.edgeCount * sizeof(V3_F32));
 	I8 *pSet = pCtx->alloc.fpCalloc(pMesh->core.edgeCount, 1);
 	for (I32 i = 0; i < pMesh->core.cornerCount; ++i) {
@@ -162,9 +162,9 @@ void buildEdgeLenList(StucContext pCtx, Mesh *pMesh) {
 		//this occurs usually due to interior faces,
 		// it shouldn't be an issue for for map-meshes, more so for in-meshes.
 		//TODO remove this assert if no issues arise
-		//STUC_ASSERT("more than 2 corners refernce 1 edge", pSet[edge] < 2);
+		//PIX_ERR_ASSERT("more than 2 corners refernce 1 edge", pSet[edge] < 2);
 		V3_F32 diff = _(pos V3SUB pPosCache[edge]);
-		pMesh->pEdgeLen[edge] = v3F32Len(diff);
+		pMesh->pEdgeLen[edge] = pixmV3F32Len(diff);
 		pSet[edge]++;
 	}
 	pCtx->alloc.fpFree(pSet);
@@ -201,8 +201,8 @@ void TEMPsetSpFromAttribName(StucContext pCtx, StucMesh *pMesh, AttribArray *pAr
 }
 
 static
-Result attemptToSetMissingActiveDomains(StucMesh *pMesh) {
-	Result err = STUC_SUCCESS;
+StucErr attemptToSetMissingActiveDomains(StucMesh *pMesh) {
+	StucErr err = PIX_ERR_SUCCESS;
 	for (I32 i = 1; i < STUC_ATTRIB_USE_ENUM_COUNT; ++i) {
 		if (i == STUC_ATTRIB_USE_SP_ENUM_COUNT) {
 			continue;
@@ -220,7 +220,7 @@ Result attemptToSetMissingActiveDomains(StucMesh *pMesh) {
 			}
 			//the below is false, 2 domains have their own candidate.
 			//the intended attrib is ambiguous, so return error
-			STUC_RETURN_ERR_IFNOT_COND(
+			PIX_ERR_RETURN_IFNOT_COND(
 				err,
 				pIdx->domain == STUC_DOMAIN_NONE,
 				"Unable to determine active attrib domain"
@@ -237,12 +237,12 @@ void triCacheBuild(const StucAlloc *pAlloc, StucMap pMap) {
 	if (ngons) {
 		pMap->triCache.pArr =
 			pAlloc->fpCalloc(pMap->pMesh->core.faceCount, sizeof(FaceTriangulated));
-		stucLinAllocInit(pAlloc, &pMap->triCache.alloc, 3, 16, false);
+		pixalcLinAllocInit(pAlloc, &pMap->triCache.alloc, 3, 16, false);
 		for (I32 i = 0; i < pMap->pMesh->core.faceCount; ++i) {
 			FaceRange face = stucGetFaceRange(&pMap->pMesh->core, i);
 			if (face.size > 4) {
 				FaceTriangulated *pTris = pMap->triCache.pArr + i;
-				stucLinAlloc(&pMap->triCache.alloc, (void **)&pTris->pTris, face.size - 2);
+				pixalcLinAlloc(&pMap->triCache.alloc, (void **)&pTris->pTris, face.size - 2);
 				stucTriangulateFaceFromVerts(pAlloc, &face, pMap->pMesh, pTris);
 			}
 		}
@@ -251,10 +251,10 @@ void triCacheBuild(const StucAlloc *pAlloc, StucMap pMap) {
 
 static
 void triCacheDestroy(const StucAlloc *pAlloc, StucMap pMap) {
-	STUC_ASSERT("", !((pMap->triCache.pArr != NULL) ^ (pMap->triCache.alloc.valid)));
+	PIX_ERR_ASSERT("", !((pMap->triCache.pArr != NULL) ^ (pMap->triCache.alloc.valid)));
 	if (pMap->triCache.pArr) {
 		pAlloc->fpFree(pMap->triCache.pArr);
-		stucLinAllocDestroy(&pMap->triCache.alloc);
+		pixalcLinAllocDestroy(&pMap->triCache.alloc);
 		pMap->triCache = (TriCache) {0};
 	}
 }
@@ -269,8 +269,8 @@ void buildFaceBBoxes(const StucAlloc *pAlloc, StucMap pMap) {
 	}
 }
 
-StucResult stucMapFileLoad(StucContext pCtx, StucMap *pMapHandle, const char *filePath) {
-	StucResult err = STUC_NOT_SET;
+StucErr stucMapFileLoad(StucContext pCtx, StucMap *pMapHandle, const char *filePath) {
+	StucErr err = PIX_ERR_NOT_SET;
 	StucMap pMap = pCtx->alloc.fpCalloc(1, sizeof(MapFile));
 	I32 objCount = 0;
 	StucObject *pObjArr = NULL;
@@ -290,7 +290,7 @@ StucResult stucMapFileLoad(StucContext pCtx, StucMap *pMapHandle, const char *fi
 	);
 	//TODO validate meshes, ensure pMatIdx is within mat range, faces are within max corner limit,
 	//F32 values are valid, etc.
-	STUC_THROW_IFNOT(err, "failed to load file from disk", 0);
+	PIX_ERR_THROW_IFNOT(err, "failed to load file from disk", 0);
 
 	strncpy(pMap->indexedAttribs.pArr[0].core.name, "materials", STUC_ATTRIB_NAME_MAX_LEN);
 
@@ -321,13 +321,13 @@ StucResult stucMapFileLoad(StucContext pCtx, StucMap *pMapHandle, const char *fi
 			})),
 			STUC_DOMAIN_NONE
 		);
-		STUC_THROW_IFNOT(err, "", 0);
+		PIX_ERR_THROW_IFNOT(err, "", 0);
 		stucApplyObjTransform(pObjArr + i);
 	}
 	Mesh *pMapMesh = pCtx->alloc.fpCalloc(1, sizeof(Mesh));
 	pMapMesh->core.type.type = STUC_OBJECT_DATA_MESH_INTERN;
 	err = stucMergeObjArr(pCtx, pMapMesh, objCount, pObjArr, false);
-	STUC_THROW_IFNOT(err, "", 0);
+	PIX_ERR_THROW_IFNOT(err, "", 0);
 
 	stucAppendSpAttribsToMesh(
 		pCtx,
@@ -368,7 +368,7 @@ StucResult stucMapFileLoad(StucContext pCtx, StucMap *pMapHandle, const char *fi
 		})),
 		STUC_DOMAIN_NONE
 	);
-	STUC_THROW_IFNOT(err, "", 0);
+	PIX_ERR_THROW_IFNOT(err, "", 0);
 
 	buildEdgeLenList(pCtx, pMapMesh);
 
@@ -408,7 +408,7 @@ StucResult stucMapFileLoad(StucContext pCtx, StucMap *pMapHandle, const char *fi
 	//as the tree's used to speed up the process
 	printf("File loaded. Creating quad tree\n");
 	err = stucCreateQuadTree(pCtx, &pMap->quadTree, pMap->pMesh, pMap->pFaceBBoxes);
-	STUC_THROW_IFNOT(err, "failed to create quadtree", 0);
+	PIX_ERR_THROW_IFNOT(err, "failed to create quadtree", 0);
 
 	if (pMap->usgArr.count) {
 		pMap->usgArr.pArr = pCtx->alloc.fpCalloc(pMap->usgArr.count, sizeof(Usg));
@@ -425,7 +425,7 @@ StucResult stucMapFileLoad(StucContext pCtx, StucMap *pMapHandle, const char *fi
 				0x1 << STUC_ATTRIB_USE_POS,
 				STUC_DOMAIN_NONE
 			);
-			STUC_THROW_IFNOT(err, "", 0);
+			PIX_ERR_THROW_IFNOT(err, "", 0);
 			pMap->usgArr.pArr[i].origin = *(V2_F32 *)&pUsgArr[i].obj.transform.d[3];
 			pMap->usgArr.pArr[i].pMesh = pUsgMesh;
 			stucApplyObjTransform(&pUsgArr[i].obj);
@@ -443,7 +443,7 @@ StucResult stucMapFileLoad(StucContext pCtx, StucMap *pMapHandle, const char *fi
 					0x1 << STUC_ATTRIB_USE_POS,
 					STUC_DOMAIN_NONE
 				);
-				STUC_THROW_IFNOT(err, "", 0);
+				PIX_ERR_THROW_IFNOT(err, "", 0);
 				stucApplyObjTransform(pUsgArr[i].pFlatCutoff);
 			}
 		}
@@ -458,13 +458,13 @@ StucResult stucMapFileLoad(StucContext pCtx, StucMap *pMapHandle, const char *fi
 	}
 
 	*pMapHandle = pMap;
-	//TODO add proper checks, and return STUC_ERROR if fails.
+	//TODO add proper checks, and return PIX_ERR_ERROR if fails.
 	//Do for all public functions (or internal ones as well)
-	STUC_CATCH(0, err, stucMapFileUnload(pCtx, pMap);)
+	PIX_ERR_CATCH(0, err, stucMapFileUnload(pCtx, pMap);)
 	return err;
 }
 
-StucResult stucMapFileUnload(StucContext pCtx, StucMap pMap) {
+StucErr stucMapFileUnload(StucContext pCtx, StucMap pMap) {
 	stucDestroyQuadTree(pCtx, &pMap->quadTree);
 	if (pMap->pMesh) {
 		stucMeshDestroy(pCtx, (StucMesh *)&pMap->pMesh->core);
@@ -478,12 +478,12 @@ StucResult stucMapFileUnload(StucContext pCtx, StucMap pMap) {
 		pCtx->alloc.fpFree((Mesh *)pMap->usgArr.pSquares);
 	}
 	pCtx->alloc.fpFree(pMap);
-	return STUC_SUCCESS;
+	return PIX_ERR_SUCCESS;
 }
 
-Result stucMapFileMeshGet(StucContext pCtx, StucMap pMap, const StucMesh **ppMesh) {
-	Result err = STUC_SUCCESS;
-	STUC_RETURN_ERR_IFNOT_COND(err, pCtx && pMap && ppMesh, "invalid args");
+StucErr stucMapFileMeshGet(StucContext pCtx, StucMap pMap, const StucMesh **ppMesh) {
+	StucErr err = PIX_ERR_SUCCESS;
+	PIX_ERR_RETURN_IFNOT_COND(err, pCtx && pMap && ppMesh, "invalid args");
 	*ppMesh = &pMap->pMesh->core;
 	return err;
 }
@@ -501,7 +501,7 @@ void initCommonAttrib(
 }
 
 static
-Result getCommonAttribs(
+StucErr getCommonAttribs(
 	StucContext pCtx,
 	const StucMesh *pMapMesh,
 	const AttribArray *pMapAttribs,
@@ -509,7 +509,7 @@ Result getCommonAttribs(
 	const AttribArray *pMeshAttribs,
 	StucCommonAttribArr *pCommonArr
 ) {
-	Result err = STUC_SUCCESS;
+	StucErr err = PIX_ERR_SUCCESS;
 	//TODO ignore special attribs like StucTangent or StucTSign
 	pCommonArr->count = 0;
 	pCommonArr->size = 2;
@@ -525,11 +525,11 @@ Result getCommonAttribs(
 			true,
 			&pMapAttrib
 		);
-		STUC_THROW_IFNOT(err, "", 0);
+		PIX_ERR_THROW_IFNOT(err, "", 0);
 		if (!pMapAttrib) {
 			continue;
 		}
-		STUC_ASSERT("", pCommonArr->count <= pCommonArr->size);
+		PIX_ERR_ASSERT("", pCommonArr->count <= pCommonArr->size);
 		if (pCommonArr->count == pCommonArr->size) {
 			pCommonArr->size *= 2;
 			pCommonArr->pArr = pCtx->alloc.fpRealloc(pCommonArr->pArr, pCommonArr->size);
@@ -537,7 +537,7 @@ Result getCommonAttribs(
 		initCommonAttrib(pCtx, pCommonArr->pArr + pCommonArr->count, pAttrib);
 		pCommonArr->count++;
 	}
-	STUC_CATCH(0, err,
+	PIX_ERR_CATCH(0, err,
 		pCtx->alloc.fpFree(pCommonArr->pArr);
 		pCommonArr->count = pCommonArr->size = 0;
 	);
@@ -546,18 +546,18 @@ Result getCommonAttribs(
 
 //TODO handle edge case, where attribute share the same name,
 //but have incompatible types. Such as a F32 and a string.
-StucResult stucQueryCommonAttribs(
+StucErr stucQueryCommonAttribs(
 	StucContext pCtx,
 	const StucMap pMap,
 	const StucMesh *pMesh,
 	StucCommonAttribList *pCommonAttribs
 ) {
-	Result err = STUC_SUCCESS;
-	STUC_RETURN_ERR_IFNOT_COND(err, pCtx && pMap && pMesh && pCommonAttribs, "");
+	StucErr err = PIX_ERR_SUCCESS;
+	PIX_ERR_RETURN_IFNOT_COND(err, pCtx && pMap && pMesh && pCommonAttribs, "");
 	const StucMesh *pMapMesh = &pMap->pMesh->core;
 	StucMesh meshWrap = *pMesh;
 	err = attemptToSetMissingActiveDomains(&meshWrap);
-	STUC_RETURN_ERR_IFNOT(err, "");
+	PIX_ERR_RETURN_IFNOT(err, "");
 	for (I32 i = STUC_DOMAIN_FACE; i <= STUC_DOMAIN_MESH; ++i) {
 		StucCommonAttribArr *pCommonArr = NULL;
 		stucCommonAttribArrGetFromDomain(pCtx, pCommonAttribs, i, &pCommonArr);
@@ -569,21 +569,21 @@ StucResult stucQueryCommonAttribs(
 			stucGetAttribArrFromDomainConst(&meshWrap, i),
 			pCommonArr
 		);
-		STUC_THROW_IFNOT(err, "", 0);
+		PIX_ERR_THROW_IFNOT(err, "", 0);
 	}
-	STUC_CATCH(0, err,
+	PIX_ERR_CATCH(0, err,
 		stucDestroyCommonAttribs(pCtx, pCommonAttribs);
 	);
 	return err;
 }
 
-StucResult stucCommonAttribArrGetFromDomain(
+StucErr stucCommonAttribArrGetFromDomain(
 	StucContext pCtx,
 	StucCommonAttribList *pList,
 	StucDomain domain,
 	StucCommonAttribArr **ppArr
 ) {
-	Result err = STUC_SUCCESS;
+	StucErr err = PIX_ERR_SUCCESS;
 	switch (domain) {
 	case STUC_DOMAIN_FACE:
 		*ppArr = &pList->face;
@@ -601,17 +601,17 @@ StucResult stucCommonAttribArrGetFromDomain(
 		*ppArr = &pList->mesh;
 		break;
 	default:
-		STUC_RETURN_ERR(err, "invalid domain");
+		PIX_ERR_RETURN(err, "invalid domain");
 	}
 	return err;
 }
 
-StucResult stucDestroyCommonAttribs(
+StucErr stucDestroyCommonAttribs(
 	StucContext pCtx,
 	StucCommonAttribList *pCommonAttribs
 ) {
-	Result err = STUC_SUCCESS;
-	STUC_RETURN_ERR_IFNOT_COND(err, pCtx && pCommonAttribs, "");
+	StucErr err = PIX_ERR_SUCCESS;
+	PIX_ERR_RETURN_IFNOT_COND(err, pCtx && pCommonAttribs, "");
 	for (I32 i = STUC_DOMAIN_FACE; i <= STUC_DOMAIN_MESH; ++i) {
 		StucCommonAttribArr *pArr = NULL;
 		stucCommonAttribArrGetFromDomain(pCtx, pCommonAttribs, i, &pArr);
@@ -728,9 +728,9 @@ void divideArrAmongstJobs(I32 arrSize, I32 *pJobCount, Range *pRanges) {
 		*pJobCount = 0;
 		return;
 	}
-	STUC_ASSERT("", *pJobCount >= 0);
-	I32 jobCount =  *pJobCount && *pJobCount < MAX_SUB_MAPPING_JOBS ?
-		*pJobCount : MAX_SUB_MAPPING_JOBS;
+	PIX_ERR_ASSERT("", *pJobCount >= 0);
+	I32 jobCount =  *pJobCount && *pJobCount < PIX_THREAD_MAX_SUB_MAPPING_JOBS ?
+		*pJobCount : PIX_THREAD_MAX_SUB_MAPPING_JOBS;
 	I32 piecesPerJob = arrSize / jobCount;
 	jobCount = !piecesPerJob ? 1 : jobCount;
 	for (I32 i = 0; i < jobCount; ++i) {
@@ -748,7 +748,7 @@ void makeJobArgs(
 	I32 (* fpGetArrCount)(const MapToMeshBasic *, void *),
 	void (* fpInitArgEntry)(MapToMeshBasic *, void *, void *)
 ) {
-	Range ranges[MAX_SUB_MAPPING_JOBS] = {0};
+	Range ranges[PIX_THREAD_MAX_SUB_MAPPING_JOBS] = {0};
 	divideArrAmongstJobs(fpGetArrCount(pBasic, pInitInfo), pJobCount, ranges);
 	for (I32 i = 0; i < *pJobCount; ++i) {
 		void *pArgEntry = (U8 *)pArgs + i * argStructSize;
@@ -850,8 +850,8 @@ void linkEncasedTableEntries(
 	const StucAlloc *pAlloc = &pBasic->pCtx->alloc;
 	pInPieceArr->size = pInPieceArr->count = 0;
 	for (I32 i = 0; i < jobCount; ++i) {
-		LinAlloc *pTableAlloc = stucHTableAllocGet(&pJobArgs[i].encasedFaces, 0);
-		pInPieceArr->size += stucLinAllocGetCount(pTableAlloc);
+		PixalcLinAlloc *pTableAlloc = stucHTableAllocGet(&pJobArgs[i].encasedFaces, 0);
+		pInPieceArr->size += pixalcLinAllocGetCount(pTableAlloc);
 	}
 	if (pInPieceArr->size == 0) {
 		*pEmpty = true;
@@ -868,11 +868,11 @@ void linkEncasedTableEntries(
 	);
 
 	for (I32 i = 0; i < jobCount; ++i) {
-		LinAlloc *pTableAlloc = stucHTableAllocGet(&pJobArgs[i].encasedFaces, 0);
-		LinAllocIter iter = {0};
-		stucLinAllocIterInit(pTableAlloc, (Range) {0, INT32_MAX}, &iter);
-		for (; !stucLinAllocIterAtEnd(&iter); stucLinAllocIterInc(&iter)) {
-			EncasedMapFace *pEntry = stucLinAllocGetItem(&iter);
+		PixalcLinAlloc *pTableAlloc = stucHTableAllocGet(&pJobArgs[i].encasedFaces, 0);
+		PixalcLinAllocIter iter = {0};
+		pixalcLinAllocIterInit(pTableAlloc, (Range) {0, INT32_MAX}, &iter);
+		for (; !pixalcLinAllocIterAtEnd(&iter); pixalcLinAllocIterInc(&iter)) {
+			EncasedMapFace *pEntry = pixalcLinAllocGetItem(&iter);
 			addEncasedEntryToInPieceArr(pBasic, &idxTable, pInPieceArr, pEntry);
 			pEntry->core.pNext = NULL;
 		}
@@ -937,7 +937,7 @@ void buildPieceFaceIdxTable(
 				true, pInFace,
 				stucKeyFromI32, NULL, initPieceFaceIdxEntry, cmpPieceFaceIdxEntry
 			);
-		STUC_ASSERT("", result == STUC_SEARCH_ADDED);
+		PIX_ERR_ASSERT("", result == STUC_SEARCH_ADDED);
 	}
 }
 
@@ -965,7 +965,7 @@ PieceFaceIdx *getAdjFaceInPiece(
 	if (adj.corner == -1) {
 		return NULL;
 	}
-	STUC_ASSERT("", adj.corner >= 0);
+	PIX_ERR_ASSERT("", adj.corner >= 0);
 	PieceFaceIdx *pAdjIdxEntry = NULL;
 	pieceFaceIdxTableGet(pIdxTable, adj.face, (void **)&pAdjIdxEntry);
 	if (!pAdjIdxEntry) {
@@ -1048,7 +1048,7 @@ BorderEdgeTableEntry *borderEdgeAddOrGet(
 		add, &corner,
 		borderEdgeMakeKey, NULL, borderEdgeInit, borderEdgeCmp
 	);
-	STUC_ASSERT(
+	PIX_ERR_ASSERT(
 		"there shouldn't be an existing entry if adding",
 		!(add ^ (result == STUC_SEARCH_ADDED))
 	);
@@ -1058,7 +1058,7 @@ BorderEdgeTableEntry *borderEdgeAddOrGet(
 static
 void addBorderToArr(const MapToMeshBasic *pBasic, BorderArr *pArr, Border border) {
 	StucAlloc *pAlloc = &pBasic->pCtx->alloc;
-	STUC_ASSERT("", pArr->count <= pArr->size);
+	PIX_ERR_ASSERT("", pArr->count <= pArr->size);
 	if (!pArr->size) {
 		pArr->size = 2;
 		pArr->pArr = pBasic->pCtx->alloc.fpMalloc(pArr->size * sizeof(Border));
@@ -1108,11 +1108,11 @@ bool findAndAddBorder(
 			pEntry = borderEdgeAddOrGet(pBorderEdgeTable, corner, false);
 		}
 		if (pEntry) {
-			STUC_ASSERT("", pEntry->checked == false);
+			PIX_ERR_ASSERT("", pEntry->checked == false);
 			pEntry->checked = true;
 			border.len++;
 		}
-		STUC_ASSERT("", border.len <= edgesMax);
+		PIX_ERR_ASSERT("", border.len <= edgesMax);
 		I32 adjCorner = 0;
 		//this is using the table for the pre-split piece.
 		//this is fine, as faces arn't marked removed until the end of this func
@@ -1122,7 +1122,7 @@ bool findAndAddBorder(
 			corner,
 			&adjCorner
 		);
-		STUC_ASSERT(
+		PIX_ERR_ASSERT(
 			"if edge isn't in border arr, there should be an adj face",
 			!pEntry ^ !pAdjFace
 		);
@@ -1170,7 +1170,7 @@ ReceiveIntersectResult doesCornerIntersectReceive(
 	const FaceRange *pMapFace, const MapCornerLookup *pMapCorners,
 	const FaceRange *pInFace, FaceCorner inCorner
 ) {
-	STUC_ASSERT(
+	PIX_ERR_ASSERT(
 		"check this before calling",
 		pMapCorners->receive == STUC_RECEIVE_SOME ||
 		pMapCorners->receive == STUC_RECEIVE_ALL
@@ -1230,7 +1230,7 @@ bool isEdgeValidPreserve(
 		if (result == STUC_NO_INTERSECT || result == STUC_INTERSECTS_RECEIVE) {
 			return true;
 		}
-		STUC_ASSERT("", result == STUC_INTERSECTS_NON_RECEIVE);
+		PIX_ERR_ASSERT("", result == STUC_INTERSECTS_NON_RECEIVE);
 	}
 	return false;
 }
@@ -1265,15 +1265,15 @@ void addAdjFaces(
 		}
 		else if (isEdgeValidPreserve(pBasic, pMapFace, pMapCorners, &inFace, corner)) {
 			pFace->preserve[i] = true;
-			STUC_ASSERT("", adjCorner != -1);
+			PIX_ERR_ASSERT("", adjCorner != -1);
 			pAdjFace->preserve[adjCorner] = true;
 			borderEdgeAddOrGet(pBorderEdges, corner, true);
 			continue;
 		}
-		STUC_ASSERT("", pAdjFace->pInFace);
+		PIX_ERR_ASSERT("", pAdjFace->pInFace);
 
 		pAdjFace->pendingRemove = true;
-		STUC_ASSERT("", pInFaceBuf->count < pInFaceBuf->size);
+		PIX_ERR_ASSERT("", pInFaceBuf->count < pInFaceBuf->size);
 		pInFaceBuf->ppArr[pInFaceBuf->count] = pAdjFace;
 		pInFaceBuf->count++;
 	}
@@ -1281,17 +1281,17 @@ void addAdjFaces(
 
 static
 PieceFaceIdx *getFirstRemainingFace(HTable *pIdxTable) {
-	LinAlloc *pTableAlloc = stucHTableAllocGet(pIdxTable, 0);
-	LinAllocIter iter = {0};
-	stucLinAllocIterInit(pTableAlloc, (Range) { 0, INT32_MAX }, &iter);
-	for (; !stucLinAllocIterAtEnd(&iter); stucLinAllocIterInc(&iter)) {
-		PieceFaceIdx *pEntry = stucLinAllocGetItem(&iter);
-		STUC_ASSERT("", pEntry);
+	PixalcLinAlloc *pTableAlloc = stucHTableAllocGet(pIdxTable, 0);
+	PixalcLinAllocIter iter = {0};
+	pixalcLinAllocIterInit(pTableAlloc, (Range) { 0, INT32_MAX }, &iter);
+	for (; !pixalcLinAllocIterAtEnd(&iter); pixalcLinAllocIterInc(&iter)) {
+		PieceFaceIdx *pEntry = pixalcLinAllocGetItem(&iter);
+		PIX_ERR_ASSERT("", pEntry);
 		if (!pEntry->removed) {
 			return pEntry;
 		}
 	}
-	STUC_ASSERT("this func shouldn't have been called if no faces remained", false);
+	PIX_ERR_ASSERT("this func shouldn't have been called if no faces remained", false);
 	return NULL;
 }
 
@@ -1302,14 +1302,14 @@ void fillBorderBuf(
 	HTable *pIdxTable,
 	HTable *pBorderEdges
 ) {
-	LinAlloc *pAlloc = stucHTableAllocGet(pBorderEdges, 0);
+	PixalcLinAlloc *pAlloc = stucHTableAllocGet(pBorderEdges, 0);
 	pBorderBuf->arr.count = 0;
 	pBorderBuf->preserveRoots.count = 0;
-	I32 edgeCount = stucLinAllocGetCount(pAlloc);
-	LinAllocIter iter = {0};
-	stucLinAllocIterInit(pAlloc, (Range) { 0, INT32_MAX }, &iter);
-	for (; !stucLinAllocIterAtEnd(&iter); stucLinAllocIterInc(&iter)) {
-		BorderEdgeTableEntry *pEntry = stucLinAllocGetItem(&iter);
+	I32 edgeCount = pixalcLinAllocGetCount(pAlloc);
+	PixalcLinAllocIter iter = {0};
+	pixalcLinAllocIterInit(pAlloc, (Range) { 0, INT32_MAX }, &iter);
+	for (; !pixalcLinAllocIterAtEnd(&iter); pixalcLinAllocIterInc(&iter)) {
+		BorderEdgeTableEntry *pEntry = pixalcLinAllocGetItem(&iter);
 		if (pEntry->checked) {
 			continue;
 		}
@@ -1376,7 +1376,7 @@ void splitAdjFacesIntoPiece(
 	fillBorderBuf(pBasic, pBorderBuf, pIdxTable, &borderEdges);
 	if (pBorderBuf->arr.count) {
 		pNewInPiece->borderArr.count = pBorderBuf->arr.count;
-		stucLinAlloc(
+		pixalcLinAlloc(
 			&pArgs->alloc.border,
 			(void **)&pNewInPiece->borderArr.pArr,
 			pNewInPiece->borderArr.count
@@ -1391,13 +1391,13 @@ void splitAdjFacesIntoPiece(
 	
 	// copy buf into new in-piece, & mark in-faces as removed in idx-table
 	pNewInPiece->pList->inFaces.count = pInFaceBuf->count;
-	stucLinAlloc(
+	pixalcLinAlloc(
 		&pArgs->alloc.inFace,
 		(void **)&pNewInPiece->pList->inFaces.pArr,
 		pNewInPiece->pList->inFaces.count
 	);
 	for (I32 i = 0; i < pInFaceBuf->count; ++i) {
-		STUC_ASSERT("", pInFaceBuf->ppArr[i]->pendingRemove);
+		PIX_ERR_ASSERT("", pInFaceBuf->ppArr[i]->pendingRemove);
 		pNewInPiece->pList->inFaces.pArr[i] = *pInFaceBuf->ppArr[i]->pInFace;
 		pInFaceBuf->ppArr[i]->removed = true;
 		pInFaceBuf->ppArr[i]->pendingRemove = false;
@@ -1455,7 +1455,7 @@ void splitInPieceEntry(
 		} while (pInFaces);
 	}
 
-	STUC_ASSERT("", pInPiece->faceCount > 0);
+	PIX_ERR_ASSERT("", pInPiece->faceCount > 0);
 	if (!pInFaceBuf->size) {
 		pInFaceBuf->size = pInPiece->faceCount;
 		pInFaceBuf->ppArr = pAlloc->fpMalloc(pInFaceBuf->size * sizeof(void *));
@@ -1477,7 +1477,7 @@ void splitInPieceEntry(
 	I32 facesRemaining = pInPiece->faceCount;
 	do {
 		InPiece newInPiece = {0};
-		stucLinAlloc(&pArgs->alloc.encased, (void **)&newInPiece.pList, 1);
+		pixalcLinAlloc(&pArgs->alloc.encased, (void **)&newInPiece.pList, 1);
 		newInPiece.pList->mapFace = pInPiece->pList->mapFace;
 		newInPiece.pList->tile = pInPiece->pList->tile;
 		splitAdjFacesIntoPiece(
@@ -1493,7 +1493,7 @@ void splitInPieceEntry(
 		);
 		InPieceArr *pNewInPieces = newInPiece.borderArr.count ?
 			&pArgs->newInPiecesClip : &pArgs->newInPieces;
-		STUC_ASSERT("", pNewInPieces->count <= pNewInPieces->size);
+		PIX_ERR_ASSERT("", pNewInPieces->count <= pNewInPieces->size);
 		if (pNewInPieces->count == pNewInPieces->size) {
 			pNewInPieces->size *= 2;
 			pNewInPieces->pArr = pAlloc->fpRealloc(
@@ -1503,15 +1503,15 @@ void splitInPieceEntry(
 		}
 		pNewInPieces->pArr[pNewInPieces->count] = newInPiece;
 		pNewInPieces->count++;
-		STUC_ASSERT("", facesRemaining >= 0 && facesRemaining < pInPiece->faceCount);
+		PIX_ERR_ASSERT("", facesRemaining >= 0 && facesRemaining < pInPiece->faceCount);
 	} while(facesRemaining);
 	pAlloc->fpFree(mapCorners.pHalfPlanes);
 	stucHTableDestroy(&idxTable);
 }
 
 static
-Result splitInPieces(void *pArgsVoid) {
-	Result err = STUC_SUCCESS;
+StucErr splitInPieces(void *pArgsVoid) {
+	StucErr err = PIX_ERR_SUCCESS;
 	SplitInPiecesJobArgs *pArgs = pArgsVoid;
 	const StucAlloc *pAlloc = &pArgs->core.pBasic->pCtx->alloc;
 	I32 rangeSize = pArgs->core.range.end - pArgs->core.range.start;
@@ -1520,9 +1520,9 @@ Result splitInPieces(void *pArgsVoid) {
 	pArgs->newInPieces.pArr = pAlloc->fpMalloc(pArgs->newInPieces.size * sizeof(InPiece));
 	pArgs->newInPiecesClip.pArr =
 		pAlloc->fpMalloc(pArgs->newInPiecesClip.size * sizeof(InPiece));
-	stucLinAllocInit(pAlloc, &pArgs->alloc.encased, sizeof(EncasedMapFace), rangeSize, true);
-	stucLinAllocInit(pAlloc, &pArgs->alloc.inFace, sizeof(EncasingInFace), rangeSize, true);
-	stucLinAllocInit(pAlloc, &pArgs->alloc.border, sizeof(Border), rangeSize, true);
+	pixalcLinAllocInit(pAlloc, &pArgs->alloc.encased, sizeof(EncasedMapFace), rangeSize, true);
+	pixalcLinAllocInit(pAlloc, &pArgs->alloc.inFace, sizeof(EncasingInFace), rangeSize, true);
+	pixalcLinAllocInit(pAlloc, &pArgs->alloc.border, sizeof(Border), rangeSize, true);
 	InFaceBuf inFaceBuf = {0};
 	BorderBuf borderBuf = {0};
 	for (I32 i = pArgs->core.range.start; i < pArgs->core.range.end; ++i) {
@@ -1554,7 +1554,7 @@ void appendNewPiecesToArr(
 		const InPieceArr *pNewInPieces = getNewInPieceArr(pJobArgs + i);
 		pInPiecesSplit->size += pNewInPieces->count;
 	}
-	STUC_ASSERT("", pInPiecesSplit->size >= 0);
+	PIX_ERR_ASSERT("", pInPiecesSplit->size >= 0);
 	pInPiecesSplit->pArr = pAlloc->fpCalloc(pInPiecesSplit->size, sizeof(InPiece));
 	for (I32 i = 0; i < jobCount; ++i) {
 		const InPieceArr *pNewInPieces = getNewInPieceArr(pJobArgs + i);
@@ -1602,7 +1602,7 @@ void inPieceArrDestroy(const StucContext pCtx, InPieceArr *pArr) {
 
 typedef struct BufMeshJobInitInfo {
 	InPieceArr *pInPiecesSplit;
-	Result (* fpAddPiece)(
+	StucErr (* fpAddPiece)(
 		const MapToMeshBasic *,
 		I32,
 		const InPiece *,
@@ -1645,7 +1645,7 @@ void vertMergeTableInit(
 ) {
 	I32 vertTotal = bufMeshArrGetVertCount(pInPieces->pBufMeshes);
 	vertTotal += bufMeshArrGetVertCount(pInPiecesClip->pBufMeshes);
-	STUC_ASSERT(
+	PIX_ERR_ASSERT(
 		"mapToMesh should have returned before this func if empty",
 		vertTotal > 0
 	);
@@ -1693,7 +1693,7 @@ U64 mergeTableMakeKey(const void *pKeyData) {
 			key = (U64)pKey->key.intersect.inEdge << 32 | (U64)pKey->key.intersect.mapEdge;
 			break;
 		default:
-			STUC_ASSERT("invalid vert type", false);
+			PIX_ERR_ASSERT("invalid vert type", false);
 	}
 	return key + ((U64)pKey->tile.d[0] << 16 | (U64)pKey->tile.d[1]);
 }
@@ -1737,7 +1737,7 @@ bool mergeTableEntryCmp(
 				pKey->key.intersect.inEdge == pEntry->key.key.intersect.inEdge &&
 				pKey->key.intersect.mapEdge == pEntry->key.key.intersect.mapEdge;
 		default:
-			STUC_ASSERT("invalid vert type", false);
+			PIX_ERR_ASSERT("invalid vert type", false);
 			return false;
 	}
 }
@@ -1786,7 +1786,7 @@ void initInOrMapKey(
 			break;
 		}
 		default:
-			STUC_ASSERT("invalid in-or-map buf vert type", false);
+			PIX_ERR_ASSERT("invalid in-or-map buf vert type", false);
 	}
 }
 
@@ -1821,7 +1821,7 @@ void initOnEdgeKey(
 			break;
 		}
 		default:
-			STUC_ASSERT("invalid edge buf vert type", false);
+			PIX_ERR_ASSERT("invalid edge buf vert type", false);
 	}
 }
 
@@ -1862,7 +1862,7 @@ void mergeTableInitKey(
 			break;
 		}
 		default:
-			STUC_ASSERT("invalid vert type", false);
+			PIX_ERR_ASSERT("invalid vert type", false);
 	}
 }
 
@@ -1905,7 +1905,7 @@ MergeTableInitInfoVert mergeTableGetBufVert(const BufMesh *pBufMesh, FaceCorner 
 				.intersect = pBufMesh->intersectVerts.pArr[bufCorner.vert]
 			};
 		default:
-			STUC_ASSERT("invalid buf vert type", false);
+			PIX_ERR_ASSERT("invalid buf vert type", false);
 			return (MergeTableInitInfoVert) {0};
 	}
 }
@@ -1925,7 +1925,7 @@ void mergeTableAddVert(
 		true, pInitInfo,
 		mergeTableMakeKey, NULL, mergeTableEntryInit, mergeTableEntryCmp
 	);
-	STUC_ASSERT("", result == STUC_SEARCH_ADDED || result == STUC_SEARCH_FOUND);
+	PIX_ERR_ASSERT("", result == STUC_SEARCH_ADDED || result == STUC_SEARCH_FOUND);
 	if (result == STUC_SEARCH_FOUND) {
 		pEntry->cornerCount++;
 	}
@@ -2018,10 +2018,10 @@ void bufMeshArrMoveToInPieces(
 }
 
 static
-Result inPieceArrInitBufMeshes(
+StucErr inPieceArrInitBufMeshes(
 	MapToMeshBasic *pBasic,
 	InPieceArr *pInPieces,
-	Result (* fpAddPiece)(
+	StucErr (* fpAddPiece)(
 		const MapToMeshBasic *,
 		I32,
 		const InPiece *,
@@ -2029,9 +2029,9 @@ Result inPieceArrInitBufMeshes(
 		BorderCache *
 	)
 ) {
-	Result err = STUC_SUCCESS;
+	StucErr err = PIX_ERR_SUCCESS;
 	I32 jobCount = 0;
-	BufMeshInitJobArgs jobArgs[MAX_SUB_MAPPING_JOBS] = {0};
+	BufMeshInitJobArgs jobArgs[PIX_THREAD_MAX_SUB_MAPPING_JOBS] = {0};
 	makeJobArgs(
 		pBasic,
 		&jobCount, jobArgs, sizeof(BufMeshInitJobArgs),
@@ -2042,7 +2042,7 @@ Result inPieceArrInitBufMeshes(
 		jobCount, jobArgs, sizeof(BufMeshInitJobArgs),
 		stucBufMeshInit
 	);
-	STUC_RETURN_ERR_IFNOT(err, "");
+	PIX_ERR_RETURN_IFNOT(err, "");
 	bufMeshArrMoveToInPieces(pInPieces, jobArgs, jobCount);
 	return err;
 }
@@ -2054,16 +2054,16 @@ typedef struct SplitInPiecesAllocArr {
 
 //destroys in-piece arr after splitting
 static
-Result inPieceArrSplit(
+StucErr inPieceArrSplit(
 	MapToMeshBasic *pBasic,
 	InPieceArr *pInPieces,
 	InPieceArr *pInPiecesSplit,
 	InPieceArr *pInPiecesSplitClip,
 	SplitInPiecesAllocArr *pSplitAlloc
 ) {
-	Result err = STUC_SUCCESS;
+	StucErr err = PIX_ERR_SUCCESS;
 	I32 jobCount = 0;
-	SplitInPiecesJobArgs jobArgs[MAX_SUB_MAPPING_JOBS] = { 0 };
+	SplitInPiecesJobArgs jobArgs[PIX_THREAD_MAX_SUB_MAPPING_JOBS] = { 0 };
 	makeJobArgs(
 		pBasic,
 		&jobCount, jobArgs, sizeof(SplitInPiecesJobArgs),
@@ -2075,7 +2075,7 @@ Result inPieceArrSplit(
 		jobCount, jobArgs, sizeof(SplitInPiecesJobArgs),
 		splitInPieces
 	);
-	STUC_RETURN_ERR_IFNOT(err, "");
+	PIX_ERR_RETURN_IFNOT(err, "");
 
 	inPieceArrDestroy(pBasic->pCtx, pInPieces);
 	*pInPieces = (InPieceArr) {0};
@@ -2093,13 +2093,13 @@ Result inPieceArrSplit(
 }
 
 static
-Result inPieceArrInit(
+StucErr inPieceArrInit(
 	MapToMeshBasic *pBasic,
 	InPieceArr *pInPieces,
 	I32 *pJobCount, FindEncasedFacesJobArgs *pJobArgs,
 	bool *pEmpty
 ) {
-	Result err = STUC_SUCCESS;
+	StucErr err = PIX_ERR_SUCCESS;
 	makeJobArgs(
 		pBasic,
 		pJobCount, pJobArgs, sizeof(FindEncasedFacesJobArgs),
@@ -2111,7 +2111,7 @@ Result inPieceArrInit(
 		*pJobCount, pJobArgs, sizeof(FindEncasedFacesJobArgs),
 		stucFindEncasedFaces
 	);
-	STUC_RETURN_ERR_IFNOT(err, "");
+	PIX_ERR_RETURN_IFNOT(err, "");
 
 	linkEncasedTableEntries(
 		pBasic,
@@ -2124,7 +2124,7 @@ Result inPieceArrInit(
 
 typedef struct SnapJobArgs {
 	JobArgs core;
-	LinAlloc *pIntersectAlloc;
+	PixalcLinAlloc *pIntersectAlloc;
 	const InPieceArr *pInPieces;
 	const InPieceArr *pInPiecesClip;
 	I32 snappedCount;
@@ -2139,8 +2139,8 @@ typedef struct SnapJobInitInfo {
 static
 I32 snapJobsGetRange(const MapToMeshBasic *pBasic, void *pInitInfoVoid) {
 	SnapJobInitInfo *pInitInfo = pInitInfoVoid;
-	const LinAlloc *pIntersectAlloc = stucHTableAllocGet(pInitInfo->pMergeTable, 1);
-	return stucLinAllocGetCount(pIntersectAlloc);
+	const PixalcLinAlloc *pIntersectAlloc = stucHTableAllocGet(pInitInfo->pMergeTable, 1);
+	return pixalcLinAllocGetCount(pIntersectAlloc);
 }
 
 static
@@ -2158,29 +2158,29 @@ void snapIntersectVert(const SnapJobArgs *pArgs, VertMergeIntersect *pVert) {
 }
 
 static
-Result snapIntersectVertsInRange(void *pArgsVoid) {
-	Result err = STUC_SUCCESS;
+StucErr snapIntersectVertsInRange(void *pArgsVoid) {
+	StucErr err = PIX_ERR_SUCCESS;
 	SnapJobArgs *pArgs = pArgsVoid;
-	LinAllocIter iter = {0};
-	stucLinAllocIterInit(pArgs->pIntersectAlloc, pArgs->core.range, &iter);
-	for (; !stucLinAllocIterAtEnd(&iter); stucLinAllocIterInc(&iter)) {
-		VertMergeIntersect *pVert = stucLinAllocGetItem(&iter);
+	PixalcLinAllocIter iter = {0};
+	pixalcLinAllocIterInit(pArgs->pIntersectAlloc, pArgs->core.range, &iter);
+	for (; !pixalcLinAllocIterAtEnd(&iter); pixalcLinAllocIterInc(&iter)) {
+		VertMergeIntersect *pVert = pixalcLinAllocGetItem(&iter);
 		snapIntersectVert(pArgs, pVert);
 	}
 	return err;
 }
 
 static
-Result snapIntersectVerts(
+StucErr snapIntersectVerts(
 	MapToMeshBasic *pBasic,
 	const InPieceArr *pInPieces,
 	const InPieceArr *pInPiecesClip,
 	HTable *pMergeTable,
 	I32 *pSnappedVerts
 ) {
-	Result err = STUC_SUCCESS;
+	StucErr err = PIX_ERR_SUCCESS;
 	I32 jobCount = 0;
-	SnapJobArgs jobArgs[MAX_SUB_MAPPING_JOBS] = {0};
+	SnapJobArgs jobArgs[PIX_THREAD_MAX_SUB_MAPPING_JOBS] = {0};
 	makeJobArgs(
 		pBasic,
 		&jobCount, jobArgs, sizeof(SnapJobArgs),
@@ -2195,7 +2195,7 @@ Result snapIntersectVerts(
 		jobCount, jobArgs, sizeof(SnapJobArgs),
 		snapIntersectVertsInRange
 	);
-	STUC_RETURN_ERR_IFNOT(err, "");
+	PIX_ERR_RETURN_IFNOT(err, "");
 	*pSnappedVerts = 0;
 	for (I32 i = 0; i < jobCount; ++i) {
 		*pSnappedVerts += jobArgs[i].snappedCount;
@@ -2213,16 +2213,16 @@ typedef struct XformVertsJobInitInfo {
 static
 I32 xformVertsJobsGetRange(const MapToMeshBasic *pBasic, void *pInitInfoVoid) {
 	XformVertsJobInitInfo *pInitInfo = pInitInfoVoid;
-	LinAlloc *pVertAlloc =
+	PixalcLinAlloc *pVertAlloc =
 		stucHTableAllocGet(pInitInfo->pMergeTable, pInitInfo->vertAllocIdx);
-	return stucLinAllocGetCount(pVertAlloc);
+	return pixalcLinAllocGetCount(pVertAlloc);
 }
 
 static
 void xformVertsJobInit(MapToMeshBasic *pBasic, void *pInitInfoVoid, void *pEntryVoid) {
 	xformAndInterpVertsJobArgs *pEntry = pEntryVoid;
 	XformVertsJobInitInfo *pInitInfo = pInitInfoVoid;
-	LinAlloc *pVertAlloc =
+	PixalcLinAlloc *pVertAlloc =
 		stucHTableAllocGet(pInitInfo->pMergeTable, pInitInfo->vertAllocIdx);
 	pEntry->pVertAlloc = pVertAlloc;
 	pEntry->pOutMesh = &pBasic->outMesh;
@@ -2233,16 +2233,16 @@ void xformVertsJobInit(MapToMeshBasic *pBasic, void *pInitInfoVoid, void *pEntry
 }
 
 static
-Result xformAndInterpVerts(
+StucErr xformAndInterpVerts(
 	MapToMeshBasic *pBasic,
 	const InPieceArr *pInPieces,
 	const InPieceArr *pInPiecesClip,
 	HTable *pMergeTable,
 	I32 vertAllocIdx
 ) {
-	Result err = STUC_SUCCESS;
+	StucErr err = PIX_ERR_SUCCESS;
 	I32 jobCount = 0;
-	xformAndInterpVertsJobArgs jobArgs[MAX_SUB_MAPPING_JOBS] = {0};
+	xformAndInterpVertsJobArgs jobArgs[PIX_THREAD_MAX_SUB_MAPPING_JOBS] = {0};
 	makeJobArgs(
 		pBasic,
 		&jobCount, jobArgs, sizeof(xformAndInterpVertsJobArgs),
@@ -2259,7 +2259,7 @@ Result xformAndInterpVerts(
 		jobCount, jobArgs, sizeof(xformAndInterpVertsJobArgs),
 		stucXformAndInterpVertsInRange
 	);
-	STUC_RETURN_ERR_IFNOT(err, "");
+	PIX_ERR_RETURN_IFNOT(err, "");
 	return err;
 }
 
@@ -2289,17 +2289,17 @@ void interpAttribsJobInit(MapToMeshBasic *pBasic, void *pInitInfoVoid, void *pEn
 }
 
 static
-Result interpAttribs(
+StucErr interpAttribs(
 	MapToMeshBasic *pBasic,
 	const InPieceArr *pInPieces,
 	const InPieceArr *pInPiecesClip,
 	HTable *pMergeTable,
 	StucDomain domain,
-	Result (* job)(void *)
+	StucErr (* job)(void *)
 ) {
-	Result err = STUC_SUCCESS;
+	StucErr err = PIX_ERR_SUCCESS;
 	I32 jobCount = 0;
-	InterpAttribsJobArgs jobArgs[MAX_SUB_MAPPING_JOBS] = {0};
+	InterpAttribsJobArgs jobArgs[PIX_THREAD_MAX_SUB_MAPPING_JOBS] = {0};
 	makeJobArgs(
 		pBasic,
 		&jobCount, jobArgs, sizeof(InterpAttribsJobArgs),
@@ -2316,7 +2316,7 @@ Result interpAttribs(
 		jobCount, jobArgs, sizeof(InterpAttribsJobArgs),
 		job
 	);
-	STUC_RETURN_ERR_IFNOT(err, "");
+	PIX_ERR_RETURN_IFNOT(err, "");
 	return err;
 }
 
@@ -2326,11 +2326,11 @@ void addVertsToOutMesh(
 	HTable *pMergeTable,
 	I32 vertAllocIdx
 ) {
-	LinAlloc *pVertAlloc = stucHTableAllocGet(pMergeTable, vertAllocIdx);
-	LinAllocIter iter = {0};
-	stucLinAllocIterInit(pVertAlloc, (Range) {0, INT32_MAX}, &iter);
-	for (; !stucLinAllocIterAtEnd(&iter); stucLinAllocIterInc(&iter)) {
-		VertMerge *pEntry = stucLinAllocGetItem(&iter);
+	PixalcLinAlloc *pVertAlloc = stucHTableAllocGet(pMergeTable, vertAllocIdx);
+	PixalcLinAllocIter iter = {0};
+	pixalcLinAllocIterInit(pVertAlloc, (Range) {0, INT32_MAX}, &iter);
+	for (; !pixalcLinAllocIterAtEnd(&iter); pixalcLinAllocIterInc(&iter)) {
+		VertMerge *pEntry = pixalcLinAllocGetItem(&iter);
 		if (vertAllocIdx == 1) { //TODO make an enum for vert alloc types
 			VertMergeIntersect *pIntersect = (VertMergeIntersect *)pEntry;
 			if (pIntersect->pSnapTo) {
@@ -2372,7 +2372,7 @@ void addBufFaceToOutMesh(
 			false, NULL,
 			mergeTableMakeKey, NULL, NULL, mergeTableEntryCmp
 		);
-		STUC_ASSERT("", pEntry && result == STUC_SEARCH_FOUND);
+		PIX_ERR_ASSERT("", pEntry && result == STUC_SEARCH_FOUND);
 		BufVertType type = bufMeshGetType(pBufMesh, bufCorner);
 		if (pEntry->removed) {
 			continue;
@@ -2385,7 +2385,7 @@ void addBufFaceToOutMesh(
 				pEntry = ((VertMergeIntersect *)pEntry)->pSnapTo;
 			}
 		}
-		STUC_ASSERT("", pOutBuf->buf.count <= pOutBuf->buf.size);
+		PIX_ERR_ASSERT("", pOutBuf->buf.count <= pOutBuf->buf.size);
 		if (pOutBuf->buf.count == pOutBuf->buf.size) {
 			pOutBuf->buf.size *= 2;
 			pOutBuf->buf.pArr =
@@ -2409,7 +2409,7 @@ void addBufFaceToOutMesh(
 			continue;
 		}
 		//not a dup, add
-		STUC_ASSERT("", pOutBuf->final.count <= pOutBuf->final.size);
+		PIX_ERR_ASSERT("", pOutBuf->final.count <= pOutBuf->final.size);
 		if (pOutBuf->final.count == pOutBuf->final.size) {
 			pOutBuf->final.size *= 2;
 			pOutBuf->final.pArr = pAlloc->fpRealloc(
@@ -2462,15 +2462,15 @@ void addFacesAndCornersToOutMesh(
 }
 
 static
-Result initOutMesh(MapToMeshBasic *pBasic, HTable *pMergeTable, I32 snappedVerts) {
-	Result err = STUC_SUCCESS;
+StucErr initOutMesh(MapToMeshBasic *pBasic, HTable *pMergeTable, I32 snappedVerts) {
+	StucErr err = PIX_ERR_SUCCESS;
 	const StucAlloc *pAlloc = &pBasic->pCtx->alloc;
 	Mesh *pMesh = &pBasic->outMesh;
 	pMesh->core.type.type = STUC_OBJECT_DATA_MESH_BUF;
-	LinAlloc *pVertAlloc = stucHTableAllocGet(pMergeTable, 0);
-	LinAlloc *pIntersectVertAlloc = stucHTableAllocGet(pMergeTable, 1);
-	I32 bufVertTotal = stucLinAllocGetCount(pVertAlloc);
-	bufVertTotal += stucLinAllocGetCount(pIntersectVertAlloc);
+	PixalcLinAlloc *pVertAlloc = stucHTableAllocGet(pMergeTable, 0);
+	PixalcLinAlloc *pIntersectVertAlloc = stucHTableAllocGet(pMergeTable, 1);
+	I32 bufVertTotal = pixalcLinAllocGetCount(pVertAlloc);
+	bufVertTotal += pixalcLinAllocGetCount(pIntersectVertAlloc);
 	bufVertTotal -= snappedVerts;
 	pMesh->faceBufSize = bufVertTotal;
 	pMesh->cornerBufSize = pMesh->faceBufSize * 2;
@@ -2491,7 +2491,7 @@ Result initOutMesh(MapToMeshBasic *pBasic, HTable *pMergeTable, I32 snappedVerts
 		0,
 		true, true, false
 	);
-	STUC_THROW_IFNOT(err, "", 0);
+	PIX_ERR_THROW_IFNOT(err, "", 0);
 	err = stucAssignActiveAliases(
 		pBasic->pCtx,
 		pMesh,
@@ -2502,7 +2502,7 @@ Result initOutMesh(MapToMeshBasic *pBasic, HTable *pMergeTable, I32 snappedVerts
 		})),
 		STUC_DOMAIN_NONE
 	);
-	STUC_CATCH(0, err,
+	PIX_ERR_CATCH(0, err,
 		stucMeshDestroy(pBasic->pCtx, &pMesh->core);
 	;);
 	return err;
@@ -2557,7 +2557,7 @@ void getLowestTPiece(
 		while (pTPieces->pArr[tPieceIdx].merged) {
 			tPieceIdx = pTPieces->pArr[tPieceIdx].mergedWith;
 		}
-		STUC_ASSERT(
+		PIX_ERR_ASSERT(
 			"if t-piece is merged, it should be with a piece of a lower idx",
 			tPieceIdx <= pEntries[i].pEntry->tPiece
 		);
@@ -2578,7 +2578,7 @@ void setVertsAndMergeTPieces(
 		if (pEntries[i].result == STUC_SEARCH_FOUND &&
 			pEntries[i].pEntry->tPiece != tPiece
 		) {
-			STUC_ASSERT(
+			PIX_ERR_ASSERT(
 				"we only merge to pieces with a lower idx",
 				pEntries[i].pEntry->tPiece > tPiece
 			);
@@ -2625,13 +2625,13 @@ void addOrMergeFaceTPieces(
 			return; //no entries were found for this face
 		}
 		//all entries are new, so append new tPiece to arr
-		STUC_DYN_ARR_ADD(TPieceBuf, &pBasic->pCtx->alloc, pTPieces, tPiece);
+		PIXALC_DYN_ARR_ADD(TPieceBuf, &pBasic->pCtx->alloc, pTPieces, tPiece);
 		pTPieces->pArr[tPiece] = (TPieceBuf) {0};
 	}
 	else {
 		tPiece = lowestTPiece;
 	}
-	STUC_ASSERT("", tPiece >= 0 && tPiece < pTPieces->count);
+	PIX_ERR_ASSERT("", tPiece >= 0 && tPiece < pTPieces->count);
 	setVertsAndMergeTPieces(pTPieces, vertEntries, &face, tPiece);
 }
 
@@ -2639,15 +2639,15 @@ static
 void buildTPiecesForBufVerts(
 	const MapToMeshBasic *pBasic,
 	const InPieceArr *pInPieces, const InPieceArr *pInPiecesClip,
-	LinAlloc *pMergeAlloc,
+	PixalcLinAlloc *pMergeAlloc,
 	TPieceBufArr *pTPieces,
 	HTable *pVertTable,
 	bool *pChecked
 ) {
-	LinAllocIter iter = {0};
-	stucLinAllocIterInit(pMergeAlloc, (Range) {0, INT32_MAX}, &iter);
-	for (; !stucLinAllocIterAtEnd(&iter); stucLinAllocIterInc(&iter)) {
-		VertMerge *pEntry = stucLinAllocGetItem(&iter);
+	PixalcLinAllocIter iter = {0};
+	pixalcLinAllocIterInit(pMergeAlloc, (Range) {0, INT32_MAX}, &iter);
+	for (; !pixalcLinAllocIterAtEnd(&iter); pixalcLinAllocIterInc(&iter)) {
+		VertMerge *pEntry = pixalcLinAllocGetItem(&iter);
 		const InPiece *pInPiece = NULL;
 		const BufMesh *pBufMesh = NULL;
 		stucGetBufMeshForVertMergeEntry(
@@ -2662,7 +2662,7 @@ void buildTPiecesForBufVerts(
 			pBufMesh,
 			pEntry->bufCorner.corner
 		);
-		STUC_ASSERT(
+		PIX_ERR_ASSERT(
 			"",
 			srcFaces.in >= 0 && srcFaces.in < pBasic->pInMesh->core.faceCount
 		);
@@ -2680,13 +2680,13 @@ void buildTPieces(
 	HTable *pMergeTable,
 	TPieceArr *pTPieces
 ) {
-	LinAlloc *pMergeAlloc = stucHTableAllocGet(pMergeTable, 0);
-	LinAlloc *pMergeAllocIntersect = stucHTableAllocGet(pMergeTable, 1);
+	PixalcLinAlloc *pMergeAlloc = stucHTableAllocGet(pMergeTable, 0);
+	PixalcLinAlloc *pMergeAllocIntersect = stucHTableAllocGet(pMergeTable, 1);
 	HTable vertTable = { 0 };
 	stucHTableInit(
 		&pBasic->pCtx->alloc,
 		&vertTable,
-		stucLinAllocGetCount(pMergeAlloc) + stucLinAllocGetCount(pMergeAllocIntersect),
+		pixalcLinAllocGetCount(pMergeAlloc) + pixalcLinAllocGetCount(pMergeAllocIntersect),
 		(I32Arr) {.pArr = (I32[]){sizeof(TPieceVert)}, .count = 1},
 		NULL
 	);
@@ -2709,7 +2709,7 @@ void buildTPieces(
 		&vertTable,
 		pChecked
 	);
-	STUC_ASSERT("map-to-mesh should have returned earlier if empty", tPiecesBuf.pArr);
+	PIX_ERR_ASSERT("map-to-mesh should have returned earlier if empty", tPiecesBuf.pArr);
 	//not adding new t-pieces, only merging existing ones
 	const StucMesh *pInMesh = &pBasic->pInMesh->core;
 	for (I32 i = 0; i < pInMesh->faceCount; ++i) {
@@ -2743,19 +2743,19 @@ void buildTPieces(
 			pEntry->tPiece = bufIdx;
 			TPieceBuf *pBuf = tPiecesBuf.pArr + bufIdx;
 			if (!pBuf->added) {
-				STUC_DYN_ARR_ADD(TPiece, &pBasic->pCtx->alloc, pTPieces, pBuf->idx);
+				PIXALC_DYN_ARR_ADD(TPiece, &pBasic->pCtx->alloc, pTPieces, pBuf->idx);
 				pTPieces->pArr[pBuf->idx] = (TPiece) {0};
 				pBuf->added = true;
 			}
-			STUC_ASSERT("", pBuf->idx >= 0 && pBuf->idx < pTPieces->count);
+			PIX_ERR_ASSERT("", pBuf->idx >= 0 && pBuf->idx < pTPieces->count);
 			I32 faceArrIdx = -1;
-			STUC_DYN_ARR_ADD(
+			PIXALC_DYN_ARR_ADD(
 				TPieceInFace,
 				&pBasic->pCtx->alloc,
 				(&pTPieces->pArr[pBuf->idx].inFaces),
 				faceArrIdx
 			);
-			STUC_ASSERT("", faceArrIdx != -1);
+			PIX_ERR_ASSERT("", faceArrIdx != -1);
 			pTPieces->pArr[pBuf->idx].inFaces.pArr[faceArrIdx].idx = i;
 			pTPieces->pArr[pBuf->idx].inFaces.pArr[faceArrIdx].size = face.size;
 			pTPieces->faceCount++;
@@ -2794,18 +2794,18 @@ void copyTangentsFromJobFaces(
 }
 
 static
-Result buildTangentsForInPieces(
+StucErr buildTangentsForInPieces(
 	MapToMeshBasic *pBasic,
 	Mesh *pInMesh, //in-mesh is const in MapToMeshBasic
 	const InPieceArr *pInPieces, const InPieceArr *pInPiecesClip,
 	HTable *pMergeTable
 ) {
-	Result err = STUC_SUCCESS;
+	StucErr err = PIX_ERR_SUCCESS;
 	TPieceArr tPieces = {0};
 	buildTPieces(pBasic, pInPieces, pInPiecesClip, pMergeTable, &tPieces);
-	STUC_ASSERT("", tPieces.pArr);
+	PIX_ERR_ASSERT("", tPieces.pArr);
 	I32 jobCount = tPieces.count; //max jobs
-	TangentJobArgs jobArgs[MAX_SUB_MAPPING_JOBS] = {0};
+	TangentJobArgs jobArgs[PIX_THREAD_MAX_SUB_MAPPING_JOBS] = {0};
 	makeJobArgs(
 		pBasic,
 		&jobCount,
@@ -2823,16 +2823,16 @@ Result buildTangentsForInPieces(
 				job++;
 				jobArgs[job].core.range.start = tPieces.faceCount;
 			}
-			STUC_ASSERT("", tPieces.pArr[i].inFaces.pArr);
+			PIX_ERR_ASSERT("", tPieces.pArr[i].inFaces.pArr);
 			for (I32 j = 0; j < tPieces.pArr[i].inFaces.count; ++j) {
 				I32 faceJobLocal = -1;
-				STUC_DYN_ARR_ADD(
+				PIXALC_DYN_ARR_ADD(
 					I32,
 					&pBasic->pCtx->alloc,
 					(&jobArgs[job].faces),
 					faceJobLocal
 				);
-				STUC_ASSERT("", faceJobLocal != -1);
+				PIX_ERR_ASSERT("", faceJobLocal != -1);
 				jobArgs[job].faces.pArr[faceJobLocal] = jobArgs[job].cornerCount;
 
 				TPieceInFace face = tPieces.pArr[i].inFaces.pArr[j];
@@ -2854,11 +2854,11 @@ Result buildTangentsForInPieces(
 		jobCount, jobArgs, sizeof(TangentJobArgs),
 		stucBuildTangents
 	);
-	STUC_THROW_IFNOT(err, "", 0);
+	PIX_ERR_THROW_IFNOT(err, "", 0);
 	for (I32 i = 0; i < jobCount; ++i) {
 		copyTangentsFromJobFaces(pInMesh, &tPieces, jobArgs + i);
 	}
-	STUC_CATCH(0, err, ;);
+	PIX_ERR_CATCH(0, err, ;);
 	for (I32 i = 0; i < jobCount; ++i) {
 		pBasic->pCtx->alloc.fpFree(jobArgs[i].faces.pArr);
 		pBasic->pCtx->alloc.fpFree(jobArgs[i].pTangents);
@@ -2869,7 +2869,7 @@ Result buildTangentsForInPieces(
 }
 
 static
-Result mapToMeshInternal(
+StucErr mapToMeshInternal(
 	StucContext pCtx,
 	const StucMap pMap,
 	Mesh *pMeshIn,
@@ -2880,7 +2880,7 @@ Result mapToMeshInternal(
 	F32 wScale,
 	F32 receiveLen
 ) {
-	StucResult err = STUC_SUCCESS;
+	StucErr err = PIX_ERR_SUCCESS;
 	if (checkIfNoFacesHaveMaskIdx(pMeshIn, maskIdx)) {
 		return err;
 	}
@@ -2896,7 +2896,7 @@ Result mapToMeshInternal(
 	};
 	printf("A\n");
 	if (pInFaceTable) {
-		stucLinAllocInit(
+		pixalcLinAllocInit(
 			&pCtx->alloc,
 			&pInFaceTable->alloc,
 			sizeof(I32),
@@ -2907,14 +2907,14 @@ Result mapToMeshInternal(
 	bool empty = false;
 	InPieceArr inPieceArr = {0};
 	I32 findEncasedJobCount = 0;
-	FindEncasedFacesJobArgs findEncasedJobArgs[MAX_SUB_MAPPING_JOBS] = {0};
+	FindEncasedFacesJobArgs findEncasedJobArgs[PIX_THREAD_MAX_SUB_MAPPING_JOBS] = {0};
 	err = inPieceArrInit(
 		&basic,
 		&inPieceArr,
 		&findEncasedJobCount, findEncasedJobArgs,
 		&empty
 	);
-	STUC_RETURN_ERR_IFNOT(err, "");
+	PIX_ERR_RETURN_IFNOT(err, "");
 	printf("B\n");
 	if (!empty) {
 		BufMeshArr bufMeshes = {0};
@@ -2922,7 +2922,7 @@ Result mapToMeshInternal(
 		InPieceArr inPiecesSplit = {.pBufMeshes = &bufMeshes};
 		InPieceArr inPiecesSplitClip = {.pBufMeshes = &bufMeshesClip};
 		SplitInPiecesAllocArr splitAlloc = {
-			.pArr = (SplitInPiecesAlloc[MAX_SUB_MAPPING_JOBS]){0}
+			.pArr = (SplitInPiecesAlloc[PIX_THREAD_MAX_SUB_MAPPING_JOBS]){0}
 		};
 		err = inPieceArrSplit(
 			&basic,
@@ -2931,12 +2931,12 @@ Result mapToMeshInternal(
 			&splitAlloc
 		);
 		for (I32 i = 0; i < findEncasedJobCount; ++i) {
-			LinAlloc *pEncasedAlloc =
+			PixalcLinAlloc *pEncasedAlloc =
 				stucHTableAllocGet(&findEncasedJobArgs[i].encasedFaces, 0);
-			LinAllocIter iter = {0};
-			stucLinAllocIterInit(pEncasedAlloc, (Range) {0, INT32_MAX}, &iter);
-			for (; !stucLinAllocIterAtEnd(&iter); stucLinAllocIterInc(&iter)) {
-				EncasedMapFace *pEntry = stucLinAllocGetItem(&iter);
+			PixalcLinAllocIter iter = {0};
+			pixalcLinAllocIterInit(pEncasedAlloc, (Range) {0, INT32_MAX}, &iter);
+			for (; !pixalcLinAllocIterAtEnd(&iter); pixalcLinAllocIterInc(&iter)) {
+				EncasedMapFace *pEntry = pixalcLinAllocGetItem(&iter);
 				if (pEntry->inFaces.pArr) {
 					basic.pCtx->alloc.fpFree(pEntry->inFaces.pArr);
 					pEntry->inFaces.pArr = NULL;
@@ -2944,13 +2944,13 @@ Result mapToMeshInternal(
 			}
 			stucHTableDestroy(&findEncasedJobArgs[i].encasedFaces);
 		}
-		STUC_RETURN_ERR_IFNOT(err, "");
+		PIX_ERR_RETURN_IFNOT(err, "");
 		printf("C\n");
 		
 		err = inPieceArrInitBufMeshes(&basic, &inPiecesSplitClip, stucClipMapFace);
-		STUC_RETURN_ERR_IFNOT(err, "");
+		PIX_ERR_RETURN_IFNOT(err, "");
 		err = inPieceArrInitBufMeshes(&basic, &inPiecesSplit, stucAddMapFaceToBufMesh);
-		STUC_RETURN_ERR_IFNOT(err, "");
+		PIX_ERR_RETURN_IFNOT(err, "");
 		printf("D\n");
 
 		HTable mergeTable = {0};
@@ -2966,7 +2966,7 @@ Result mapToMeshInternal(
 			&mergeTable,
 			&snappedVerts
 		);
-		STUC_RETURN_ERR_IFNOT(err, "");
+		PIX_ERR_RETURN_IFNOT(err, "");
 		printf("F\n");
 
 		initOutMesh(&basic, &mergeTable, snappedVerts);
@@ -2986,21 +2986,21 @@ Result mapToMeshInternal(
 			&inPiecesSplit, &inPiecesSplitClip,
 			&mergeTable
 		);
-		STUC_RETURN_ERR_IFNOT(err, "");
+		PIX_ERR_RETURN_IFNOT(err, "");
 		printf("H\n");
 		
 		err = xformAndInterpVerts(&basic, &inPiecesSplit, &inPiecesSplitClip, &mergeTable, 0);
-		STUC_RETURN_ERR_IFNOT(err, "");
+		PIX_ERR_RETURN_IFNOT(err, "");
 		//intersect verts
 		err = xformAndInterpVerts(&basic, &inPiecesSplit, &inPiecesSplitClip, &mergeTable, 1);
-		STUC_RETURN_ERR_IFNOT(err, "");
+		PIX_ERR_RETURN_IFNOT(err, "");
 		err = interpAttribs(
 			&basic,
 			&inPiecesSplit, &inPiecesSplitClip,
 			&mergeTable,
 			STUC_DOMAIN_FACE, stucInterpFaceAttribs
 		);
-		STUC_RETURN_ERR_IFNOT(err, "");
+		PIX_ERR_RETURN_IFNOT(err, "");
 		//vert merge lin-idx is replaced with out-vert idx in corner-interp job,
 		// so faces must be interpolated before corners
 		err = interpAttribs(
@@ -3009,7 +3009,7 @@ Result mapToMeshInternal(
 			&mergeTable,
 			STUC_DOMAIN_CORNER, stucInterpCornerAttribs
 		);
-		STUC_RETURN_ERR_IFNOT(err, "");
+		PIX_ERR_RETURN_IFNOT(err, "");
 		printf("I\n");
 
 		stucReallocMeshToFit(pCtx, &basic.outMesh);
@@ -3018,13 +3018,13 @@ Result mapToMeshInternal(
 	cleanUp:
 		for (I32 i = 0; i < splitAlloc.count; ++i) {
 			if (splitAlloc.pArr[i].encased.valid) {
-				stucLinAllocDestroy(&splitAlloc.pArr[i].encased);
+				pixalcLinAllocDestroy(&splitAlloc.pArr[i].encased);
 			}
 			if (splitAlloc.pArr[i].inFace.valid) {
-				stucLinAllocDestroy(&splitAlloc.pArr[i].inFace);
+				pixalcLinAllocDestroy(&splitAlloc.pArr[i].inFace);
 			}
 			if (splitAlloc.pArr[i].border.valid) {
-				stucLinAllocDestroy(&splitAlloc.pArr[i].border);
+				pixalcLinAllocDestroy(&splitAlloc.pArr[i].border);
 			}
 		}
 		stucHTableDestroy(&mergeTable);
@@ -3034,7 +3034,7 @@ Result mapToMeshInternal(
 		bufMeshArrDestroy(pCtx, &bufMeshesClip);
 		printf("K\n");
 	}
-	STUC_CATCH(0, err, ;);
+	PIX_ERR_CATCH(0, err, ;);
 	return err;
 }
 
@@ -3084,7 +3084,7 @@ void InFaceTableToHashTable(
 }
 
 static
-Result getOriginIndexedAttrib(
+StucErr getOriginIndexedAttrib(
 	StucContext pCtx,
 	Attrib *pAttrib,
 	const StucMapArr *pMapArr,
@@ -3094,7 +3094,7 @@ Result getOriginIndexedAttrib(
 	const AttribIndexed **ppMatsToAdd,
 	StucDomain domain
 ) {
-	Result err = STUC_SUCCESS;
+	StucErr err = PIX_ERR_SUCCESS;
 	switch (pAttrib->origin) {
 		case STUC_ATTRIB_ORIGIN_MAP:
 			*ppMatsToAdd = pMapIndexedAttrib;
@@ -3119,13 +3119,13 @@ Result getOriginIndexedAttrib(
 			break;
 		}
 		default:
-			STUC_ASSERT("invalid attrib origin for this function", false);
+			PIX_ERR_ASSERT("invalid attrib origin for this function", false);
 	}
 	return err;
 }
 
 static
-Result iterFacesAndCorrectIdxAttrib(
+StucErr iterFacesAndCorrectIdxAttrib(
 	StucContext pCtx,
 	Attrib *pAttrib,
 	Mesh *pMesh,
@@ -3133,8 +3133,8 @@ Result iterFacesAndCorrectIdxAttrib(
 	const AttribIndexed *pOriginIndexedAttrib,
 	StucDomain domain
 ) {
-	Result err = STUC_SUCCESS;
-	STUC_RETURN_ERR_IFNOT_COND(err, pAttrib->core.type == STUC_ATTRIB_I8, "");
+	StucErr err = PIX_ERR_SUCCESS;
+	PIX_ERR_RETURN_IFNOT_COND(err, pAttrib->core.type == STUC_ATTRIB_I8, "");
 
 	typedef struct TableEntry {
 		I8 idx;
@@ -3147,7 +3147,7 @@ Result iterFacesAndCorrectIdxAttrib(
 	I32 domainCount = stucDomainCountGetIntern(&pMesh->core, domain);
 	for (I32 i = 0; i < domainCount; ++i) {
 		I32 idx = pIdx[i];
-		STUC_THROW_IFNOT_COND(err, idx >= 0 && idx < pOriginIndexedAttrib->count, "", 0);
+		PIX_ERR_THROW_IFNOT_COND(err, idx >= 0 && idx < pOriginIndexedAttrib->count, "", 0);
 		TableEntry *pEntry = pTable + idx;
 		if (!pEntry->hasRef) {
 			pEntry->hasRef = true;
@@ -3171,13 +3171,13 @@ Result iterFacesAndCorrectIdxAttrib(
 		}
 		pIdx[i] = pEntry->idx;
 	}
-	STUC_CATCH(0, err, ;);
+	PIX_ERR_CATCH(0, err, ;);
 	pCtx->alloc.fpFree(pTable);
 	return err;
 }
 
 static
-Result getIndexedAttribInMaps(
+StucErr getIndexedAttribInMaps(
 	StucContext pCtx,
 	const Mesh *pMesh,
 	const StucMapArr *pMapArr,
@@ -3186,7 +3186,7 @@ Result getIndexedAttribInMaps(
 	StucDomain domain,
 	const AttribIndexed ***pppOut
 ) {
-	Result err = STUC_SUCCESS;
+	StucErr err = PIX_ERR_SUCCESS;
 	const AttribIndexed **ppAttribs = pCtx->alloc.fpCalloc(pMapArr->count, sizeof(void *));
 	bool found = false;
 	*pSame = true;
@@ -3210,12 +3210,12 @@ Result getIndexedAttribInMaps(
 					false,
 					&pMapAttrib
 				);
-				STUC_THROW_IFNOT_COND(err, pMapAttrib, "", 0);
+				PIX_ERR_THROW_IFNOT_COND(err, pMapAttrib, "", 0);
 				pName = pMapAttrib->core.name;
 				break;
 			}
 			default:
-				STUC_ASSERT("invalid attrib origin", false);
+				PIX_ERR_ASSERT("invalid attrib origin", false);
 		}
 		const AttribIndexed *pIndexedAttrib =
 			stucGetAttribIndexedInternConst(&pMap->indexedAttribs, pName);
@@ -3234,14 +3234,14 @@ Result getIndexedAttribInMaps(
 		*pppOut = ppAttribs;
 		return err;
 	}
-	STUC_CATCH(0, err, ;);
+	PIX_ERR_CATCH(0, err, ;);
 	pCtx->alloc.fpFree(ppAttribs);
 	*pppOut = NULL;
 	return err;
 }
 
 static
-Result correctIdxIndices(
+StucErr correctIdxIndices(
 	StucContext pCtx,
 	const char *pName,
 	Mesh *pMeshArr,
@@ -3251,7 +3251,7 @@ Result correctIdxIndices(
 	AttribIndexed *pOutIndexedAttrib,
 	StucDomain domain
 ) {
-	Result err = STUC_SUCCESS;
+	StucErr err = PIX_ERR_SUCCESS;
 	const AttribIndexed *pInIndexedAttrib =
 		stucGetAttribIndexedInternConst(pInIndexedAttribs, pName);
 	for (I32 i = 0; i < pMapArr->count; ++i) {
@@ -3272,8 +3272,8 @@ Result correctIdxIndices(
 			&pOriginIndexedAttrib,
 			domain
 		);
-		STUC_RETURN_ERR_IFNOT(err, "");
-		STUC_RETURN_ERR_IFNOT_COND(
+		PIX_ERR_RETURN_IFNOT(err, "");
+		PIX_ERR_RETURN_IFNOT_COND(
 			err,
 			pOriginIndexedAttrib,
 			"no indexed attrib found for idx attrib in mesh"
@@ -3286,20 +3286,20 @@ Result correctIdxIndices(
 			pOriginIndexedAttrib,
 			domain
 		);
-		STUC_RETURN_ERR_IFNOT(err, "");
+		PIX_ERR_RETURN_IFNOT(err, "");
 	}
 	return err;
 }
 
 static
-Result mergeIndexedAttribs(
+StucErr mergeIndexedAttribs(
 	StucContext pCtx,
 	Mesh *pMeshArr,
 	const StucMapArr *pMapArr,
 	const AttribIndexedArr *pInIndexedAttribs,
 	AttribIndexedArr *pOutIndexedAttribs
 ) {
-	Result err = STUC_SUCCESS;
+	StucErr err = PIX_ERR_SUCCESS;
 	const StucAlloc *pAlloc = &pCtx->alloc;
 	pOutIndexedAttribs->size = pInIndexedAttribs->count;
 	pOutIndexedAttribs->pArr =
@@ -3327,7 +3327,7 @@ Result mergeIndexedAttribs(
 						pOutIndexedAttribs,
 						pInIndexedAttribs
 					);
-					STUC_THROW_IFNOT(err, "", 0);
+					PIX_ERR_THROW_IFNOT(err, "", 0);
 					continue;
 				}
 				bool same = false;
@@ -3341,7 +3341,7 @@ Result mergeIndexedAttribs(
 					j,
 					&ppMapAttribs
 				);
-				STUC_THROW_IFNOT_COND(err, ppMapAttribs, "", 0);
+				PIX_ERR_THROW_IFNOT_COND(err, ppMapAttribs, "", 0);
 				//if (same) {
 					//get map to add
 					//append and copy into out
@@ -3359,16 +3359,16 @@ Result mergeIndexedAttribs(
 							}
 							break;
 						case STUC_ATTRIB_ORIGIN_COMMON:
-							STUC_ASSERT("", pAttrib->origin == STUC_ATTRIB_ORIGIN_COMMON);
+							PIX_ERR_ASSERT("", pAttrib->origin == STUC_ATTRIB_ORIGIN_COMMON);
 							pRefAttrib = stucGetAttribIndexedInternConst(
 								pInIndexedAttribs,
 								pAttrib->core.name
 							);
 							break;
 						default:
-							STUC_ASSERT("invalid attrib origin", false);
+							PIX_ERR_ASSERT("invalid attrib origin", false);
 					}
-					STUC_ASSERT("", pRefAttrib);
+					PIX_ERR_ASSERT("", pRefAttrib);
 					pIndexedAttrib = stucAppendIndexedAttrib(
 						pCtx,
 						pOutIndexedAttribs,
@@ -3388,11 +3388,11 @@ Result mergeIndexedAttribs(
 					pIndexedAttrib,
 					j
 				);
-				STUC_THROW_IFNOT(err, "", 0);
+				PIX_ERR_THROW_IFNOT(err, "", 0);
 			}
 		}
 	}
-	STUC_CATCH(0, err, ;)
+	PIX_ERR_CATCH(0, err, ;)
 	return err;
 }
 
@@ -3408,7 +3408,7 @@ typedef struct StucMapToMeshArgs {
 } StucMapToMeshArgs;
 
 static
-Result mapToMeshFromJob(void *pArgsVoid) {
+StucErr mapToMeshFromJob(void *pArgsVoid) {
 	StucMapToMeshArgs *pArgs = pArgsVoid;
 	return stucMapToMesh(
 		pArgs->pCtx,
@@ -3422,7 +3422,7 @@ Result mapToMeshFromJob(void *pArgsVoid) {
 	);
 }
 
-Result stucQueueMapToMesh(
+StucErr stucQueueMapToMesh(
 	StucContext pCtx,
 	void **ppJobHandle,
 	StucMapArr *pMapArr,
@@ -3449,11 +3449,11 @@ Result stucQueueMapToMesh(
 		mapToMeshFromJob,
 		(void **)&pArgs
 	);
-	return STUC_SUCCESS;
+	return PIX_ERR_SUCCESS;
 }
 
 static
-Result mapMapArrToMesh(
+StucErr mapMapArrToMesh(
 	StucContext pCtx,
 	const StucMapArr *pMapArr,
 	Mesh *pMeshIn,
@@ -3463,7 +3463,7 @@ Result mapMapArrToMesh(
 	F32 wScale,
 	F32 receiveLen
 ) {
-	Result err = STUC_SUCCESS;
+	StucErr err = PIX_ERR_SUCCESS;
 	Mesh *pOutBufArr = pCtx->alloc.fpCalloc(pMapArr->count, sizeof(Mesh));
 	StucObject *pOutObjWrapArr =
 		pCtx->alloc.fpCalloc(pMapArr->count, sizeof(StucObject));
@@ -3486,7 +3486,7 @@ Result mapMapArrToMesh(
 				squares.pMesh,
 				squares.pFaceBBoxes
 			);
-			STUC_THROW_IFNOT(err, "failed to create usg quadtree", 0);
+			PIX_ERR_THROW_IFNOT(err, "failed to create usg quadtree", 0);
 			StucMesh squaresOut = { 0 };
 			err = mapToMeshInternal(
 				pCtx,
@@ -3499,7 +3499,7 @@ Result mapMapArrToMesh(
 				1.0f,
 				-1.0f
 			);
-			STUC_THROW_IFNOT(err, "map to mesh usg failed", 1);
+			PIX_ERR_THROW_IFNOT(err, "map to mesh usg failed", 1);
 			err = stucSampleInAttribsAtUsgOrigins(
 				pCtx,
 				pMap,
@@ -3507,10 +3507,10 @@ Result mapMapArrToMesh(
 				&squaresOut,
 				inFaceTable.pArr
 			);
-			STUC_THROW_IFNOT(err, "", 1);
+			PIX_ERR_THROW_IFNOT(err, "", 1);
 			InFaceTableToHashTable(&pCtx->alloc, pMap, squaresOut.faceCount, inFaceTable.pArr);
 			//*pMeshOut = squaresOut;
-			//return STUC_SUCCESS;
+			//return PIX_ERR_SUCCESS;
 			stucMeshDestroy(pCtx, &squaresOut);
 			stucAssignActiveAliases(
 				pCtx,
@@ -3533,15 +3533,15 @@ Result mapMapArrToMesh(
 			wScale,
 			receiveLen
 		);
-		STUC_THROW_IFNOT(err, "map to mesh failed", 1);
-		STUC_CATCH(1, err, ;);
+		PIX_ERR_THROW_IFNOT(err, "map to mesh failed", 1);
+		PIX_ERR_CATCH(1, err, ;);
 		if (pMap->usgArr.count) {
 			pCtx->alloc.fpFree(pMap->usgArr.pInFaceTable);
 			pMap->usgArr.pInFaceTable = NULL;
-			stucLinAllocDestroy(&inFaceTable.alloc);
+			pixalcLinAllocDestroy(&inFaceTable.alloc);
 			inFaceTable = (InFaceTable) {0};
 		}
-		STUC_THROW_IFNOT(err, "", 0);
+		PIX_ERR_THROW_IFNOT(err, "", 0);
 	}
 	pMeshOut->type.type = STUC_OBJECT_DATA_MESH;
 	Mesh meshOutWrap = {.core = *pMeshOut};
@@ -3552,11 +3552,11 @@ Result mapMapArrToMesh(
 		pInIndexedAttribs,
 		pOutIndexedAttribs
 	);
-	STUC_THROW_IFNOT(err, "", 0);
+	PIX_ERR_THROW_IFNOT(err, "", 0);
 	err = stucMergeObjArr(pCtx, &meshOutWrap, pMapArr->count, pOutObjWrapArr, false);
-	STUC_THROW_IFNOT(err, "", 0);
+	PIX_ERR_THROW_IFNOT(err, "", 0);
 	*pMeshOut = meshOutWrap.core;
-	STUC_CATCH(0, err,
+	PIX_ERR_CATCH(0, err,
 		stucMeshDestroy(pCtx, pMeshOut);
 	);
 	//meshes are stored on an arr buf, which we can't call stucObjArrDestroy
@@ -3569,17 +3569,17 @@ Result mapMapArrToMesh(
 }
 
 static
-Result appendSpAttribsToInMesh(
+StucErr appendSpAttribsToInMesh(
 	const StucContext pCtx,
 	Mesh *pWrap,
 	const StucMesh *pMeshIn,
 	UBitField32 flags
 ) {
-	Result err = STUC_SUCCESS;
+	StucErr err = PIX_ERR_SUCCESS;
 	UBitField32 has = 0;
 	stucQuerySpAttribs(pCtx, pMeshIn, flags, &has);
 	if (has) {
-		STUC_RETURN_ERR(err, "in-mesh contains attribs it shouldn't");
+		PIX_ERR_RETURN(err, "in-mesh contains attribs it shouldn't");
 	}
 	Mesh meshInCpy = {.core = *pMeshIn};
 	const Mesh *const pMeshInCpyPtr = &meshInCpy;
@@ -3634,31 +3634,31 @@ void destroyAppendedSpAttribs(StucContext pCtx, StucMesh *pMesh, UBitField32 fla
 }
 
 static
-Result initMeshInWrap(
+StucErr initMeshInWrap(
 	StucContext pCtx,
 	Mesh *pWrap,
 	StucMesh meshIn, //passed by value so we can set active attrib domains if missing
 	UBitField32 spAttribsToAppend,
 	bool *pBuildEdges
 ) {
-	Result err = STUC_SUCCESS;
+	StucErr err = PIX_ERR_SUCCESS;
 	err = attemptToSetMissingActiveDomains(&meshIn);
-	STUC_RETURN_ERR_IFNOT(err, "");
+	PIX_ERR_RETURN_IFNOT(err, "");
 	stucAliasMeshCoreNoAttribs(&pWrap->core, &meshIn);
 	*pBuildEdges = !meshIn.edgeCount;
 	if (*pBuildEdges) {
 		printf("no edge list found, building one\n");
-		STUC_RETURN_ERR_IFNOT_COND(
+		PIX_ERR_RETURN_IFNOT_COND(
 			err,
 			!meshIn.edgeAttribs.count,
 			"in-mesh has edge attribs, yet no edge list"
 		);
 		err = stucBuildEdgeList(pCtx, pWrap);
-		STUC_RETURN_ERR_IFNOT(err, "failed to build edge list");
+		PIX_ERR_RETURN_IFNOT(err, "failed to build edge list");
 		printf("finished building edge list\n");
 	}
 	err = appendSpAttribsToInMesh(pCtx, pWrap, &meshIn, spAttribsToAppend);
-	STUC_RETURN_ERR_IFNOT(err, "");
+	PIX_ERR_RETURN_IFNOT(err, "");
 	stucSetAttribOrigins(&pWrap->core.meshAttribs, STUC_ATTRIB_ORIGIN_MESH_IN);
 	stucSetAttribOrigins(&pWrap->core.faceAttribs, STUC_ATTRIB_ORIGIN_MESH_IN);
 	stucSetAttribOrigins(&pWrap->core.cornerAttribs, STUC_ATTRIB_ORIGIN_MESH_IN);
@@ -3675,10 +3675,10 @@ Result initMeshInWrap(
 		})),
 		STUC_DOMAIN_NONE
 	);
-	STUC_RETURN_ERR_IFNOT(err, "");
+	PIX_ERR_RETURN_IFNOT(err, "");
 
 	//err = stucBuildTangents(pWrap);
-	STUC_RETURN_ERR_IFNOT(err, "failed to build tangents");
+	PIX_ERR_RETURN_IFNOT(err, "failed to build tangents");
 	buildEdgeAdj(pWrap);
 	buildSeamAndPreserveTables(pWrap);
 
@@ -3701,7 +3701,7 @@ Result initMeshInWrap(
 	return err;
 }
 
-Result stucMapToMesh(
+StucErr stucMapToMesh(
 	StucContext pCtx,
 	const StucMapArr *pMapArr,
 	const StucMesh *pMeshIn,
@@ -3711,10 +3711,10 @@ Result stucMapToMesh(
 	F32 wScale,
 	F32 receiveLen
 ) {
-	StucResult err = STUC_SUCCESS;
-	STUC_RETURN_ERR_IFNOT_COND(err, pMeshIn, "");
+	StucErr err = PIX_ERR_SUCCESS;
+	PIX_ERR_RETURN_IFNOT_COND(err, pMeshIn, "");
 	err = stucValidateMesh(pMeshIn, false);
-	STUC_RETURN_ERR_IFNOT(err, "invalid in-mesh");
+	PIX_ERR_RETURN_IFNOT(err, "invalid in-mesh");
 	Mesh meshInWrap = {0};
 	UBitField32 spAttribsToAppend = STUC_ATTRIB_USE_FIELD(((StucAttribUse[]) {
 		STUC_ATTRIB_USE_TANGENT,
@@ -3733,9 +3733,9 @@ Result stucMapToMesh(
 		spAttribsToAppend,
 		&builtEdges
 	);
-	STUC_THROW_IFNOT(err, "", 0);
+	PIX_ERR_THROW_IFNOT(err, "", 0);
 
-	STUC_THROW_IFNOT_COND(
+	PIX_ERR_THROW_IFNOT_COND(
 		err,
 		pMapArr && pMapArr->count && pMapArr->pMatArr && pMapArr->ppArr,
 		"", 0
@@ -3751,9 +3751,9 @@ Result stucMapToMesh(
 		wScale,
 		receiveLen
 	);
-	STUC_THROW_IFNOT(err, "mapMapArrToMesh returned error", 0);
+	PIX_ERR_THROW_IFNOT(err, "mapMapArrToMesh returned error", 0);
 	printf("----------------------FINISHING IN-MESH\n");
-	STUC_CATCH(0, err, ;);
+	PIX_ERR_CATCH(0, err, ;);
 	if (builtEdges && meshInWrap.core.pEdges) {
 		if (meshInWrap.core.pEdges) {
 			pCtx->alloc.fpFree(meshInWrap.core.pEdges);
@@ -3764,7 +3764,7 @@ Result stucMapToMesh(
 	return err;
 }
 
-Result stucObjArrDestroy(
+StucErr stucObjArrDestroy(
 	StucContext pCtx,
 	I32 objCount,
 	StucObject *pObjArr
@@ -3772,18 +3772,18 @@ Result stucObjArrDestroy(
 	return stucDestroyObjArr(pCtx, objCount, pObjArr);
 }
 
-Result stucUsgArrDestroy(StucContext pCtx, I32 count, StucUsg *pUsgArr) {
-	Result err = STUC_NOT_SET;
+StucErr stucUsgArrDestroy(StucContext pCtx, I32 count, StucUsg *pUsgArr) {
+	StucErr err = PIX_ERR_NOT_SET;
 	for (I32 i = 0; i < count; ++i) {
 		err = stucMeshDestroy(pCtx, (StucMesh *)pUsgArr[i].obj.pData);
-		STUC_THROW_IFNOT(err, "", 0);
+		PIX_ERR_THROW_IFNOT(err, "", 0);
 	}
 	pCtx->alloc.fpFree(pUsgArr);
-	STUC_CATCH(0, err, ;)
+	PIX_ERR_CATCH(0, err, ;)
 	return err;
 }
 
-StucResult stucMeshDestroy(StucContext pCtx, StucMesh *pMesh) {
+StucErr stucMeshDestroy(StucContext pCtx, StucMesh *pMesh) {
 	for (I32 i = 0; i < pMesh->meshAttribs.count; ++i) {
 		if (pMesh->meshAttribs.pArr[i].core.pData) {
 			pCtx->alloc.fpFree(pMesh->meshAttribs.pArr[i].core.pData);
@@ -3833,33 +3833,33 @@ StucResult stucMeshDestroy(StucContext pCtx, StucMesh *pMesh) {
 	if (pMesh->pEdges) {
 		pCtx->alloc.fpFree(pMesh->pEdges);
 	}
-	return STUC_SUCCESS;
+	return PIX_ERR_SUCCESS;
 }
 
-StucResult stucGetAttribSize(StucAttribCore *pAttrib, I32 *pSize) {
+StucErr stucGetAttribSize(StucAttribCore *pAttrib, I32 *pSize) {
 	*pSize = stucGetAttribSizeIntern(pAttrib->type);
-	return STUC_SUCCESS;
+	return PIX_ERR_SUCCESS;
 }
 
-StucResult stucGetAttrib(const char *pName, StucAttribArray *pAttribs, StucAttrib **ppAttrib) {
+StucErr stucGetAttrib(const char *pName, StucAttribArray *pAttribs, StucAttrib **ppAttrib) {
 	*ppAttrib = stucGetAttribIntern(pName, pAttribs, false, NULL, NULL);
-	return STUC_SUCCESS;
+	return PIX_ERR_SUCCESS;
 }
 
-StucResult stucAttribGetAsVoid(StucAttribCore *pAttrib, int32_t idx, void **ppOut) {
-	StucResult err = STUC_SUCCESS;
-	STUC_RETURN_ERR_IFNOT_COND(err, pAttrib && ppOut && idx >= 0, "");
+StucErr stucAttribGetAsVoid(StucAttribCore *pAttrib, int32_t idx, void **ppOut) {
+	StucErr err = PIX_ERR_SUCCESS;
+	PIX_ERR_RETURN_IFNOT_COND(err, pAttrib && ppOut && idx >= 0, "");
 	*ppOut = stucAttribAsVoid(pAttrib, idx);
-	return STUC_SUCCESS;
+	return PIX_ERR_SUCCESS;
 }
 
-StucResult stucGetAttribIndexed(
+StucErr stucGetAttribIndexed(
 	const char *pName,
 	StucAttribIndexedArr *pAttribs,
 	StucAttribIndexed **ppAttrib
 ) {
 	*ppAttrib = stucGetAttribIndexedIntern(pAttribs, pName);
-	return STUC_SUCCESS;
+	return PIX_ERR_SUCCESS;
 }
 
 typedef struct RenderArgs {
@@ -3885,7 +3885,7 @@ void testPixelAgainstFace(
 	I8 triCorners[4] = {0};
 	V3_F32 bc = stucGetBarycentricInFaceFromVerts(pMesh, pFace, triCorners, *pPos);
 	if (bc.d[0] < -.0001f || bc.d[1] < -.0001f || bc.d[2] < -.0001f ||
-		!v3F32IsFinite(bc)) {
+		!pixmV3F32IsFinite(bc)) {
 		return;
 	}
 	V3_F32 vertsXyz[3] = {0};
@@ -3893,14 +3893,14 @@ void testPixelAgainstFace(
 		I32 vertIdx = pMesh->core.pCorners[pFace->start + triCorners[i]];
 		vertsXyz[i] = pMesh->pPos[vertIdx];
 	}
-	V3_F32 wsPos = stucBarycentricToCartesian(vertsXyz, bc);
+	V3_F32 wsPos = pixmBarycentricToCartesian(vertsXyz, bc);
 	//the alpha channel is used as a depth buffer
 	if (wsPos.d[2] <= pColor->d[3]) {
 		return;
 	}
 	V3_F32 ab = _(vertsXyz[1] V3SUB vertsXyz[0]);
 	V3_F32 ac = _(vertsXyz[2] V3SUB vertsXyz[0]);
-	V3_F32 normal = v3F32Cross(ab, ac);
+	V3_F32 normal = pixmV3F32Cross(ab, ac);
 	F32 normalLen = sqrtf(
 		normal.d[0] * normal.d[0] +
 		normal.d[1] * normal.d[1] +
@@ -3978,8 +3978,8 @@ void testPixelAgainstCellFaces(
 }
 
 static
-Result stucRenderJob(void *pArgs) {
-	Result err = STUC_SUCCESS;
+StucErr stucRenderJob(void *pArgs) {
+	StucErr err = PIX_ERR_SUCCESS;
 	RenderArgs args = *(RenderArgs *)pArgs;
 	I32 dataLen = args.pixelCount * getPixelSize(args.imageBuf.type);
 	args.imageBuf.pData = args.pCtx->alloc.fpMalloc(dataLen);
@@ -4044,12 +4044,12 @@ V2_F32 getZBounds(StucMap pMap) {
 	return zBounds;
 }
 
-StucResult stucMapFileGenPreviewImage(
+StucErr stucMapFileGenPreviewImage(
 	StucContext pCtx,
 	StucMap pMap,
 	StucImage *pImage
 ) {
-	Result err = STUC_SUCCESS;
+	StucErr err = PIX_ERR_SUCCESS;
 	V2_F32 zBounds = getZBounds(pMap);
 	I32 pixelCount = pImage->res * pImage->res;
 	I32 pixelsPerJob = pixelCount / pCtx->threadCount;
@@ -4057,8 +4057,8 @@ StucResult stucMapFileGenPreviewImage(
 	void *pMutex = NULL;
 	pCtx->threadPool.fpMutexGet(pCtx->pThreadPoolHandle, &pMutex);
 	I32 activeJobs = 0;
-	void *jobArgPtrs[MAX_THREADS] = {0};
-	RenderArgs args[MAX_THREADS] = {0};
+	void *jobArgPtrs[PIX_THREAD_MAX_THREADS] = {0};
+	RenderArgs args[PIX_THREAD_MAX_THREADS] = {0};
 	activeJobs = singleThread ? 1 : pCtx->threadCount;
 	for (I32 i = 0; i < activeJobs; ++i) {
 		args[i].bufOffset = i * pixelsPerJob;
@@ -4082,11 +4082,11 @@ StucResult stucMapFileGenPreviewImage(
 		stucRenderJob,
 		jobArgPtrs
 	);
-	stucWaitForJobsIntern(pCtx->pThreadPoolHandle, activeJobs, ppJobHandles, true, NULL);
+	pixthWaitForJobsIntern(pCtx->pThreadPoolHandle, activeJobs, ppJobHandles, true, NULL);
 	err = stucJobGetErrs(pCtx, activeJobs, &ppJobHandles);
 	stucJobDestroyHandles(pCtx, activeJobs, ppJobHandles);
 	pCtx->alloc.fpFree(ppJobHandles);
-	STUC_THROW_IFNOT(err, "", 0);
+	PIX_ERR_THROW_IFNOT(err, "", 0);
 	I32 pixelSize = getPixelSize(pImage->type);
 	pImage->pData = pCtx->alloc.fpMalloc(pixelCount * pixelSize);
 	for (I32 i = 0; i < activeJobs; ++i) {
@@ -4094,7 +4094,7 @@ StucResult stucMapFileGenPreviewImage(
 		I32 bytesToCopy = pixelSize * args[i].pixelCount;
 		memcpy(pImageOffset, args[i].imageBuf.pData, bytesToCopy);
 	}
-	STUC_CATCH(0, err, ;);
+	PIX_ERR_CATCH(0, err, ;);
 	pCtx->threadPool.fpMutexDestroy(pCtx->pThreadPoolHandle, pMutex);
 	for (I32 i = 0; i < activeJobs; ++i) {
 		pCtx->alloc.fpFree(args[i].imageBuf.pData);
@@ -4110,7 +4110,7 @@ void stucMapIndexedAttribsGet(
 	*pIndexedAttribs = pMap->indexedAttribs;
 }
 
-Result stucWaitForJobs(
+StucErr stucWaitForJobs(
 	StucContext pCtx,
 	I32 count,
 	void **ppHandles,
@@ -4126,24 +4126,24 @@ Result stucWaitForJobs(
 	);
 }
 
-Result stucJobGetErrs(
+StucErr stucJobGetErrs(
 	StucContext pCtx,
 	I32 jobCount,
 	void ***pppJobHandles
 ) {
-	Result err = STUC_SUCCESS;
-	STUC_ASSERT("", pCtx && pppJobHandles);
-	STUC_ASSERT("", jobCount > 0);
+	StucErr err = PIX_ERR_SUCCESS;
+	PIX_ERR_ASSERT("", pCtx && pppJobHandles);
+	PIX_ERR_ASSERT("", jobCount > 0);
 	for (I32 i = 0; i < jobCount; ++i) {
-		StucResult jobErr = STUC_NOT_SET;
+		StucErr jobErr = PIX_ERR_NOT_SET;
 		err = pCtx->threadPool.fpGetJobErr(
 			pCtx->pThreadPoolHandle,
 			(*pppJobHandles)[i],
 			&jobErr
 		);
-		STUC_THROW_IFNOT_COND(err, jobErr == STUC_SUCCESS, "", 0);
+		PIX_ERR_THROW_IFNOT_COND(err, jobErr == PIX_ERR_SUCCESS, "", 0);
 	}
-	STUC_CATCH(0, err, ;);
+	PIX_ERR_CATCH(0, err, ;);
 	return err;
 }
 
@@ -4152,8 +4152,8 @@ void stucJobDestroyHandles(
 	I32 jobCount,
 	void **ppJobHandles
 ) {
-	STUC_ASSERT("", pCtx && ppJobHandles);
-	STUC_ASSERT("", jobCount > 0);
+	PIX_ERR_ASSERT("", pCtx && ppJobHandles);
+	PIX_ERR_ASSERT("", jobCount > 0);
 	for (I32 i = 0; i < jobCount; ++i) {
 		pCtx->threadPool.fpJobHandleDestroy(
 			pCtx->pThreadPoolHandle,
@@ -4162,33 +4162,33 @@ void stucJobDestroyHandles(
 	}
 }
 
-Result stucAttribSpTypesGet(StucContext pCtx, const AttribType **ppTypes) {
-	Result err = STUC_SUCCESS;
-	STUC_RETURN_ERR_IFNOT_COND(err, pCtx && ppTypes, "");
+StucErr stucAttribSpTypesGet(StucContext pCtx, const AttribType **ppTypes) {
+	StucErr err = PIX_ERR_SUCCESS;
+	PIX_ERR_RETURN_IFNOT_COND(err, pCtx && ppTypes, "");
 	*ppTypes = pCtx->spAttribTypes;
 	return err;
 }
 
-Result stucAttribSpDomainsGet(StucContext pCtx, const StucDomain **ppDomains) {
-	Result err = STUC_SUCCESS;
-	STUC_RETURN_ERR_IFNOT_COND(err, pCtx && ppDomains, "");
+StucErr stucAttribSpDomainsGet(StucContext pCtx, const StucDomain **ppDomains) {
+	StucErr err = PIX_ERR_SUCCESS;
+	PIX_ERR_RETURN_IFNOT_COND(err, pCtx && ppDomains, "");
 	*ppDomains = pCtx->spAttribDomains;
 	return err;
 }
 
-Result stucAttribSpIsValid(
+StucErr stucAttribSpIsValid(
 	StucContext pCtx,
 	const AttribCore *pCore,
 	StucDomain domain
 ) {
-	Result err = STUC_SUCCESS;
-	STUC_RETURN_ERR_IFNOT_COND(err, pCtx && pCore, "");
+	StucErr err = PIX_ERR_SUCCESS;
+	PIX_ERR_RETURN_IFNOT_COND(err, pCtx && pCore, "");
 	return 
 		pCtx->spAttribTypes[pCore->use] == pCore->type &&
 		pCtx->spAttribDomains[pCore->use] == domain;
 }
 
-Result stucAttribGetAllDomains(
+StucErr stucAttribGetAllDomains(
 	StucContext pCtx,
 	StucMesh *pMesh,
 	const char *pName,
@@ -4204,10 +4204,10 @@ Result stucAttribGetAllDomains(
 			break;
 		}
 	}
-	return STUC_SUCCESS;
+	return PIX_ERR_SUCCESS;
 }
 
-StucResult stucAttribGetAllDomainsConst(
+StucErr stucAttribGetAllDomainsConst(
 	StucContext pCtx,
 	const StucMesh *pMesh,
 	const char *pName,
@@ -4217,19 +4217,19 @@ StucResult stucAttribGetAllDomainsConst(
 	return stucAttribGetAllDomains(pCtx, (StucMesh *)pMesh, pName, (StucAttrib **)ppAttrib, pDomain);
 }
 
-StucResult stucAttribArrGet(
+StucErr stucAttribArrGet(
 	StucContext pCtx,
 	StucMesh *pMesh,
 	StucDomain domain,
 	StucAttribArray **ppArr
 ) {
-	Result err = STUC_SUCCESS;
-	STUC_RETURN_ERR_IFNOT_COND(err, pCtx && pMesh && ppArr, "");
+	StucErr err = PIX_ERR_SUCCESS;
+	PIX_ERR_RETURN_IFNOT_COND(err, pCtx && pMesh && ppArr, "");
 	*ppArr = stucGetAttribArrFromDomain(pMesh, domain);
 	return err;
 }
 
-StucResult stucAttribArrGetConst(
+StucErr stucAttribArrGetConst(
 	StucContext pCtx,
 	const StucMesh *pMesh,
 	StucDomain domain,
@@ -4243,43 +4243,43 @@ StucResult stucAttribArrGetConst(
 	);
 }
 
-StucResult stucAttribGetCompType(
+StucErr stucAttribGetCompType(
 	StucContext pCtx,
 	StucAttribType type,
 	StucAttribType *pCompType
 ) {
-	Result err = STUC_SUCCESS;
-	STUC_RETURN_ERR_IFNOT_COND(err, pCtx && pCompType, "");
+	StucErr err = PIX_ERR_SUCCESS;
+	PIX_ERR_RETURN_IFNOT_COND(err, pCtx && pCompType, "");
 	*pCompType = stucAttribGetCompTypeIntern(type);
 	return err;
 }
 
-StucResult stucAttribTypeGetVecSize(
+StucErr stucAttribTypeGetVecSize(
 	StucContext pCtx,
 	StucAttribType type,
 	I32 *pSize
 ) {
-	Result err = STUC_SUCCESS;
-	STUC_RETURN_ERR_IFNOT_COND(err, pCtx && pSize, "");
+	StucErr err = PIX_ERR_SUCCESS;
+	PIX_ERR_RETURN_IFNOT_COND(err, pCtx && pSize, "");
 	*pSize = stucAttribTypeGetVecSizeIntern(type);
 	return err;
 }
 
-StucResult stucDomainCountGet(
+StucErr stucDomainCountGet(
 	StucContext pCtx,
 	const StucMesh *pMesh,
 	StucDomain domain,
 	int32_t *pCount
 ) {
-	Result err = STUC_SUCCESS;
-	STUC_RETURN_ERR_IFNOT_COND(err, pCtx && pMesh && pCount, "");
+	StucErr err = PIX_ERR_SUCCESS;
+	PIX_ERR_RETURN_IFNOT_COND(err, pCtx && pMesh && pCount, "");
 	*pCount = stucDomainCountGetIntern(pMesh, domain);
 	return err;
 }
 
-StucResult stucAttribIndexedArrDestroy(StucContext pCtx, StucAttribIndexedArr *pArr) {
-	Result err = STUC_SUCCESS;
-	STUC_RETURN_ERR_IFNOT_COND(err, pCtx && pArr, "");
+StucErr stucAttribIndexedArrDestroy(StucContext pCtx, StucAttribIndexedArr *pArr) {
+	StucErr err = PIX_ERR_SUCCESS;
+	PIX_ERR_RETURN_IFNOT_COND(err, pCtx && pArr, "");
 	if (pArr->pArr) {
 		for (I32 i = 0; i < pArr->count; ++i) {
 			if (pArr->pArr[i].core.pData) {
@@ -4293,9 +4293,9 @@ StucResult stucAttribIndexedArrDestroy(StucContext pCtx, StucAttribIndexedArr *p
 	return err;
 }
 
-StucResult stucMapArrDestroy(StucContext pCtx, StucMapArr *pMapArr) {
-	Result err = STUC_SUCCESS;
-	STUC_RETURN_ERR_IFNOT_COND(err, pCtx && pMapArr, "");
+StucErr stucMapArrDestroy(StucContext pCtx, StucMapArr *pMapArr) {
+	StucErr err = PIX_ERR_SUCCESS;
+	PIX_ERR_RETURN_IFNOT_COND(err, pCtx && pMapArr, "");
 	if (pMapArr->pCommonAttribArr) {
 		for (I32 i = 0; i < pMapArr->count; ++i) {
 			if (pMapArr->pCommonAttribArr[i].mesh.pArr) {
@@ -4328,20 +4328,20 @@ StucResult stucMapArrDestroy(StucContext pCtx, StucMapArr *pMapArr) {
 	return err;
 }
 
-StucResult stucObjectInit(
+StucErr stucObjectInit(
 	StucContext pCtx,
 	StucObject *pObj,
 	StucMesh *pMesh,
-	const Stuc_M4x4_F32 *pTransform
+	const Stuc_M4x4 *pTransform
 ) {
-	Result err = STUC_SUCCESS;
-	STUC_RETURN_ERR_IFNOT_COND(err, pCtx && pObj, "");
+	StucErr err = PIX_ERR_SUCCESS;
+	PIX_ERR_RETURN_IFNOT_COND(err, pCtx && pObj, "");
 	pObj->pData = (StucObjectData *)pMesh;
 	if (pTransform) {
 		pObj->transform = *pTransform;
 	}
 	else {
-		pObj->transform = STUC_IDENT_MAT4X4;
+		pObj->transform = PIX_MATH_IDENT_MAT4X4;
 	}
 	return err;
 }

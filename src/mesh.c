@@ -37,7 +37,7 @@ void stucCreateMesh(const StucContext pCtx, StucObject *pObj, StucObjectType typ
 			size = sizeof(Mesh);
 			break;
 		default:
-			STUC_ASSERT("Invalid object data type", false);
+			PIX_ERR_ASSERT("Invalid object data type", false);
 			return;
 	}
 	pObj->pData = pCtx->alloc.fpCalloc(1, size);
@@ -107,8 +107,8 @@ I32 getNewMeshIdx(
 	MeshDomain *pDomain,
 	bool *pRealloced
 ) {
-	STUC_ASSERT("", *pDomain->pCount >= 0 && *pDomain->pBufSize > 0);
-	STUC_ASSERT("", *pDomain->pCount <= *pDomain->pBufSize);
+	PIX_ERR_ASSERT("", *pDomain->pCount >= 0 && *pDomain->pBufSize > 0);
+	PIX_ERR_ASSERT("", *pDomain->pCount <= *pDomain->pBufSize);
 	if (*pDomain->pCount == *pDomain->pBufSize) {
 		reallocMesh(pCtx, pMesh, pDomain);
 		if (pRealloced) {
@@ -244,14 +244,14 @@ void stucAddToMeshCounts(
 	pCounts->verts += pMeshSrc->core.vertCount;
 }
 
-Result stucCopyMesh(StucMesh *pDestMesh, const StucMesh *pSrcMesh) {
-	Result err = STUC_SUCCESS;
+StucErr stucCopyMesh(StucMesh *pDestMesh, const StucMesh *pSrcMesh) {
+	StucErr err = PIX_ERR_SUCCESS;
 	if (pSrcMesh->type.type == STUC_OBJECT_DATA_NULL) {
-		//TODO why doesn't this return STUC_ERROR?
+		//TODO why doesn't this return PIX_ERR_ERROR?
 		return err;
 	}
-	STUC_RETURN_ERR_IFNOT_COND(err, stucCheckIfMesh(pDestMesh->type), "");
-	STUC_RETURN_ERR_IFNOT_COND(err, stucCheckIfMesh(pSrcMesh->type), "");
+	PIX_ERR_RETURN_IFNOT_COND(err, stucCheckIfMesh(pDestMesh->type), "");
+	PIX_ERR_RETURN_IFNOT_COND(err, stucCheckIfMesh(pSrcMesh->type), "");
 	I32 faceBase = pDestMesh->faceCount;
 	I32 cornerBase = pDestMesh->cornerCount;
 	I32 edgeBase = pDestMesh->edgeCount;
@@ -314,23 +314,23 @@ void stucApplyObjTransform(StucObject *pObj) {
 	}
 	if (pMesh->pNormals) {
 		for (I32 i = 0; i < pMesh->core.cornerCount; ++i) {
-			Mat3x3 mat3x3 = Mat3x3FromMat4x4(&pObj->transform);
+			M3x3 m3x3 = pixmM3x3FromM4x4(&pObj->transform);
 			V3_F32 *pNormal = pMesh->pNormals + i;
-			_(pNormal V3MULEQLM3X3 & mat3x3);
-			*pNormal = v3F32Normalize(*pNormal);
+			_(pNormal V3MULEQLM3X3 & m3x3);
+			*pNormal = pixmV3F32Normalize(*pNormal);
 		}
 	}
-	pObj->transform = STUC_IDENT_MAT4X4;
+	pObj->transform = PIX_MATH_IDENT_MAT4X4;
 }
 
-Result stucMergeObjArr(
+StucErr stucMergeObjArr(
 	StucContext pCtx,
 	Mesh *pMesh,
 	I32 objCount,
 	const StucObject *pObjArr,
 	bool setCommon
 ) {
-	Result err = STUC_SUCCESS;
+	StucErr err = PIX_ERR_SUCCESS;
 	const Mesh **ppSrcs = pCtx->alloc.fpCalloc(objCount, sizeof(void *));
 	MeshCounts totalCount = {0};
 	for (I32 i = 0; i < objCount; ++i) {
@@ -348,69 +348,69 @@ Result stucMergeObjArr(
 	pMesh->core.pEdges =
 		pCtx->alloc.fpMalloc(sizeof(I32) * pMesh->cornerBufSize);
 	err = stucAllocAttribsFromMeshArr(pCtx, pMesh, objCount, ppSrcs, -1, setCommon, true, false);
-	STUC_THROW_IFNOT(err, "", 0);
+	PIX_ERR_THROW_IFNOT(err, "", 0);
 	for (I32 i = 0; i < objCount; ++i) {
 		stucCopyMesh(&pMesh->core, (StucMesh *)pObjArr[i].pData);
 	}
-	STUC_CATCH(0, err,
+	PIX_ERR_CATCH(0, err,
 		stucMeshDestroy(pCtx, &pMesh->core);
 	);
 	return err;
 }
 
-Result stucDestroyObjArr(StucContext pCtx, I32 objCount, StucObject *pObjArr) {
-	StucResult err = STUC_NOT_SET;
+StucErr stucDestroyObjArr(StucContext pCtx, I32 objCount, StucObject *pObjArr) {
+	StucErr err = PIX_ERR_NOT_SET;
 	for (I32 i = 0; i < objCount; ++i) {
 		err = stucMeshDestroy(pCtx, (StucMesh *)pObjArr[i].pData);
-		STUC_THROW_IFNOT(err, "", 0);
+		PIX_ERR_THROW_IFNOT(err, "", 0);
 		pCtx->alloc.fpFree(pObjArr[i].pData);
 	}
 	pCtx->alloc.fpFree(pObjArr);
-	STUC_CATCH(0, err, ;)
+	PIX_ERR_CATCH(0, err, ;)
 	return err;
 }
 
-Result stucValidateMesh(const StucMesh *pMesh, bool checkEdges) {
-	Result err = STUC_SUCCESS;
-	STUC_RETURN_ERR_IFNOT_COND(err, pMesh->faceCount && pMesh->pFaces, "");
-	STUC_RETURN_ERR_IFNOT_COND(err, pMesh->cornerCount && pMesh->pCorners, "");
-	STUC_RETURN_ERR_IFNOT_COND(err, !checkEdges || (pMesh->edgeCount && pMesh->pEdges), "");
-	STUC_RETURN_ERR_IFNOT_COND(err, pMesh->vertCount, "");
-	STUC_RETURN_ERR_IFNOT_COND(
+StucErr stucValidateMesh(const StucMesh *pMesh, bool checkEdges) {
+	StucErr err = PIX_ERR_SUCCESS;
+	PIX_ERR_RETURN_IFNOT_COND(err, pMesh->faceCount && pMesh->pFaces, "");
+	PIX_ERR_RETURN_IFNOT_COND(err, pMesh->cornerCount && pMesh->pCorners, "");
+	PIX_ERR_RETURN_IFNOT_COND(err, !checkEdges || (pMesh->edgeCount && pMesh->pEdges), "");
+	PIX_ERR_RETURN_IFNOT_COND(err, pMesh->vertCount, "");
+	PIX_ERR_RETURN_IFNOT_COND(
 		err,
 		(pMesh->meshAttribs.pArr && pMesh->meshAttribs.count) ||
 		!pMesh->meshAttribs.count,
 		""
 	);
-	STUC_RETURN_ERR_IFNOT_COND(
+	PIX_ERR_RETURN_IFNOT_COND(
 		err,
 		(pMesh->faceAttribs.pArr && pMesh->faceAttribs.count) ||
 		!pMesh->faceAttribs.count,
 		""
 	);
-	STUC_RETURN_ERR_IFNOT_COND(
+	PIX_ERR_RETURN_IFNOT_COND(
 		err,
 		pMesh->cornerAttribs.pArr && pMesh->cornerAttribs.count,
 		""
 	);
-	STUC_RETURN_ERR_IFNOT_COND(
+	PIX_ERR_RETURN_IFNOT_COND(
 		err,
 		(pMesh->edgeAttribs.pArr && pMesh->edgeAttribs.count) ||
 		!pMesh->edgeAttribs.count,
 		""
 	);
-	STUC_RETURN_ERR_IFNOT_COND(
+	PIX_ERR_RETURN_IFNOT_COND(
 		err,
 		pMesh->vertAttribs.pArr && pMesh->vertAttribs.count,
 		""
 	);
 	for (I32 i = 0; i < pMesh->faceCount; ++i) {
 		FaceRange face = stucGetFaceRange(pMesh, i);
-		STUC_RETURN_ERR_IFNOT_COND(err, face.size >= 3, "");
+		PIX_ERR_RETURN_IFNOT_COND(err, face.size >= 3, "");
 		for (I32 j = 0; j < face.size; ++j) {
 			I32 corner = face.start + j;
-			STUC_RETURN_ERR_IFNOT_COND(err, corner < pMesh->cornerCount, "");
-			STUC_RETURN_ERR_IFNOT_COND(err, pMesh->pCorners[corner] < pMesh->vertCount, "");
+			PIX_ERR_RETURN_IFNOT_COND(err, corner < pMesh->cornerCount, "");
+			PIX_ERR_RETURN_IFNOT_COND(err, pMesh->pCorners[corner] < pMesh->vertCount, "");
 		}
 	}
 	for (I32 i = 1; i < STUC_ATTRIB_USE_ENUM_COUNT; ++i) {
@@ -419,14 +419,14 @@ Result stucValidateMesh(const StucMesh *pMesh, bool checkEdges) {
 		}
 		AttribActive idx = pMesh->activeAttribs[i];
 		if (!idx.active) {
-			STUC_RETURN_ERR_IFNOT_COND(err,
+			PIX_ERR_RETURN_IFNOT_COND(err,
 				!stucIsAttribUseRequired(i),
 				"in-mesh must have active attribs for pos, uv, normal, and idx"
 			);
 			continue;
 		}
-		STUC_RETURN_ERR_IFNOT_COND(err, idx.idx >= 0, "invalid active attrib index");
-		STUC_RETURN_ERR_IFNOT_COND(
+		PIX_ERR_RETURN_IFNOT_COND(err, idx.idx >= 0, "invalid active attrib index");
+		PIX_ERR_RETURN_IFNOT_COND(
 			err,
 			idx.domain >= 0 && idx.domain <= STUC_DOMAIN_VERT,
 			"invalid active attrib domain"
@@ -457,7 +457,7 @@ I32 stucGetDomainSize(const Mesh *pMesh, StucDomain domain) {
 		case STUC_DOMAIN_VERT:
 			return pMesh->vertBufSize;
 		default:
-			STUC_ASSERT("invalid domain", false);
+			PIX_ERR_ASSERT("invalid domain", false);
 	}
 	return 0;
 }
@@ -473,19 +473,19 @@ I32 stucDomainCountGetIntern(const StucMesh *pMesh, StucDomain domain) {
 		case STUC_DOMAIN_VERT:
 			return pMesh->vertCount;
 		default:
-			STUC_ASSERT("invalid domain", false);
+			PIX_ERR_ASSERT("invalid domain", false);
 	}
-	STUC_ASSERT("invalid domain", false);
+	PIX_ERR_ASSERT("invalid domain", false);
 	return 0;
 }
 
 bool stucGetIfSeamEdge(const Mesh *pMesh, I32 edge) {
-	STUC_ASSERT("", pMesh->pSeamEdge);
+	PIX_ERR_ASSERT("", pMesh->pSeamEdge);
 	return pMesh->pSeamEdge[edge];
 }
 
 bool stucGetIfMatBorderEdge(const Mesh *pMesh, I32 edge) {
-	STUC_ASSERT("", pMesh->pEdgeFaces && pMesh->pMatIdx);
+	PIX_ERR_ASSERT("", pMesh->pEdgeFaces && pMesh->pMatIdx);
 	V2_I32 faces = pMesh->pEdgeFaces[edge];
 	if (faces.d[1] == -1) {
 		return false; //no adj face
@@ -496,13 +496,13 @@ bool stucGetIfMatBorderEdge(const Mesh *pMesh, I32 edge) {
 //does not increment the other corner, so it may not actually be adjacent.
 //Do so after calling this func (if wind is equal between faces)
 void stucGetAdjCorner(const Mesh *pMesh, FaceCorner corner, FaceCorner *pAdjCorner) {
-	STUC_ASSERT("", pMesh->pEdgeFaces);
+	PIX_ERR_ASSERT("", pMesh->pEdgeFaces);
 	FaceRange face = stucGetFaceRange(&pMesh->core, corner.face);
 	I32 edge = pMesh->core.pEdges[face.start + corner.corner];
 	V2_I8 corners = pMesh->pEdgeCorners[edge];
 	V2_I32 faces = pMesh->pEdgeFaces[edge];
 	bool which = corners.d[0] == corner.corner && faces.d[0] == corner.face;
-	STUC_ASSERT(
+	PIX_ERR_ASSERT(
 		"",
 		faces.d[!which] == -1 && corners.d[!which] == -1 ||
 		faces.d[!which] == corner.face && corners.d[!which] == corner.corner
@@ -512,20 +512,20 @@ void stucGetAdjCorner(const Mesh *pMesh, FaceCorner corner, FaceCorner *pAdjCorn
 }
 
 I32 stucGetMeshVert(const StucMesh *pMesh, FaceCorner corner) {
-	STUC_ASSERT("", pMesh && corner.face >= 0 && corner.face < pMesh->faceCount);
+	PIX_ERR_ASSERT("", pMesh && corner.face >= 0 && corner.face < pMesh->faceCount);
 	FaceRange face = stucGetFaceRange(pMesh, corner.face);
-	STUC_ASSERT("", corner.corner >= 0 && corner.corner < face.size);
+	PIX_ERR_ASSERT("", corner.corner >= 0 && corner.corner < face.size);
 	I32 vert = pMesh->pCorners[face.start + corner.corner];
-	STUC_ASSERT("", vert >= 0 && vert < pMesh->vertCount);
+	PIX_ERR_ASSERT("", vert >= 0 && vert < pMesh->vertCount);
 	return vert;
 }
 
 I32 stucGetMeshEdge(const StucMesh *pMesh, FaceCorner corner) {
-	STUC_ASSERT("", pMesh && corner.face >= 0 && corner.face < pMesh->faceCount);
+	PIX_ERR_ASSERT("", pMesh && corner.face >= 0 && corner.face < pMesh->faceCount);
 	FaceRange face = stucGetFaceRange(pMesh, corner.face);
-	STUC_ASSERT("", corner.corner >= 0 && corner.corner < face.size);
+	PIX_ERR_ASSERT("", corner.corner >= 0 && corner.corner < face.size);
 	I32 edge = pMesh->pEdges[face.start + corner.corner];
-	STUC_ASSERT("", edge >= 0 && edge < pMesh->edgeCount);
+	PIX_ERR_ASSERT("", edge >= 0 && edge < pMesh->edgeCount);
 	return edge;
 }
 

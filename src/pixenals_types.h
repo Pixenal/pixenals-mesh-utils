@@ -5,97 +5,110 @@ SPDX-License-Identifier: Apache-2.0
 
 #pragma once
 #include <stdint.h>
+#include <stdbool.h>
 
-typedef int8_t Pixtype_I8;
-typedef int16_t Pixtype_I16;
-typedef int32_t Pixtype_I32;
-typedef int64_t Pixtype_I64;
+typedef struct PixtyRange {
+	int32_t start;
+	int32_t end;
+} PixtyRange;
 
-typedef uint8_t Pixtype_U8;
-typedef uint16_t Pixtype_U16;
-typedef uint32_t Pixtype_U32;
-typedef uint64_t Pixtype_U64;
+typedef struct PixtyI32Arr {
+	int32_t *pArr;
+	int32_t size;
+	int32_t count;
+} PixtyI32Arr;
 
-typedef float Pixtype_F32;
-typedef double Pixtype_F64;
+typedef struct PixtyI8Arr {
+	int8_t *pArr;
+	int32_t size;
+	int32_t count;
+} PixtyI8Arr;
 
-typedef struct Pixtype_Range {
-	Pixtype_I32 start;
-	Pixtype_I32 end;
-} Pixtype_Range;
 
-typedef struct Pixtype_V2_I8 {
+typedef struct PixtyV2_I8 {
 	int8_t d[2];
-} Pixtype_V2_I8;
+} PixtyV2_I8;
 
-typedef struct Pixtype_V2_I16 {
+typedef struct PixtyV2_I16 {
 	int16_t d[2];
-} Pixtype_V2_I16;
+} PixtyV2_I16;
 
-typedef struct Pixtype_V2_I32 {
+typedef struct PixtyV2_I32 {
 	int32_t d[2];
-} Pixtype_V2_I32;
+} PixtyV2_I32;
 
-typedef struct Pixtype_V2_I64 {
+typedef struct PixtyV2_I64 {
 	int64_t d[2];
-} Pixtype_V2_I64;
+} PixtyV2_I64;
 
-typedef struct Pixtype_V2_F32 {
+typedef struct PixtyV2_F32 {
 	float d[2];
-} Pixtype_V2_F32;
+} PixtyV2_F32;
 
-typedef struct Pixtype_V2_F64 {
+typedef struct PixtyV2_F64 {
 	double d[2];
-} Pixtype_V2_F64;
+} PixtyV2_F64;
 
-typedef struct Pixtype_V3_I8 {
+typedef struct PixtyV3_I8 {
 	int8_t d[3];
-} Pixtype_V3_I8;
+} PixtyV3_I8;
 
-typedef struct Pixtype_V3_I16 {
+typedef struct PixtyV3_I16 {
 	int16_t d[3];
-} Pixtype_V3_I16;
+} PixtyV3_I16;
 
-typedef struct Pixtype_V3_I32 {
+typedef struct PixtyV3_I32 {
 	int32_t d[3];
-} Pixtype_V3_I32;
+} PixtyV3_I32;
 
-typedef struct Pixtype_V3_I64 {
+typedef struct PixtyV3_I64 {
 	int64_t d[3];
-} Pixtype_V3_I64;
+} PixtyV3_I64;
 
-typedef struct Pixtype_V3_F32 {
+typedef struct PixtyV3_F32 {
 	float d[3];
-} Pixtype_V3_F32;
+} PixtyV3_F32;
 
-typedef struct Pixtype_V3_F64 {
+typedef struct PixtyV3_F64 {
 	double d[3];
-} Pixtype_V3_F64;
+} PixtyV3_F64;
 
-typedef struct Pixtype_V4_I8 {
+typedef struct PixtyV4_I8 {
 	int8_t d[4];
-} Pixtype_V4_I8;
+} PixtyV4_I8;
 
-typedef struct Pixtype_V4_I16 {
+typedef struct PixtyV4_I16 {
 	int16_t d[4];
-} Pixtype_V4_I16;
+} PixtyV4_I16;
 
-typedef struct Pixtype_V4_I32 {
+typedef struct PixtyV4_I32 {
 	int32_t d[4];
-} Pixtype_V4_I32;
+} PixtyV4_I32;
 
-typedef struct Pixtype_V4_I64 {
+typedef struct PixtyV4_I64 {
 	int64_t d[4];
-} Pixtype_V4_I64;
+} PixtyV4_I64;
 
-typedef struct Pixtype_V4_F32 {
+typedef struct PixtyV4_F32 {
 	float d[4];
-} Pixtype_V4_F32;
+} PixtyV4_F32;
 
-typedef struct Pixtype_V4_F64 {
+typedef struct PixtyV4_F64 {
 	double d[4];
-} Pixtype_V4_F64;
+} PixtyV4_F64;
 
-typedef struct Pixtype_M4x4_F32 {
+typedef struct PixtyM2x3 {
+	float d[2][3];
+} PixtyM2x3;
+
+typedef struct PixtyM2x2 {
+	float d[2][2];
+} PixtyM2x2;
+
+typedef struct PixtyM3x3 {
+	float d[3][3];
+} PixtyM3x3;
+
+typedef struct PixtyM4x4 {
 	float d[4][4];
-} Pixtype_M4x4_F32;
+} PixtyM4x4;
