@@ -7,11 +7,11 @@ SPDX-License-Identifier: Apache-2.0
 
 #include <stdint.h>
 
-#include <uv_stucco.h>
-#include <debug_and_perf.h>
-#include <types.h>
 #include <pixenals_alloc_utils.h>
 #include <pixenals_math_utils.h>
+
+#include <uv_stucco.h>
+#include <types.h>
 
 //is it worth just putting pData at the start of Attrib,
 //so you can just have pNormalAttrib and remove pNormal.
