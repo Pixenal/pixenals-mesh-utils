@@ -595,8 +595,6 @@ typedef struct VertMergeTable {
 } VertMergeTable;
 */
 
-bool stucCouldInEdgeIntersectMapFace(const Mesh *pInMesh, I32 edge);
-
 typedef struct InPieceKey {
 	I32 mapFace;
 	V2_I16 tile;
