@@ -764,6 +764,8 @@ StucErr mapToMeshInternal(
 		SplitInPiecesAllocArr splitAlloc = {
 			.pArr = (SplitInPiecesAlloc[PIX_THREAD_MAX_SUB_MAPPING_JOBS]){0}
 		};
+		BufOutRangeTable bufOutTable = {0};
+		OutBufIdxArr outBufIdxArr = {0};
 		err = stucInPieceArrSplit(
 			&basic,
 			&inPieceArr,
@@ -812,8 +814,25 @@ StucErr mapToMeshInternal(
 		stucInitOutMesh(&basic, &mergeTable, snappedVerts);
 		stucAddVertsToOutMesh(&basic, &mergeTable, 0);
 		stucAddVertsToOutMesh(&basic, &mergeTable, 1);//intersect verts
-		stucAddFacesAndCornersToOutMesh(&basic, &inPiecesSplit, &mergeTable);
-		stucAddFacesAndCornersToOutMesh(&basic, &inPiecesSplitClip, &mergeTable);
+		bufOutTable.size =
+			inPiecesSplit.pBufMeshes->count + inPiecesSplitClip.pBufMeshes->count;
+		bufOutTable.pArr = pCtx->alloc.fpCalloc(bufOutTable.size, sizeof(BufOutRange));
+		stucAddFacesAndCornersToOutMesh(
+			&basic,
+			&inPiecesSplit,
+			&mergeTable,
+			&outBufIdxArr,
+			&bufOutTable,
+			false
+		);
+		stucAddFacesAndCornersToOutMesh(
+			&basic,
+			&inPiecesSplitClip,
+			&mergeTable,
+			&outBufIdxArr,
+			&bufOutTable,
+			true
+		);
 		if (!basic.outMesh.core.faceCount) {
 			goto cleanUp;
 		}
@@ -838,6 +857,8 @@ StucErr mapToMeshInternal(
 			&basic,
 			&inPiecesSplit, &inPiecesSplitClip,
 			&mergeTable,
+			&bufOutTable,
+			&outBufIdxArr,
 			STUC_DOMAIN_FACE, stucInterpFaceAttribs
 		);
 		PIX_ERR_RETURN_IFNOT(err, "");
@@ -847,6 +868,8 @@ StucErr mapToMeshInternal(
 			&basic,
 			&inPiecesSplit, &inPiecesSplitClip,
 			&mergeTable,
+			&bufOutTable,
+			&outBufIdxArr,
 			STUC_DOMAIN_CORNER, stucInterpCornerAttribs
 		);
 		PIX_ERR_RETURN_IFNOT(err, "");
@@ -856,6 +879,12 @@ StucErr mapToMeshInternal(
 		*pOutMesh = basic.outMesh.core;
 		printf("J\n");
 	cleanUp:
+		if (outBufIdxArr.pArr) {
+			pCtx->alloc.fpFree(outBufIdxArr.pArr);
+		}
+		if (bufOutTable.pArr) {
+			pCtx->alloc.fpFree(bufOutTable.pArr);
+		}
 		for (I32 i = 0; i < splitAlloc.count; ++i) {
 			if (splitAlloc.pArr[i].encased.valid) {
 				pixalcLinAllocDestroy(&splitAlloc.pArr[i].encased);
