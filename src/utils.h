@@ -51,8 +51,10 @@ static inline
 void initHalfPlaneLookup(
 	const Mesh *pMesh,
 	const FaceRange *pInFace,
+	V2_I16 tile,
 	HalfPlane *pCache
 ) {
+	V2_F32 fTile = {.d = {(F32)tile.d[0], (F32)tile.d[1]}};
 	for (I32 i = 0; i < pInFace->size; ++i) {
 		pCache[i].idx = (I8)i;
 		pCache[i].idxNext = (I8)stucGetCornerNext(i, pInFace);
@@ -63,8 +65,8 @@ void initHalfPlaneLookup(
 			(FaceCorner) {.face = pInFace->idx, .corner = i}
 		);
 
-		pCache[i].uv = pMesh->pUvs[pInFace->start + i];
-		pCache[i].uvNext = pMesh->pUvs[pInFace->start + pCache[i].idxNext];
+		pCache[i].uv = _(pMesh->pUvs[pInFace->start + i] V2SUB fTile);
+		pCache[i].uvNext = _(pMesh->pUvs[pInFace->start + pCache[i].idxNext] V2SUB fTile);
 		
 		pCache[i].dir = _(pCache[i].uvNext V2SUB pCache[i].uv);
 		pCache[i].len = pixmV2F32Len(pCache[i].dir);
@@ -448,22 +450,28 @@ STUC_FORCE_INLINE
 V3_F32 stucGetBarycentricInFace(
 	const Mesh *pMesh,
 	const FaceRange *pFace,
+	V2_I16 tile,
 	V2_F32 (* fpGetPoint)(const Mesh *, const FaceRange *, I32),
 	I8 *pTriCorners,
 	V2_F32 vert
 ) {
 	PIX_ERR_ASSERT("", pixmV2F32IsFinite(vert));
 	PIX_ERR_ASSERT("", (pFace->size == 3 || pFace->size == 4) && pTriCorners);
+	V2_F32 fTile = {.d = {(F32)tile.d[0], (F32)tile.d[1]}};
 	V2_F32 triA[3] = {0};
 	for (I32 i = 0; i < 3; ++i) {
-		triA[i] = fpGetPoint(pMesh, pFace, i);
+		triA[i] = _(fpGetPoint(pMesh, pFace, i) V2SUB fTile);
 	}
 	V3_F32 vertBc = pixmCartesianToBarycentric(triA, &vert);
 	if (pFace->size == 4 && pixmV3F32IsFinite(vertBc) && vertBc.d[1] < 0) {
 		//base face is a quad, and vert is outside first tri,
 		//so use the second tri
 		
-		V2_F32 triB[3] = {triA[2], fpGetPoint(pMesh, pFace, 3), triA[0]};
+		V2_F32 triB[3] = {
+			triA[2],
+			_(fpGetPoint(pMesh, pFace, 3) V2SUB fTile),
+			triA[0]
+		};
 		vertBc = pixmCartesianToBarycentric(triB, &vert);
 		pTriCorners[0] = 2;
 		pTriCorners[1] = 3;
@@ -486,6 +494,7 @@ V3_F32 stucGetBarycentricInFaceFromVerts(
 	return stucGetBarycentricInFace(
 		pMesh,
 		pFace,
+		(V2_I16) {0},
 		stucGetVertPosAsV2,
 		pTriCorners,
 		vert
@@ -496,18 +505,19 @@ static inline
 V3_F32 stucGetBarycentricInFaceFromUvs(
 	const Mesh *pMesh,
 	const FaceRange *pFace,
+	V2_I16 tile,
 	I8 *pTriCorners,
 	V2_F32 vert
 ) {
 	return stucGetBarycentricInFace(
 		pMesh,
 		pFace,
+		tile,
 		stucGetUvPos,
 		pTriCorners,
 		vert
 	);
 }
-
 
 StucErr stucBuildEdgeList(StucContext pCtx, Mesh *pMesh);
 void stucProgressBarClear();
