@@ -1552,7 +1552,15 @@ StucErr initMeshInWrap(
 	buildSeamAndPreserveTables(pWrap);
 
 	//set sp
-	stucSetAttribCopyOpt(pCtx, &pWrap->core, STUC_ATTRIB_DONT_COPY, spAttribsToAppend);
+	stucSetAttribCopyOpt(
+		pCtx,
+		&pWrap->core, 
+		STUC_ATTRIB_DONT_COPY,
+		spAttribsToAppend | STUC_ATTRIB_USE_FIELD(((StucAttribUse[]) {
+			STUC_ATTRIB_USE_WSCALE,
+			STUC_ATTRIB_USE_NORMALS_VERT
+		}))
+	);
 	//set required
 	stucSetAttribCopyOpt(
 		pCtx,
@@ -1562,7 +1570,6 @@ StucErr initMeshInWrap(
 			STUC_ATTRIB_USE_POS,
 			STUC_ATTRIB_USE_UV,
 			STUC_ATTRIB_USE_NORMAL,
-			STUC_ATTRIB_USE_WSCALE,
 			STUC_ATTRIB_USE_IDX
 		}))
 	);

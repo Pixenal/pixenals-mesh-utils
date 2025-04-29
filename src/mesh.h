@@ -43,6 +43,7 @@ typedef struct Mesh {
 	I8 *pNumAdjPreserve;
 	Stuc_V2_I32 *pEdgeFaces;
 	Stuc_V2_I8 *pEdgeCorners;
+	Stuc_V3_F32 *pVertNormals;
 	I32 faceBufSize;
 	I32 cornerBufSize;
 	I32 edgeBufSize;
