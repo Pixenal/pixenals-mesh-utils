@@ -290,31 +290,19 @@ StucErr stucMapFileLoad(StucContext pCtx, StucMap *pMapHandle, const char *fileP
 	//F32 values are valid, etc.
 	PIX_ERR_THROW_IFNOT(err, "failed to load file from disk", 0);
 
-	strncpy(pMap->indexedAttribs.pArr[0].core.name, "materials", STUC_ATTRIB_NAME_MAX_LEN);
-
 	for (I32 i = 0; i < objCount; ++i) {
-		//TODO TEMP DELETE
-		//TODO when you fix this, make sure map uvs arn't marked special,
-		//or it'll conflit 
 		Mesh *pMesh = (Mesh *)pObjArr[i].pData;
-		TEMPsetSpFromAttribName(pCtx, &pMesh->core, &pMesh->core.faceAttribs);
-		TEMPsetSpFromAttribName(pCtx, &pMesh->core, &pMesh->core.cornerAttribs);
-		TEMPsetSpFromAttribName(pCtx, &pMesh->core, &pMesh->core.edgeAttribs);
-		TEMPsetSpFromAttribName(pCtx, &pMesh->core, &pMesh->core.vertAttribs);
-
-		//TODO this shouldn't be an issue.
-		//check for this on export, so this doesn't throw and error on loaad
-		attemptToSetMissingActiveDomains(&pMesh->core);
-
+		
+		err = attemptToSetMissingActiveDomains(&pMesh->core);
+		PIX_ERR_THROW_IFNOT(err, "", 0);
 		err = stucAssignActiveAliases(
 			pCtx,
-			(Mesh *)pObjArr[i].pData,
+			pMesh,
 			STUC_ATTRIB_USE_FIELD(((StucAttribUse[]) {
 				STUC_ATTRIB_USE_POS,
 				STUC_ATTRIB_USE_UV,
 				STUC_ATTRIB_USE_NORMAL,
 				STUC_ATTRIB_USE_RECEIVE,
-				STUC_ATTRIB_USE_USG,
 				STUC_ATTRIB_USE_IDX
 			})),
 			STUC_DOMAIN_NONE
@@ -327,10 +315,13 @@ StucErr stucMapFileLoad(StucContext pCtx, StucMap *pMapHandle, const char *fileP
 	err = stucMergeObjArr(pCtx, pMapMesh, objCount, pObjArr, false);
 	PIX_ERR_THROW_IFNOT(err, "", 0);
 
+	UBitField32 spToAppend = STUC_ATTRIB_USE_FIELD(((StucAttribUse[]) {
+		STUC_ATTRIB_USE_EDGE_LEN
+	}));
 	stucAppendSpAttribsToMesh(
 		pCtx,
 		pMapMesh,
-		0x1 << STUC_ATTRIB_USE_EDGE_LEN,
+		spToAppend | (pMap->usgArr.count ? STUC_ATTRIB_USE_USG : 0x0),
 		STUC_ATTRIB_ORIGIN_MAP
 	);
 
@@ -374,23 +365,6 @@ StucErr stucMapFileLoad(StucContext pCtx, StucMap *pMapHandle, const char *fileP
 	//test with address sanitizer on CircuitPieces.stuc
 	stucDestroyObjArr(pCtx, objCount, pObjArr);
 
-	{
-		Attrib *pUvAttrib = stucGetActiveAttrib(pCtx, &pMapMesh->core, STUC_ATTRIB_USE_UV);
-		if (pUvAttrib) {
-			//TODO as with all special attributes, allow user to define what should be considered
-			//     the primary UV channel. This especially important for integration with other DCCs
-			if (!strncmp(
-				pUvAttrib->core.name,
-				pCtx->spAttribNames[STUC_ATTRIB_USE_UV],
-				STUC_ATTRIB_NAME_MAX_LEN
-			)) {
-				char newName[STUC_ATTRIB_NAME_MAX_LEN] = "Map_UVMap";
-				memcpy(pUvAttrib->core.name, newName, STUC_ATTRIB_NAME_MAX_LEN);
-			}
-		}
-		pMapMesh->core.activeAttribs[STUC_ATTRIB_USE_UV].active = false;
-	}
-
 	//set corner attribs to interpolate by default
 	//TODO make this an option in ui, even for non common attribs
 	for (I32 i = 0; i < pMapMesh->core.cornerAttribs.count; ++i) {
@@ -412,11 +386,8 @@ StucErr stucMapFileLoad(StucContext pCtx, StucMap *pMapHandle, const char *fileP
 		pMap->usgArr.pArr = pCtx->alloc.fpCalloc(pMap->usgArr.count, sizeof(Usg));
 		for (I32 i = 0; i < pMap->usgArr.count; ++i) {
 			Mesh *pUsgMesh = (Mesh *)pUsgArr[i].obj.pData;
-			TEMPsetSpFromAttribName(pCtx, &pUsgMesh->core, &pUsgMesh->core.faceAttribs);
-			TEMPsetSpFromAttribName(pCtx, &pUsgMesh->core, &pUsgMesh->core.cornerAttribs);
-			TEMPsetSpFromAttribName(pCtx, &pUsgMesh->core, &pUsgMesh->core.edgeAttribs);
-			TEMPsetSpFromAttribName(pCtx, &pUsgMesh->core, &pUsgMesh->core.vertAttribs);
-			attemptToSetMissingActiveDomains(&pUsgMesh->core);
+			err = attemptToSetMissingActiveDomains(&pUsgMesh->core);
+			PIX_ERR_THROW_IFNOT(err, "", 0);
 			err = stucAssignActiveAliases(
 				pCtx,
 				pUsgMesh,
@@ -430,11 +401,8 @@ StucErr stucMapFileLoad(StucContext pCtx, StucMap *pMapHandle, const char *fileP
 			if (pUsgArr[i].pFlatCutoff) {
 				Mesh *pFlatCutoff = (Mesh *)pUsgArr[i].pFlatCutoff->pData;
 				pMap->usgArr.pArr[i].pFlatCutoff = (Mesh *)pUsgArr[i].pFlatCutoff->pData;
-				TEMPsetSpFromAttribName(pCtx, &pFlatCutoff->core, &pFlatCutoff->core.faceAttribs);
-				TEMPsetSpFromAttribName(pCtx, &pFlatCutoff->core, &pFlatCutoff->core.cornerAttribs);
-				TEMPsetSpFromAttribName(pCtx, &pFlatCutoff->core, &pFlatCutoff->core.edgeAttribs);
-				TEMPsetSpFromAttribName(pCtx, &pFlatCutoff->core, &pFlatCutoff->core.vertAttribs);
-				attemptToSetMissingActiveDomains(&pFlatCutoff->core);
+				err = attemptToSetMissingActiveDomains(&pFlatCutoff->core);
+				PIX_ERR_THROW_IFNOT(err, "", 0);
 				err = stucAssignActiveAliases(
 					pCtx,
 					pFlatCutoff,
@@ -445,8 +413,6 @@ StucErr stucMapFileLoad(StucContext pCtx, StucMap *pMapHandle, const char *fileP
 				stucApplyObjTransform(pUsgArr[i].pFlatCutoff);
 			}
 		}
-		//TODO remove duplicate uses of alloc where pCtx is present
-		//like this
 		Mesh *pSquares = pCtx->alloc.fpCalloc(1, sizeof(Mesh));
 		stucAllocUsgSquaresMesh(pCtx, pMap, pSquares);
 		stucFillUsgSquaresMesh(pMap, pUsgArr, pSquares);
@@ -456,9 +422,8 @@ StucErr stucMapFileLoad(StucContext pCtx, StucMap *pMapHandle, const char *fileP
 	}
 
 	*pMapHandle = pMap;
-	//TODO add proper checks, and return PIX_ERR_ERROR if fails.
-	//Do for all public functions (or internal ones as well)
 	PIX_ERR_CATCH(0, err, stucMapFileUnload(pCtx, pMap);)
+
 	return err;
 }
 
