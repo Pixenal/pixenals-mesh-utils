@@ -479,6 +479,9 @@ StucErr getCommonAttribs(
 	pCommonArr->pArr = pCtx->alloc.fpCalloc(pCommonArr->size, sizeof(StucCommonAttrib));
 	for (I32 i = 0; i < pMeshAttribs->count; ++i) {
 		Attrib *pAttrib = pMeshAttribs->pArr + i;
+		if (pAttrib->core.use == STUC_ATTRIB_USE_POS) {
+			continue;
+		}
 		const Attrib *pMapAttrib = NULL;
 		err = stucGetMatchingAttribConst(
 			pCtx,
