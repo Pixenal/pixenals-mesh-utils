@@ -1694,6 +1694,16 @@ StucErr stucAttribGetAsVoid(StucAttribCore *pAttrib, int32_t idx, void **ppOut) 
 	return PIX_ERR_SUCCESS;
 }
 
+StucErr stucAttribActiveGet(
+	StucContext pCtx,
+	StucMesh *pMesh,
+	StucAttribUse use,
+	Attrib **ppAttrib
+) {
+	*ppAttrib = stucGetActiveAttrib(pCtx, pMesh, use);
+	return PIX_ERR_SUCCESS;
+}
+
 StucErr stucGetAttribIndexed(
 	const char *pName,
 	StucAttribIndexedArr *pAttribs,
