@@ -98,26 +98,6 @@ StucErr stucContextDestroy(StucContext pCtx) {
 	return PIX_ERR_SUCCESS;
 }
 
-StucErr stucMapFileExport(
-	StucContext pCtx,
-	const char *pPath,
-	I32 objCount,
-	StucObject *pObjArr,
-	I32 usgCount,
-	StucUsg *pUsgArr,
-	StucAttribIndexedArr *pIndexedAttribs
-) {
-	return stucWriteStucFile(
-		pCtx,
-		pPath,
-		objCount,
-		pObjArr,
-		usgCount,
-		pUsgArr,
-		pIndexedAttribs
-	);
-}
-
 //TODO replace these with StucUsg and StucObj arr structs, that combine arr and count
 StucErr stucMapFileLoadForEdit(
 	StucContext pCtx,
@@ -398,7 +378,9 @@ StucErr stucMapFileLoad(StucContext pCtx, StucMap *pMapHandle, const char *fileP
 			pMap->usgArr.pArr[i].origin = *(V2_F32 *)&pUsgArr[i].obj.transform.d[3];
 			pMap->usgArr.pArr[i].pMesh = pUsgMesh;
 			stucApplyObjTransform(&pUsgArr[i].obj);
-			if (pUsgArr[i].pFlatCutoff) {
+			if (pUsgArr[i].flatCutoff.enabled) {
+				//TODO fix this
+				/*
 				Mesh *pFlatCutoff = (Mesh *)pUsgArr[i].pFlatCutoff->pData;
 				pMap->usgArr.pArr[i].pFlatCutoff = (Mesh *)pUsgArr[i].pFlatCutoff->pData;
 				err = attemptToSetMissingActiveDomains(&pFlatCutoff->core);
@@ -411,6 +393,7 @@ StucErr stucMapFileLoad(StucContext pCtx, StucMap *pMapHandle, const char *fileP
 				);
 				PIX_ERR_THROW_IFNOT(err, "", 0);
 				stucApplyObjTransform(pUsgArr[i].pFlatCutoff);
+				*/
 			}
 		}
 		Mesh *pSquares = pCtx->alloc.fpCalloc(1, sizeof(Mesh));
@@ -1029,7 +1012,7 @@ StucErr getIndexedAttribInMaps(
 	*pSame = true;
 	StucMap pMapCache = NULL;
 	for (I32 i = 0; i < pMapArr->count; ++i) {
-		const StucMap pMap = pMapArr->ppArr[i];
+		const StucMap pMap = pMapArr->pArr[i].pMap;
 		const char *pName = NULL;
 		switch (pAttrib->origin) {
 			case STUC_ATTRIB_ORIGIN_MAP:
@@ -1060,10 +1043,10 @@ StucErr getIndexedAttribInMaps(
 			found = true;
 			ppAttribs[i] = pIndexedAttrib;
 			if (!pMapCache) {
-				pMapCache = pMapArr->ppArr[i];
+				pMapCache = pMapArr->pArr[i].pMap;
 			}
 			else if (*pSame) {
-				*pSame = pMapCache == pMapArr->ppArr[i];
+				*pSame = pMapCache == pMapArr->pArr[i].pMap;
 			}
 		}
 	}
@@ -1306,8 +1289,8 @@ StucErr mapMapArrToMesh(
 		pCtx->alloc.fpCalloc(pMapArr->count, sizeof(StucObject));
 	for (I32 i = 0; i < pMapArr->count; ++i) {
 		pOutObjWrapArr[i].pData = (StucObjectData *)&pOutBufArr[i];
-		const StucMap pMap = pMapArr->ppArr[i];
-		I8 matIdx = pMapArr->pMatArr[i];
+		const StucMap pMap = pMapArr->pArr[i].pMap;
+		I8 matIdx = pMapArr->pArr[i].matIdx;
 		InFaceTable inFaceTable = {0};
 		if (pMap->usgArr.count) {
 			//set preserve to null to prevent usg squares from being split
@@ -1557,7 +1540,7 @@ StucErr stucMapToMesh(
 ) {
 	StucErr err = PIX_ERR_SUCCESS;
 	PIX_ERR_RETURN_IFNOT_COND(err, pMeshIn, "");
-	err = stucValidateMesh(pMeshIn, false);
+	err = stucValidateMesh(pMeshIn, false, false);
 	PIX_ERR_RETURN_IFNOT(err, "invalid in-mesh");
 	Mesh meshInWrap = {0};
 	UBitField32 spAttribsToAppend = STUC_ATTRIB_USE_FIELD(((StucAttribUse[]) {
@@ -1581,7 +1564,7 @@ StucErr stucMapToMesh(
 
 	PIX_ERR_THROW_IFNOT_COND(
 		err,
-		pMapArr && pMapArr->count && pMapArr->pMatArr && pMapArr->ppArr,
+		pMapArr && pMapArr->count && pMapArr->pArr,
 		"", 0
 	);
 
@@ -1912,33 +1895,14 @@ StucErr stucMapArrDestroy(StucContext pCtx, StucMapArr *pMapArr) {
 	PIX_ERR_RETURN_IFNOT_COND(err, pCtx && pMapArr, "");
 	if (pMapArr->pCommonAttribArr) {
 		for (I32 i = 0; i < pMapArr->count; ++i) {
-			if (pMapArr->pCommonAttribArr[i].mesh.pArr) {
-				pCtx->alloc.fpFree(pMapArr->pCommonAttribArr[i].mesh.pArr);
-			}
-			if (pMapArr->pCommonAttribArr[i].face.pArr) {
-				pCtx->alloc.fpFree(pMapArr->pCommonAttribArr[i].face.pArr);
-			}
-			if (pMapArr->pCommonAttribArr[i].corner.pArr) {
-				pCtx->alloc.fpFree(pMapArr->pCommonAttribArr[i].corner.pArr);
-			}
-			if (pMapArr->pCommonAttribArr[i].edge.pArr) {
-				pCtx->alloc.fpFree(pMapArr->pCommonAttribArr[i].edge.pArr);
-			}
-			if (pMapArr->pCommonAttribArr[i].vert.pArr) {
-				pCtx->alloc.fpFree(pMapArr->pCommonAttribArr[i].vert.pArr);
-			}
+			stucDestroyCommonAttribs(pCtx, pMapArr->pCommonAttribArr + i);
 		}
 		pCtx->alloc.fpFree(pMapArr->pCommonAttribArr);
-		pMapArr->pCommonAttribArr = NULL;
 	}
-	if (pMapArr->pMatArr) {
-		pCtx->alloc.fpFree(pMapArr->pMatArr);
-		pMapArr->pMatArr = NULL;
+	if (pMapArr->pArr) {
+		pCtx->alloc.fpFree(pMapArr->pArr);
 	}
-	if (pMapArr->ppArr) {
-		pCtx->alloc.fpFree(pMapArr->ppArr);
-		pMapArr->ppArr = NULL;
-	}
+	*pMapArr = (StucMapArr){0};
 	return err;
 }
 

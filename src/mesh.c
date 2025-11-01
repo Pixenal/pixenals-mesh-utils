@@ -370,7 +370,7 @@ StucErr stucDestroyObjArr(StucContext pCtx, I32 objCount, StucObject *pObjArr) {
 	return err;
 }
 
-StucErr stucValidateMesh(const StucMesh *pMesh, bool checkEdges) {
+StucErr stucValidateMesh(const StucMesh *pMesh, bool checkEdges, bool posOnly) {
 	StucErr err = PIX_ERR_SUCCESS;
 	PIX_ERR_RETURN_IFNOT_COND(err, pMesh->faceCount && pMesh->pFaces, "");
 	PIX_ERR_RETURN_IFNOT_COND(err, pMesh->cornerCount && pMesh->pCorners, "");
@@ -420,8 +420,8 @@ StucErr stucValidateMesh(const StucMesh *pMesh, bool checkEdges) {
 		AttribActive idx = pMesh->activeAttribs[i];
 		if (!idx.active) {
 			PIX_ERR_RETURN_IFNOT_COND(err,
-				!stucIsAttribUseRequired(i),
-				"in-mesh must have active attribs for pos, uv, normal, and idx"
+				!stucIsAttribUseRequired(i) || posOnly && i == STUC_ATTRIB_USE_POS,
+				"mesh must have active attribs for pos, uv, normal, and idx"
 			);
 			continue;
 		}
@@ -537,4 +537,35 @@ bool checkForNgonsInMesh(const StucMesh *pMesh) {
 		}
 	}
 	return false;
+}
+
+bool stucQuickCmpMesh(StucContext pCtx, const StucMesh *pA, const StucMesh *pB) {
+	if (pA->vertCount != pB->vertCount ||
+		memcmp(
+			pA->activeAttribs,
+			pB->activeAttribs,
+			sizeof(StucAttribActive) * STUC_ATTRIB_USE_ENUM_COUNT
+	)) {
+		return false;
+	}
+	const StucAttrib *pVerts = stucGetActiveAttribConst(pCtx, pA, STUC_ATTRIB_USE_POS);
+	const StucAttrib *pRefVerts = stucGetActiveAttribConst(pCtx, pA, STUC_ATTRIB_USE_POS);
+	return !(
+		memcmp(
+			pVerts->core.pData,
+			pRefVerts->core.pData,
+			stucGetAttribSizeIntern(pVerts->core.type) * pA->vertCount
+		) ||
+		memcmp(pA->pCorners, pB->pCorners, sizeof(I32) * pA->cornerCount) ||
+		memcmp(pA->pFaces, pB->pFaces, sizeof(I32) * (pA->faceCount + 1))
+	);
+}
+
+bool stucQuickCmpObj(StucContext pCtx, const StucObject *pA, const StucObject *pB) {
+	if (memcmp(&pA->transform, &pB->transform, sizeof(Stuc_M4x4))) {
+		return false;
+	}
+	const StucMesh *pAMesh = (StucMesh *)pA->pData->type;
+	const StucMesh *pBMesh = (StucMesh *)pB->pData->type;
+	return stucQuickCmpMesh(pCtx, pAMesh, pBMesh);
 }

@@ -115,7 +115,7 @@ FaceRange stucGetFaceRange(const StucMesh *pMesh, I32 idx) {
 	PIX_ERR_ASSERT("", face.size >= 3);
 	return face;
 }
-StucErr stucValidateMesh(const StucMesh *pMesh, bool checkEdges);
+StucErr stucValidateMesh(const StucMesh *pMesh, bool checkEdges, bool posOnly);
 void stucAliasMeshCoreNoAttribs(StucMesh *pDest, StucMesh *pSrc);
 I32 stucGetDomainSize(const Mesh *pMesh, StucDomain domain);
 I32 stucDomainCountGetIntern(const StucMesh *pMesh, StucDomain domain);
@@ -153,3 +153,5 @@ V2_F32 stucGetUvPos(const Mesh *pMesh, const FaceRange *pFace, I32 corner) {
 I32 stucGetMeshVert(const StucMesh *pMesh, FaceCorner corner);
 I32 stucGetMeshEdge(const StucMesh *pMesh, FaceCorner corner);
 bool checkForNgonsInMesh(const StucMesh *pMesh);
+bool stucQuickCmpMesh(StucContext pCtx, const StucMesh *pA, const StucMesh *pB);
+bool stucQuickCmpObj(StucContext pCtx, const StucObject *pA, const StucObject *pB);
