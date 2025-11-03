@@ -326,16 +326,15 @@ void stucApplyObjTransform(StucObject *pObj) {
 StucErr stucMergeObjArr(
 	StucContext pCtx,
 	Mesh *pMesh,
-	I32 objCount,
-	const StucObject *pObjArr,
+	const StucObjArr *pObjArr,
 	bool setCommon
 ) {
 	StucErr err = PIX_ERR_SUCCESS;
-	const Mesh **ppSrcs = pCtx->alloc.fpCalloc(objCount, sizeof(void *));
+	const Mesh **ppSrcs = pCtx->alloc.fpCalloc(pObjArr->count, sizeof(void *));
 	MeshCounts totalCount = {0};
-	for (I32 i = 0; i < objCount; ++i) {
-		ppSrcs[i] = (Mesh *)pObjArr[i].pData;
-		stucAddToMeshCounts(&totalCount, NULL, (Mesh *)pObjArr[i].pData);
+	for (I32 i = 0; i < pObjArr->count; ++i) {
+		ppSrcs[i] = (Mesh *)pObjArr->pArr[i].pData;
+		stucAddToMeshCounts(&totalCount, NULL, (Mesh *)pObjArr->pArr[i].pData);
 	}
 	pMesh->faceBufSize = totalCount.faces + 1; //+1 for last face index
 	pMesh->cornerBufSize = totalCount.corners;
@@ -347,10 +346,10 @@ StucErr stucMergeObjArr(
 		pCtx->alloc.fpMalloc(sizeof(I32) * pMesh->cornerBufSize);
 	pMesh->core.pEdges =
 		pCtx->alloc.fpMalloc(sizeof(I32) * pMesh->cornerBufSize);
-	err = stucAllocAttribsFromMeshArr(pCtx, pMesh, objCount, ppSrcs, -1, setCommon, true, false);
+	err = stucAllocAttribsFromMeshArr(pCtx, pMesh, pObjArr->count, ppSrcs, -1, setCommon, true, false);
 	PIX_ERR_THROW_IFNOT(err, "", 0);
-	for (I32 i = 0; i < objCount; ++i) {
-		stucCopyMesh(&pMesh->core, (StucMesh *)pObjArr[i].pData);
+	for (I32 i = 0; i < pObjArr->count; ++i) {
+		stucCopyMesh(&pMesh->core, (StucMesh *)pObjArr->pArr[i].pData);
 	}
 	PIX_ERR_CATCH(0, err,
 		stucMeshDestroy(pCtx, &pMesh->core);
@@ -358,15 +357,18 @@ StucErr stucMergeObjArr(
 	return err;
 }
 
-StucErr stucDestroyObjArr(StucContext pCtx, I32 objCount, StucObject *pObjArr) {
+StucErr stucObjArrDestroy(const StucContext pCtx, StucObjArr *pArr) {
 	StucErr err = PIX_ERR_NOT_SET;
-	for (I32 i = 0; i < objCount; ++i) {
-		err = stucMeshDestroy(pCtx, (StucMesh *)pObjArr[i].pData);
-		PIX_ERR_THROW_IFNOT(err, "", 0);
-		pCtx->alloc.fpFree(pObjArr[i].pData);
+	PIX_ERR_RETURN_IFNOT_COND(err, pCtx && pArr, "");
+	for (I32 i = 0; i < pArr->count; ++i) {
+		if (pArr->pArr[i].pData) {
+			StucMesh *pMesh = (StucMesh *)pArr->pArr[i].pData->type;
+			stucMeshDestroy(pCtx, pMesh);
+			pCtx->alloc.fpFree(pMesh);
+		}
 	}
-	pCtx->alloc.fpFree(pObjArr);
-	PIX_ERR_CATCH(0, err, ;)
+	pCtx->alloc.fpFree(pArr->pArr);
+	*pArr = (StucObjArr){0};
 	return err;
 }
 
@@ -420,7 +422,7 @@ StucErr stucValidateMesh(const StucMesh *pMesh, bool checkEdges, bool posOnly) {
 		AttribActive idx = pMesh->activeAttribs[i];
 		if (!idx.active) {
 			PIX_ERR_RETURN_IFNOT_COND(err,
-				!stucIsAttribUseRequired(i) || posOnly && i == STUC_ATTRIB_USE_POS,
+				!stucIsAttribUseRequired(i) || posOnly && i != STUC_ATTRIB_USE_POS,
 				"mesh must have active attribs for pos, uv, normal, and idx"
 			);
 			continue;

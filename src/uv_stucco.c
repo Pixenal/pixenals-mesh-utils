@@ -110,18 +110,8 @@ StucErr stucMapFileLoadForEdit(
 	StucObject **ppFlatCutoffArr,
 	StucAttribIndexedArr *pIndexedAttribs
 ) {
-	return stucLoadStucFile(
-		pCtx,
-		filePath,
-		pObjCount,
-		ppObjArr,
-		pUsgCount,
-		ppUsgArr,
-		pFlatCutoffCount,
-		ppFlatCutoffArr, 
-		true,
-		pIndexedAttribs
-	);
+	//TODO reimplement
+	return PIX_ERR_ERROR;
 }
 
 static
@@ -250,28 +240,24 @@ void buildFaceBBoxes(const StucAlloc *pAlloc, StucMap pMap) {
 StucErr stucMapFileLoad(StucContext pCtx, StucMap *pMapHandle, const char *filePath) {
 	StucErr err = PIX_ERR_NOT_SET;
 	StucMap pMap = pCtx->alloc.fpCalloc(1, sizeof(MapFile));
-	I32 objCount = 0;
-	StucObject *pObjArr = NULL;
-	StucUsg *pUsgArr = NULL;
-	I32 flatCutoffCount = 0;
-	StucObject *pFlatCutoffArr = NULL;
+	StucObjArr objArr = {0};
+	StucUsgArr usgArr = {0};
+	StucObjArr cutoffArr = {0};
 	err = stucLoadStucFile(
 		pCtx, filePath,
-		&objCount,
-		&pObjArr,
-		&pMap->usgArr.count,
-		&pUsgArr,
-		&flatCutoffCount,
-		&pFlatCutoffArr,
-		false,
-		&pMap->indexedAttribs
+		&objArr,
+		&usgArr,
+		&cutoffArr,
+		NULL,
+		&pMap->indexedAttribs,
+		true
 	);
 	//TODO validate meshes, ensure pMatIdx is within mat range, faces are within max corner limit,
 	//F32 values are valid, etc.
 	PIX_ERR_THROW_IFNOT(err, "failed to load file from disk", 0);
 
-	for (I32 i = 0; i < objCount; ++i) {
-		Mesh *pMesh = (Mesh *)pObjArr[i].pData;
+	for (I32 i = 0; i < objArr.count; ++i) {
+		Mesh *pMesh = (Mesh *)objArr.pArr[i].pData;
 		
 		err = attemptToSetMissingActiveDomains(&pMesh->core);
 		PIX_ERR_THROW_IFNOT(err, "", 0);
@@ -288,11 +274,11 @@ StucErr stucMapFileLoad(StucContext pCtx, StucMap *pMapHandle, const char *fileP
 			STUC_DOMAIN_NONE
 		);
 		PIX_ERR_THROW_IFNOT(err, "", 0);
-		stucApplyObjTransform(pObjArr + i);
+		stucApplyObjTransform(objArr.pArr + i);
 	}
 	Mesh *pMapMesh = pCtx->alloc.fpCalloc(1, sizeof(Mesh));
 	pMapMesh->core.type.type = STUC_OBJECT_DATA_MESH_INTERN;
-	err = stucMergeObjArr(pCtx, pMapMesh, objCount, pObjArr, false);
+	err = stucMergeObjArr(pCtx, pMapMesh, &objArr, false);
 	PIX_ERR_THROW_IFNOT(err, "", 0);
 
 	UBitField32 spToAppend = STUC_ATTRIB_USE_FIELD(((StucAttribUse[]) {
@@ -343,7 +329,7 @@ StucErr stucMapFileLoad(StucContext pCtx, StucMap *pMapHandle, const char *fileP
 
 	//TODO some form of heap corruption when many objects
 	//test with address sanitizer on CircuitPieces.stuc
-	stucDestroyObjArr(pCtx, objCount, pObjArr);
+	stucObjArrDestroy(pCtx, &objArr);
 
 	//set corner attribs to interpolate by default
 	//TODO make this an option in ui, even for non common attribs
@@ -362,10 +348,11 @@ StucErr stucMapFileLoad(StucContext pCtx, StucMap *pMapHandle, const char *fileP
 	err = stucCreateQuadTree(pCtx, &pMap->quadTree, pMap->pMesh, pMap->pFaceBBoxes);
 	PIX_ERR_THROW_IFNOT(err, "failed to create quadtree", 0);
 
-	if (pMap->usgArr.count) {
+	if (usgArr.count) {
+		pMap->usgArr.count = usgArr.count;
 		pMap->usgArr.pArr = pCtx->alloc.fpCalloc(pMap->usgArr.count, sizeof(Usg));
 		for (I32 i = 0; i < pMap->usgArr.count; ++i) {
-			Mesh *pUsgMesh = (Mesh *)pUsgArr[i].obj.pData;
+			Mesh *pUsgMesh = (Mesh *)usgArr.pArr[i].obj.pData;
 			err = attemptToSetMissingActiveDomains(&pUsgMesh->core);
 			PIX_ERR_THROW_IFNOT(err, "", 0);
 			err = stucAssignActiveAliases(
@@ -375,33 +362,34 @@ StucErr stucMapFileLoad(StucContext pCtx, StucMap *pMapHandle, const char *fileP
 				STUC_DOMAIN_NONE
 			);
 			PIX_ERR_THROW_IFNOT(err, "", 0);
-			pMap->usgArr.pArr[i].origin = *(V2_F32 *)&pUsgArr[i].obj.transform.d[3];
-			pMap->usgArr.pArr[i].pMesh = pUsgMesh;
-			stucApplyObjTransform(&pUsgArr[i].obj);
-			if (pUsgArr[i].flatCutoff.enabled) {
-				//TODO fix this
-				/*
-				Mesh *pFlatCutoff = (Mesh *)pUsgArr[i].pFlatCutoff->pData;
-				pMap->usgArr.pArr[i].pFlatCutoff = (Mesh *)pUsgArr[i].pFlatCutoff->pData;
-				err = attemptToSetMissingActiveDomains(&pFlatCutoff->core);
+			Usg *pUsg = pMap->usgArr.pArr + i;
+			pUsg->origin = *(V2_F32 *)&usgArr.pArr[i].obj.transform.d[3];
+			pUsg->pMesh = pUsgMesh;
+			stucApplyObjTransform(&usgArr.pArr[i].obj);
+			if (usgArr.pArr[i].flatCutoff.enabled) {
+				I32 cutoffIdx = usgArr.pArr[i].flatCutoff.idx;
+				stucApplyObjTransform(cutoffArr.pArr + cutoffIdx);
+				StucMesh *pFlatCutoff = (StucMesh *)&cutoffArr.pArr[cutoffIdx].pData;
+				pUsg->pFlatCutoff = pCtx->alloc.fpMalloc(sizeof(Mesh));
+				pUsg->pFlatCutoff->core = *pFlatCutoff;
+				*pFlatCutoff = (StucMesh){0};
+				err = attemptToSetMissingActiveDomains(&pUsg->pFlatCutoff->core);
 				PIX_ERR_THROW_IFNOT(err, "", 0);
 				err = stucAssignActiveAliases(
 					pCtx,
-					pFlatCutoff,
+					pUsg->pFlatCutoff,
 					0x1 << STUC_ATTRIB_USE_POS,
 					STUC_DOMAIN_NONE
 				);
 				PIX_ERR_THROW_IFNOT(err, "", 0);
-				stucApplyObjTransform(pUsgArr[i].pFlatCutoff);
-				*/
 			}
 		}
 		Mesh *pSquares = pCtx->alloc.fpCalloc(1, sizeof(Mesh));
 		stucAllocUsgSquaresMesh(pCtx, pMap, pSquares);
-		stucFillUsgSquaresMesh(pMap, pUsgArr, pSquares);
+		stucFillUsgSquaresMesh(pMap, usgArr.pArr, pSquares);
 		pMap->usgArr.pSquares = pSquares;
-		stucAssignUsgsToVerts(&pCtx->alloc, pMap, pUsgArr);
-		pMap->usgArr.pMemArr = pUsgArr;
+		stucAssignUsgsToVerts(&pCtx->alloc, pMap, usgArr.pArr);
+		pMap->usgArr.pMemArr = usgArr.pArr;
 	}
 
 	*pMapHandle = pMap;
@@ -1285,10 +1273,11 @@ StucErr mapMapArrToMesh(
 ) {
 	StucErr err = PIX_ERR_SUCCESS;
 	Mesh *pOutBufArr = pCtx->alloc.fpCalloc(pMapArr->count, sizeof(Mesh));
-	StucObject *pOutObjWrapArr =
-		pCtx->alloc.fpCalloc(pMapArr->count, sizeof(StucObject));
+	StucObjArr outObjWrapArr = {0};
+	outObjWrapArr.size = outObjWrapArr.count = pMapArr->count;
+	outObjWrapArr.pArr = pCtx->alloc.fpCalloc(outObjWrapArr.size, sizeof(StucObject));
 	for (I32 i = 0; i < pMapArr->count; ++i) {
-		pOutObjWrapArr[i].pData = (StucObjectData *)&pOutBufArr[i];
+		outObjWrapArr.pArr[i].pData = (StucObjectData *)&pOutBufArr[i];
 		const StucMap pMap = pMapArr->pArr[i].pMap;
 		I8 matIdx = pMapArr->pArr[i].matIdx;
 		InFaceTable inFaceTable = {0};
@@ -1373,7 +1362,7 @@ StucErr mapMapArrToMesh(
 		pOutIndexedAttribs
 	);
 	PIX_ERR_THROW_IFNOT(err, "", 0);
-	err = stucMergeObjArr(pCtx, &meshOutWrap, pMapArr->count, pOutObjWrapArr, false);
+	err = stucMergeObjArr(pCtx, &meshOutWrap, &outObjWrapArr, false);
 	PIX_ERR_THROW_IFNOT(err, "", 0);
 	*pMeshOut = meshOutWrap.core;
 	PIX_ERR_CATCH(0, err,
@@ -1384,7 +1373,7 @@ StucErr mapMapArrToMesh(
 		stucMeshDestroy(pCtx, &pOutBufArr[i].core);
 	}
 	pCtx->alloc.fpFree(pOutBufArr);
-	pCtx->alloc.fpFree(pOutObjWrapArr);
+	stucObjArrDestroy(pCtx, &outObjWrapArr);
 	return err;
 }
 
@@ -1589,14 +1578,6 @@ StucErr stucMapToMesh(
 	}
 	destroyAppendedSpAttribs(pCtx, &meshInWrap.core, spAttribsToAppend);
 	return err;
-}
-
-StucErr stucObjArrDestroy(
-	StucContext pCtx,
-	I32 objCount,
-	StucObject *pObjArr
-) {
-	return stucDestroyObjArr(pCtx, objCount, pObjArr);
 }
 
 StucErr stucUsgArrDestroy(StucContext pCtx, I32 count, StucUsg *pUsgArr) {

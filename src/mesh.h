@@ -96,11 +96,9 @@ void stucApplyObjTransform(StucObject *pObj);
 StucErr stucMergeObjArr(
 	StucContext pCtx,
 	Mesh *pMesh,
-	I32 objCount,
-	const StucObject *pObjArr,
+	const StucObjArr *pObjArr,
 	bool setCommon
 );
-StucErr stucDestroyObjArr(StucContext pCtx, I32 objCount, StucObject *pObjArr);
 static inline
 FaceRange stucGetFaceRange(const StucMesh *pMesh, I32 idx) {
 	PIX_ERR_ASSERT("", idx >= 0 && idx < pMesh->faceCount);
