@@ -237,6 +237,33 @@ void buildFaceBBoxes(const StucAlloc *pAlloc, StucMap pMap) {
 	}
 }
 
+StucErr initFlatCutoff(
+	StucContext pCtx,
+	Usg *pUsg,
+	StucObject *pCutoffObj
+) {
+	StucErr err = PIX_ERR_SUCCESS;
+	pUsg->pFlatCutoff = pCtx->alloc.fpCalloc(1, sizeof(Mesh));
+	pUsg->pFlatCutoff->core = *(StucMesh *)pCutoffObj->pData;
+
+	err = attemptToSetMissingActiveDomains(&pUsg->pFlatCutoff->core);
+	PIX_ERR_RETURN_IFNOT(err, "");
+	err = stucAssignActiveAliases(
+		pCtx,
+		pUsg->pFlatCutoff,
+		0x1 << STUC_ATTRIB_USE_POS,
+		STUC_DOMAIN_NONE
+	);
+	PIX_ERR_RETURN_IFNOT(err, "");
+	stucApplyObjTransform(
+		&(StucObject){
+			.pData = (StucObjectData *)pUsg->pFlatCutoff,
+			.transform = pCutoffObj->transform
+		}
+	);
+	return err;
+}
+
 StucErr stucMapFileLoad(StucContext pCtx, StucMap *pMapHandle, const char *filePath) {
 	StucErr err = PIX_ERR_NOT_SET;
 	StucMap pMap = pCtx->alloc.fpCalloc(1, sizeof(MapFile));
@@ -367,21 +394,10 @@ StucErr stucMapFileLoad(StucContext pCtx, StucMap *pMapHandle, const char *fileP
 			pUsg->pMesh = pUsgMesh;
 			stucApplyObjTransform(&usgArr.pArr[i].obj);
 			if (usgArr.pArr[i].flatCutoff.enabled) {
+				//TODO these shouldn't be duplicated for each usg,
+				//store cutoffs in a separate arr
 				I32 cutoffIdx = usgArr.pArr[i].flatCutoff.idx;
-				stucApplyObjTransform(cutoffArr.pArr + cutoffIdx);
-				StucMesh *pFlatCutoff = (StucMesh *)&cutoffArr.pArr[cutoffIdx].pData;
-				pUsg->pFlatCutoff = pCtx->alloc.fpMalloc(sizeof(Mesh));
-				pUsg->pFlatCutoff->core = *pFlatCutoff;
-				*pFlatCutoff = (StucMesh){0};
-				err = attemptToSetMissingActiveDomains(&pUsg->pFlatCutoff->core);
-				PIX_ERR_THROW_IFNOT(err, "", 0);
-				err = stucAssignActiveAliases(
-					pCtx,
-					pUsg->pFlatCutoff,
-					0x1 << STUC_ATTRIB_USE_POS,
-					STUC_DOMAIN_NONE
-				);
-				PIX_ERR_THROW_IFNOT(err, "", 0);
+				initFlatCutoff(pCtx, pUsg, cutoffArr.pArr + cutoffIdx);
 			}
 		}
 		Mesh *pSquares = pCtx->alloc.fpCalloc(1, sizeof(Mesh));
