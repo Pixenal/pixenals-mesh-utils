@@ -140,35 +140,6 @@ void buildEdgeLenList(StucContext pCtx, Mesh *pMesh) {
 }
 
 static
-void TEMPsetSpFromAttribName(StucContext pCtx, StucMesh *pMesh, AttribArray *pArr) {
-	for (I32 j = 0; j < pArr->count; ++j) {
-		if (!strcmp(pArr->pArr[j].core.name, "StucMaterialIndices") ||
-			!strcmp(pArr->pArr[j].core.name, "materials")
-		) {
-			strncpy(pArr->pArr[j].core.name, "materials", STUC_ATTRIB_NAME_MAX_LEN);
-			pArr->pArr[j].core.use = STUC_ATTRIB_USE_IDX;
-			pMesh->activeAttribs[STUC_ATTRIB_USE_IDX].active = true;
-			pMesh->activeAttribs[STUC_ATTRIB_USE_IDX].idx = (I16)j;
-		}
-		else if (!strcmp(pArr->pArr[j].core.name, "Color")) {
-			pArr->pArr[j].core.use = STUC_ATTRIB_USE_COLOR;
-			pMesh->activeAttribs[STUC_ATTRIB_USE_COLOR].active = true;
-			pMesh->activeAttribs[STUC_ATTRIB_USE_COLOR].idx = (I16)j;
-		}
-		else {
-			for (I32 k = 1; k < STUC_ATTRIB_USE_SP_ENUM_COUNT; ++k) {
-				if (!strncmp(pArr->pArr[j].core.name, pCtx->spAttribNames[k], STUC_ATTRIB_NAME_MAX_LEN)) {
-					pArr->pArr[j].core.use = k;
-					pMesh->activeAttribs[k].active = true;
-					pMesh->activeAttribs[k].idx = (I16)j;
-					break;
-				}
-			}
-		}
-	}
-}
-
-static
 StucErr attemptToSetMissingActiveDomains(StucMesh *pMesh) {
 	StucErr err = PIX_ERR_SUCCESS;
 	for (I32 i = 1; i < STUC_ATTRIB_USE_ENUM_COUNT; ++i) {
