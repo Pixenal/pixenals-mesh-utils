@@ -285,7 +285,7 @@ StucErr stucMapFileLoad(StucContext pCtx, StucMap *pMapHandle, const char *fileP
 	stucAppendSpAttribsToMesh(
 		pCtx,
 		pMapMesh,
-		spToAppend | (pMap->usgArr.count ? STUC_ATTRIB_USE_USG : 0x0),
+		spToAppend | (usgArr.count ? STUC_ATTRIB_USE_USG : 0x0),
 		STUC_ATTRIB_ORIGIN_MAP
 	);
 
