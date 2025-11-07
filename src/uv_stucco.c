@@ -47,6 +47,10 @@ StucErr stucContextInit(
 	StucTypeDefaultConfig *pTypeDefaultConfig,
 	StucStageReport *pStageReport
 ) {
+#ifndef NDEBUG
+	stucIoDataTagValidate();
+#endif
+
 	StucAlloc alloc;
 	if (pAlloc) {
 		stucAllocSetCustom(&alloc, pAlloc);
@@ -235,13 +239,36 @@ StucErr initFlatCutoff(
 	return err;
 }
 
+typedef struct MapDepStack {
+	I32 map;
+} MapDepStack;
+
 StucErr stucMapFileLoad(StucContext pCtx, StucMap *pMapHandle, const char *filePath) {
-	StucErr err = PIX_ERR_NOT_SET;
+	StucErr err = PIX_ERR_SUCCESS;
+	PIX_ERR_RETURN_IFNOT_COND(err, filePath, "provided filepath was NULL");
+
+	StucMapDeps deps = {0};
+	err = stucMapImportGetDep(pCtx, filePath, &deps);
+	PIX_ERR_THROW_IFNOT(err, "", 0);
+	PIX_ERR_CATCH(0, err, ;);
+	return err;
+}
+
+StucErr stucMapFileLoadIntern(StucContext pCtx, StucMap *pMapHandle, const char *filePath) {
+	StucErr err = PIX_ERR_SUCCESS;
+	PIX_ERR_RETURN_IFNOT_COND(err, filePath, "provided filepath was NULL");
 	StucMap pMap = pCtx->alloc.fpCalloc(1, sizeof(MapFile));
+	{
+		I32 nameLen = 0;
+		const char *pName = stucGetBasename(filePath, &nameLen);
+		PIX_ERR_THROW_IFNOT_COND(err, pName, "file name is too long", 0);
+		pMap->pName = pCtx->alloc.fpCalloc(nameLen + 1, 1);
+		memcpy(pMap->pName, pName, nameLen);
+	}
 	StucObjArr objArr = {0};
 	StucUsgArr usgArr = {0};
 	StucObjArr cutoffArr = {0};
-	err = stucLoadStucFile(
+	err = stucMapImport(
 		pCtx, filePath,
 		&objArr,
 		&usgArr,
