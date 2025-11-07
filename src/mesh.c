@@ -358,11 +358,11 @@ StucErr stucMergeObjArr(
 }
 
 StucErr stucObjArrDestroy(const StucContext pCtx, StucObjArr *pArr) {
-	StucErr err = PIX_ERR_NOT_SET;
+	StucErr err = PIX_ERR_SUCCESS;
 	PIX_ERR_RETURN_IFNOT_COND(err, pCtx && pArr, "");
 	for (I32 i = 0; i < pArr->count; ++i) {
 		if (pArr->pArr[i].pData) {
-			StucMesh *pMesh = (StucMesh *)pArr->pArr[i].pData->type;
+			StucMesh *pMesh = (StucMesh *)pArr->pArr[i].pData;
 			stucMeshDestroy(pCtx, pMesh);
 			pCtx->alloc.fpFree(pMesh);
 		}
@@ -567,7 +567,7 @@ bool stucQuickCmpObj(StucContext pCtx, const StucObject *pA, const StucObject *p
 	if (memcmp(&pA->transform, &pB->transform, sizeof(Stuc_M4x4))) {
 		return false;
 	}
-	const StucMesh *pAMesh = (StucMesh *)pA->pData->type;
-	const StucMesh *pBMesh = (StucMesh *)pB->pData->type;
+	const StucMesh *pAMesh = (StucMesh *)pA->pData;
+	const StucMesh *pBMesh = (StucMesh *)pB->pData;
 	return stucQuickCmpMesh(pCtx, pAMesh, pBMesh);
 }
