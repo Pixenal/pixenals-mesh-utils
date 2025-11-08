@@ -219,7 +219,7 @@ void bulkCopyAttribs(
 ) {
 	for (I32 i = 0; i < pDest->count; ++i) {
 		const Attrib *pSrcAttrib = 
-			stucGetAttribInternConst(pDest->pArr[i].core.name, pSrc, false, NULL, NULL);
+			stucGetAttribInternConst(pDest->pArr[i].core.name, pSrc, false, NULL, NULL, NULL);
 		if (!pSrcAttrib) {
 			continue;
 		}

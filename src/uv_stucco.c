@@ -239,38 +239,221 @@ StucErr initFlatCutoff(
 	return err;
 }
 
+struct MapDepEntry;
+
+typedef struct MapDepPtrs {
+	struct MapDepEntry **pArr;
+	I32 size;
+	I32 count;
+} MapDepPtrs;
+
+typedef struct MapDepEntry {
+	HTableEntryCore core;
+	MapDepPtrs deps;
+	StucMap pMap;
+	char *pName;
+	char *pPath;
+	bool onStack;
+} MapDepEntry;
+
+typedef struct MapDepStackEntry {
+	MapDepEntry *pMap;
+	I32 depIdx;
+} MapDepStackEntry;
+
+#define MAP_DEP_STACK_SIZE 64
+
 typedef struct MapDepStack {
-	I32 map;
+	MapDepStackEntry stack[MAP_DEP_STACK_SIZE];
+	I32 ptr;
 } MapDepStack;
 
-StucErr stucMapFileLoad(StucContext pCtx, StucMap *pMapHandle, const char *filePath) {
-	StucErr err = PIX_ERR_SUCCESS;
-	PIX_ERR_RETURN_IFNOT_COND(err, filePath, "provided filepath was NULL");
+typedef struct StrWithLen {
+	const char *pStr;
+	I32 len;
+} StrWithLen;
 
-	StucMapDeps deps = {0};
-	err = stucMapImportGetDep(pCtx, filePath, &deps);
-	PIX_ERR_THROW_IFNOT(err, "", 0);
-	PIX_ERR_CATCH(0, err, ;);
+static
+void mapDepInit(
+	void *pUserData,
+	HTableEntryCore *pEntryCore,
+	const void *pKeyData,
+	void *pInitInfo,
+	I32 linIdx
+) {
+	MapDepEntry *pEntry = (MapDepEntry *)pEntryCore;
+	char **ppStrArr = pInitInfo;
+	pEntry->pName = ppStrArr[0];
+	pEntry->pPath = ppStrArr[1];
+}
+
+static
+bool mapDepCmp(
+	const HTableEntryCore *pEntryCore,
+	const void *pKeyData,
+	const void *pInitInfo
+) {
+	const MapDepEntry *pEntry = (MapDepEntry *)pEntryCore;
+	const StrWithLen *pKey = pKeyData;
+	return !strncmp(pEntry->pName, pKey->pStr, pixioPathMaxGet());
+}
+
+static
+StucKey mapDepMakeKey(const void *pKeyData) {
+	const StrWithLen *pStr = pKeyData;
+	return (StucKey){.pKey = pStr->pStr, .size = pStr->len};
+}
+
+static
+ SearchResult addMapDepEntry(
+	 const StucAlloc *pAlloc,
+	 HTable *pTable,
+	 const char *pFilepath,
+	 MapDepEntry **ppEntry
+ ) {
+	I32 nameLen = 0;
+	I32 pathLen = 0;
+	const char *pName = stucGetBasename(pFilepath, &nameLen, &pathLen);
+	char *pNameCpy = pAlloc->fpMalloc(nameLen + 1);
+	char *pPathCpy = pAlloc->fpMalloc(pathLen + 1);
+	memcpy(pNameCpy, pName, nameLen + 1);
+	memcpy(pPathCpy, pFilepath, pathLen + 1);
+	return stucHTableGet(
+		pTable,
+		0,
+		&(StrWithLen){.pStr = pNameCpy, .len = nameLen},
+		ppEntry,
+		true,
+		(char *[]){pNameCpy, pPathCpy},
+		mapDepMakeKey, NULL, mapDepInit, mapDepCmp
+	);
+}
+
+static
+StucErr addMapEntryDeps(
+	const StucAlloc *pAlloc,
+	MapDepStack *pStack,
+	HTable *pTable,
+	MapDepEntry *pEntry,
+	StucMapDeps *pDeps
+) {
+	StucErr err = PIX_ERR_SUCCESS;
+	for (I32 i = 0; i < pDeps->maps.count; ++i) {
+		I32 nameLen = strnlen(pDeps->maps.pArr[i].pStr, pixioPathMaxGet());
+		I32 idx = 0;
+		PIXALC_DYN_ARR_ADD(void *, pAlloc, &pEntry->deps, idx);
+		SearchResult result = addMapDepEntry(
+			pAlloc,
+			pTable,
+			pDeps->maps.pArr[i].pStr,
+			pEntry->deps.pArr + idx
+		);
+		PIX_ERR_RETURN_IFNOT_COND(
+			err,
+			pEntry->deps.pArr[idx]->onStack,
+			"circular map dependency"
+		);
+	}
 	return err;
 }
 
-StucErr stucMapFileLoadIntern(StucContext pCtx, StucMap *pMapHandle, const char *filePath) {
+static
+StucErr mapDepStackPush(MapDepStack *pStack, MapDepEntry *pEntry) {
+	StucErr err = PIX_ERR_SUCCESS;
+	++pStack->ptr;
+	PIX_ERR_RETURN_IFNOT_COND(
+		err,
+		pStack->ptr < MAP_DEP_STACK_SIZE,
+		"too many map dependencies"
+	);
+	pStack->stack[pStack->ptr] = (MapDepStackEntry){.pMap = pEntry};
+	return err;
+}
+
+static
+StucErr mapDepStackPop(MapDepStack *pStack) {
+	StucErr err = PIX_ERR_SUCCESS;
+	PIX_ERR_RETURN_IFNOT_COND(err, pStack->ptr >= 0, "");
+	--pStack->ptr;
+	return err;
+}
+
+StucErr stucMapFileLoad(
+	StucContext pCtx,
+	const char *filePath,
+	PixErr (* fpMapGet)(const char *, const char **, const StucMap *),
+	PixErr (* fpMapStore)(const char *, StucMap *)
+) {
 	StucErr err = PIX_ERR_SUCCESS;
 	PIX_ERR_RETURN_IFNOT_COND(err, filePath, "provided filepath was NULL");
+
+	HTable table;
+	stucHTableInit(
+		&pCtx->alloc,
+		&table,
+		64,
+		(I32Arr){.pArr = (I32[]){sizeof(MapDepEntry)}},
+		NULL
+	);
+	MapDepStack stack = {0};
+	do {
+		MapDepStackEntry *pStackEntry = stack.stack + stack.ptr;
+		if (!filePath) {
+			StucMap pMap = NULL;
+			err = fpMapGet(pStackEntry->pMap->pName, &filePath, &pMap);
+			PIX_ERR_THROW_IFNOT(err, "", 0);
+			if (pMap) {
+				mapDepStackPop(&stack);
+				continue;
+			}
+			PIX_ERR_THROW_IFNOT_COND(err, filePath, "not path provided", 0);
+		}
+		StucMapDeps deps = {0};
+		err = stucMapImportGetDep(pCtx, filePath, &deps);
+		PIX_ERR_THROW_IFNOT(err, "", 0);
+		MapDepEntry *pEntry = NULL;
+		if (addMapDepEntry(&pCtx->alloc, &table, filePath, &pEntry) == STUC_SEARCH_ADDED) {
+			err = addMapEntryDeps(&pCtx->alloc, &stack, &table, pEntry, &deps);
+			PIX_ERR_THROW_IFNOT(err, "", 0);
+		}
+		else if (pStackEntry->depIdx < pStackEntry->pMap->deps.count) {
+			++pStackEntry->depIdx;
+		}
+		else {
+			StucMap pMap = NULL;
+			err = stucMapFileLoadIntern(pCtx, &pMap, pEntry->pPath, pEntry);
+			PIX_ERR_THROW_IFNOT(err, "", 0);
+			err = mapDepStackPop(&stack);
+			PIX_ERR_THROW_IFNOT(err, "", 0);
+			continue;
+		}
+		err = mapDepStackPush(&stack, pEntry->deps.pArr[pStackEntry->depIdx]);
+		PIX_ERR_THROW_IFNOT(err, "", 0);
+	} while(filePath = NULL, stack.ptr >= 0);
+
+	PIX_ERR_CATCH(0, err, ;);
+	stucHTableDestroy(&table);
+	return err;
+}
+
+StucErr stucMapFileLoadIntern(
+	StucContext pCtx,
+	StucMap *pMapHandle,
+	MapDepEntry *pEntry
+) {
+	StucErr err = PIX_ERR_SUCCESS;
+	PIX_ERR_RETURN_IFNOT_COND(err, pEntry->pName, "file name is too long");
 	StucMap pMap = pCtx->alloc.fpCalloc(1, sizeof(MapFile));
-	{
-		I32 nameLen = 0;
-		const char *pName = stucGetBasename(filePath, &nameLen);
-		PIX_ERR_THROW_IFNOT_COND(err, pName, "file name is too long", 0);
-		pMap->pName = pCtx->alloc.fpCalloc(nameLen + 1, 1);
-		memcpy(pMap->pName, pName, nameLen);
-	}
+	pMap->pName = pEntry->pName;
+	pMap->pPath = pEntry->pPath;
 	StucObjArr objArr = {0};
 	StucUsgArr usgArr = {0};
 	StucObjArr cutoffArr = {0};
+	ObjMapOptsArr mapOptsArr = {0};
 	err = stucMapImport(
-		pCtx, filePath,
+		pCtx, pEntry->pPath,
 		&objArr,
+		&mapOptsArr,
 		&usgArr,
 		&cutoffArr,
 		NULL,
@@ -281,11 +464,35 @@ StucErr stucMapFileLoadIntern(StucContext pCtx, StucMap *pMapHandle, const char 
 	//F32 values are valid, etc.
 	PIX_ERR_THROW_IFNOT(err, "failed to load file from disk", 0);
 
+	I32 targetIdx = 0;
 	for (I32 i = 0; i < objArr.count; ++i) {
 		Mesh *pMesh = (Mesh *)objArr.pArr[i].pData;
 		
 		err = attemptToSetMissingActiveDomains(&pMesh->core);
 		PIX_ERR_THROW_IFNOT(err, "", 0);
+
+		if (targetIdx < mapOptsArr.count &&
+			mapOptsArr.pArr[targetIdx].obj == i
+		) {
+			StucMesh meshOut = {0};
+			AttribIndexedArr outIdxAttribArr= {0};
+			//TODO add an option to stucMapToMesh which retains all
+			//original indexed attribs, rather than only keeping those
+			//that are used
+			stucMapToMesh(
+				pCtx,
+				&mapOptsArr.pArr[targetIdx].arr,
+				&pMesh->core,
+				&pMap->indexedAttribs,
+				&meshOut,
+				&outIdxAttribArr,
+				1.0f,//TODO replace with actual wScale an receiveLen vars
+				-1.0f
+			);
+			stucMeshDestroy(pCtx, &pMesh->core);
+			pMesh->core = meshOut;
+			++targetIdx;
+		}
 		err = stucAssignActiveAliases(
 			pCtx,
 			pMesh,
@@ -437,15 +644,16 @@ StucErr stucMapFileMeshGet(StucContext pCtx, StucMap pMap, const StucMesh **ppMe
 }
 
 static
-void initCommonAttrib(
+void initBlendOpt(
 	StucContext pCtx,
-	StucCommonAttrib *pEntry,
-	const StucAttrib *pAttrib
+	StucBlendOpt *pEntry,
+	const StucAttrib *pAttrib,
+	I32 attribIdx
 ) {
-	memcpy(pEntry->name, pAttrib->core.name, STUC_ATTRIB_NAME_MAX_LEN);
 	StucTypeDefault *pDefault = 
 		stucGetTypeDefaultConfig(&pCtx->typeDefaults, pAttrib->core.type);
 	pEntry->blendConfig = pDefault->blendConfig;
+	pEntry->attrib = attribIdx;
 }
 
 static
@@ -455,13 +663,10 @@ StucErr getCommonAttribs(
 	const AttribArray *pMapAttribs,
 	const StucMesh *pMesh,
 	const AttribArray *pMeshAttribs,
-	StucCommonAttribArr *pCommonArr
+	StucBlendOptArr *pOptArr
 ) {
 	StucErr err = PIX_ERR_SUCCESS;
 	//TODO ignore special attribs like StucTangent or StucTSign
-	pCommonArr->count = 0;
-	pCommonArr->size = 2;
-	pCommonArr->pArr = pCtx->alloc.fpCalloc(pCommonArr->size, sizeof(StucCommonAttrib));
 	for (I32 i = 0; i < pMeshAttribs->count; ++i) {
 		Attrib *pAttrib = pMeshAttribs->pArr + i;
 		if (pAttrib->core.use == STUC_ATTRIB_USE_POS) {
@@ -480,17 +685,13 @@ StucErr getCommonAttribs(
 		if (!pMapAttrib) {
 			continue;
 		}
-		PIX_ERR_ASSERT("", pCommonArr->count <= pCommonArr->size);
-		if (pCommonArr->count == pCommonArr->size) {
-			pCommonArr->size *= 2;
-			pCommonArr->pArr = pCtx->alloc.fpRealloc(pCommonArr->pArr, pCommonArr->size);
-		}
-		initCommonAttrib(pCtx, pCommonArr->pArr + pCommonArr->count, pAttrib);
-		pCommonArr->count++;
+		I32 newIdx = 0;
+		PIXALC_DYN_ARR_ADD(StucBlendOpt, &pCtx->alloc, pOptArr, newIdx);
+		initBlendOpt(pCtx, pOptArr->pArr + newIdx, pAttrib, i);
 	}
 	PIX_ERR_CATCH(0, err,
-		pCtx->alloc.fpFree(pCommonArr->pArr);
-		pCommonArr->count = pCommonArr->size = 0;
+		pCtx->alloc.fpFree(pOptArr->pArr);
+		*pOptArr = (StucBlendOptArr){0};
 	);
 	return err;
 }
@@ -501,71 +702,39 @@ StucErr stucQueryCommonAttribs(
 	StucContext pCtx,
 	const StucMap pMap,
 	const StucMesh *pMesh,
-	StucCommonAttribList *pCommonAttribs
+	StucBlendOptArr *pOptArr
 ) {
 	StucErr err = PIX_ERR_SUCCESS;
-	PIX_ERR_RETURN_IFNOT_COND(err, pCtx && pMap && pMesh && pCommonAttribs, "");
+	PIX_ERR_RETURN_IFNOT_COND(err, pCtx && pMap && pMesh && pOptArr, "");
 	const StucMesh *pMapMesh = &pMap->pMesh->core;
 	StucMesh meshWrap = *pMesh;
 	err = attemptToSetMissingActiveDomains(&meshWrap);
 	PIX_ERR_RETURN_IFNOT(err, "");
-	for (I32 i = STUC_DOMAIN_FACE; i <= STUC_DOMAIN_MESH; ++i) {
-		StucCommonAttribArr *pCommonArr = NULL;
-		stucCommonAttribArrGetFromDomain(pCtx, pCommonAttribs, i, &pCommonArr);
+	for (I32 domain = STUC_DOMAIN_FACE; domain <= STUC_DOMAIN_MESH; ++domain) {
 		err = getCommonAttribs(
 			pCtx,
 			pMapMesh,
-			stucGetAttribArrFromDomainConst(pMapMesh, i),
+			stucGetAttribArrFromDomainConst(pMapMesh, domain),
 			&meshWrap,
-			stucGetAttribArrFromDomainConst(&meshWrap, i),
-			pCommonArr
+			stucGetAttribArrFromDomainConst(&meshWrap, domain),
+			pOptArr + domain
 		);
 		PIX_ERR_THROW_IFNOT(err, "", 0);
 	}
 	PIX_ERR_CATCH(0, err,
-		stucDestroyCommonAttribs(pCtx, pCommonAttribs);
+		stucDestroyBlendOptArr(pCtx, pOptArr);
 	);
 	return err;
 }
 
-StucErr stucCommonAttribArrGetFromDomain(
+StucErr stucDestroyBlendOptArr(
 	StucContext pCtx,
-	StucCommonAttribList *pList,
-	StucDomain domain,
-	StucCommonAttribArr **ppArr
+	StucBlendOptArr *pOptArr
 ) {
 	StucErr err = PIX_ERR_SUCCESS;
-	switch (domain) {
-	case STUC_DOMAIN_FACE:
-		*ppArr = &pList->face;
-		break;
-	case STUC_DOMAIN_CORNER:
-		*ppArr = &pList->corner;
-		break;
-	case STUC_DOMAIN_EDGE:
-		*ppArr = &pList->edge;
-		break;
-	case STUC_DOMAIN_VERT:
-		*ppArr = &pList->vert;
-		break;
-	case STUC_DOMAIN_MESH:
-		*ppArr = &pList->mesh;
-		break;
-	default:
-		PIX_ERR_RETURN(err, "invalid domain");
-	}
-	return err;
-}
-
-StucErr stucDestroyCommonAttribs(
-	StucContext pCtx,
-	StucCommonAttribList *pCommonAttribs
-) {
-	StucErr err = PIX_ERR_SUCCESS;
-	PIX_ERR_RETURN_IFNOT_COND(err, pCtx && pCommonAttribs, "");
-	for (I32 i = STUC_DOMAIN_FACE; i <= STUC_DOMAIN_MESH; ++i) {
-		StucCommonAttribArr *pArr = NULL;
-		stucCommonAttribArrGetFromDomain(pCtx, pCommonAttribs, i, &pArr);
+	PIX_ERR_RETURN_IFNOT_COND(err, pCtx && pOptArr, "");
+	for (I32 domain = STUC_DOMAIN_FACE; domain <= STUC_DOMAIN_MESH; ++domain) {
+		StucBlendOptArr *pArr = pOptArr + domain;
 		if (pArr) {
 			pCtx->alloc.fpFree(pArr->pArr);
 			pArr->pArr = NULL;
@@ -668,7 +837,7 @@ StucErr mapToMeshInternal(
 	Mesh *pMeshIn,
 	StucMesh *pOutMesh,
 	I8 maskIdx,
-	const StucCommonAttribList *pCommonAttribList,
+	const StucBlendOptArr *pOptArr,
 	InFaceTable *pInFaceTable,
 	F32 wScale,
 	F32 receiveLen
@@ -681,7 +850,7 @@ StucErr mapToMeshInternal(
 		.pCtx = pCtx,
 		.pMap = pMap,
 		.pInMesh = pMeshIn,
-		.pCommonAttribList = pCommonAttribList,
+		.pOptArr = pOptArr,
 		.wScale = wScale,
 		.receiveLen = receiveLen,
 		.maskIdx = maskIdx,
@@ -909,6 +1078,7 @@ static
 StucErr getOriginIndexedAttrib(
 	StucContext pCtx,
 	Attrib *pAttrib,
+	I32 attribIdx,
 	const StucMapArr *pMapArr,
 	I32 mapIdx,
 	const AttribIndexed *pMapIndexedAttrib,
@@ -925,12 +1095,11 @@ StucErr getOriginIndexedAttrib(
 			*ppMatsToAdd = pInIndexedAttrib;
 			break;
 		case STUC_ATTRIB_ORIGIN_COMMON: {
-			const CommonAttribList *pMapCommon = pMapArr->pCommonAttribArr + mapIdx;
-			const CommonAttrib *pCommonAttrib =
-				stucGetCommonAttribFromDomain(pMapCommon, pAttrib->core.name, domain);
+			const BlendOptArr *pOptArr = pMapArr->pArr[mapIdx].blendOptArr;
+			const BlendOpt *pOpts = stucGetBlendOpt(pOptArr, attribIdx, domain);
 			BlendConfig config = {0};
-			if (pCommonAttrib) {
-				config = pCommonAttrib->blendConfig;
+			if (pOpts) {
+				config = pOpts->blendConfig;
 			}
 			else {
 				StucTypeDefault *pDefaultConfig =
@@ -1014,7 +1183,7 @@ StucErr getIndexedAttribInMaps(
 	*pSame = true;
 	StucMap pMapCache = NULL;
 	for (I32 i = 0; i < pMapArr->count; ++i) {
-		const StucMap pMap = pMapArr->pArr[i].pMap;
+		const StucMap pMap = pMapArr->pArr[i].map.ptr;
 		const char *pName = NULL;
 		switch (pAttrib->origin) {
 			case STUC_ATTRIB_ORIGIN_MAP:
@@ -1045,10 +1214,10 @@ StucErr getIndexedAttribInMaps(
 			found = true;
 			ppAttribs[i] = pIndexedAttrib;
 			if (!pMapCache) {
-				pMapCache = pMapArr->pArr[i].pMap;
+				pMapCache = pMapArr->pArr[i].map.ptr;
 			}
 			else if (*pSame) {
-				*pSame = pMapCache == pMapArr->pArr[i].pMap;
+				*pSame = pMapCache == pMapArr->pArr[i].map.ptr;
 			}
 		}
 	}
@@ -1078,7 +1247,9 @@ StucErr correctIdxIndices(
 		stucGetAttribIndexedInternConst(pInIndexedAttribs, pName);
 	for (I32 i = 0; i < pMapArr->count; ++i) {
 		AttribArray *pAttribArr = stucGetAttribArrFromDomain(&pMeshArr[i].core, domain);
-		Attrib *pAttrib = stucGetAttribIntern(pName, pAttribArr, false, NULL, NULL);
+		I32 attribIdx = 0;
+		Attrib *pAttrib =
+			stucGetAttribIntern(pName, pAttribArr, false, NULL, NULL, &attribIdx);
 		if (!ppMapAttribs[i] || !pAttrib) {
 			continue;
 		}
@@ -1087,6 +1258,7 @@ StucErr correctIdxIndices(
 		err = getOriginIndexedAttrib(
 			pCtx,
 			pAttrib,
+			attribIdx,
 			pMapArr,
 			i,
 			ppMapAttribs[i],
@@ -1292,7 +1464,7 @@ StucErr mapMapArrToMesh(
 	outObjWrapArr.pArr = pCtx->alloc.fpCalloc(outObjWrapArr.size, sizeof(StucObject));
 	for (I32 i = 0; i < pMapArr->count; ++i) {
 		outObjWrapArr.pArr[i].pData = (StucObjectData *)&pOutBufArr[i];
-		const StucMap pMap = pMapArr->pArr[i].pMap;
+		const StucMap pMap = pMapArr->pArr[i].map.ptr;
 		I8 matIdx = pMapArr->pArr[i].matIdx;
 		InFaceTable inFaceTable = {0};
 		if (pMap->usgArr.count) {
@@ -1317,7 +1489,7 @@ StucErr mapMapArrToMesh(
 				pMeshIn,
 				&squaresOut,
 				matIdx,
-				pMapArr->pCommonAttribArr + i,
+				pMapArr->pArr[i].blendOptArr,
 				&inFaceTable,
 				1.0f,
 				-1.0f
@@ -1351,7 +1523,7 @@ StucErr mapMapArrToMesh(
 			pMeshIn,
 			&pOutBufArr[i].core,
 			matIdx,
-			pMapArr->pCommonAttribArr + i,
+			pMapArr->pArr[i].blendOptArr,
 			NULL,
 			wScale,
 			receiveLen
@@ -1664,7 +1836,7 @@ StucErr stucGetAttribSize(StucAttribCore *pAttrib, I32 *pSize) {
 }
 
 StucErr stucGetAttrib(const char *pName, StucAttribArray *pAttribs, StucAttrib **ppAttrib) {
-	*ppAttrib = stucGetAttribIntern(pName, pAttribs, false, NULL, NULL);
+	*ppAttrib = stucGetAttribIntern(pName, pAttribs, false, NULL, NULL, NULL);
 	return PIX_ERR_SUCCESS;
 }
 
@@ -1789,7 +1961,7 @@ StucErr stucAttribGetAllDomains(
 ) {
 	for (I32 i = STUC_DOMAIN_FACE; i <= STUC_DOMAIN_VERT; ++i) {
 		AttribArray *pArr = stucGetAttribArrFromDomain(pMesh, i);
-		Attrib *pAttrib = stucGetAttribIntern(pName, pArr, false, NULL, NULL);
+		Attrib *pAttrib = stucGetAttribIntern(pName, pArr, false, NULL, NULL, NULL);
 		if (pAttrib) {
 			*ppAttrib = pAttrib;
 			*pDomain = i;
@@ -1888,13 +2060,10 @@ StucErr stucAttribIndexedArrDestroy(StucContext pCtx, StucAttribIndexedArr *pArr
 StucErr stucMapArrDestroy(StucContext pCtx, StucMapArr *pMapArr) {
 	StucErr err = PIX_ERR_SUCCESS;
 	PIX_ERR_RETURN_IFNOT_COND(err, pCtx && pMapArr, "");
-	if (pMapArr->pCommonAttribArr) {
-		for (I32 i = 0; i < pMapArr->count; ++i) {
-			stucDestroyCommonAttribs(pCtx, pMapArr->pCommonAttribArr + i);
-		}
-		pCtx->alloc.fpFree(pMapArr->pCommonAttribArr);
-	}
 	if (pMapArr->pArr) {
+		for (I32 i = 0; i < pMapArr->count; ++i) {
+			stucDestroyBlendOptArr(pCtx, pMapArr->pArr[i].blendOptArr);
+		}
 		pCtx->alloc.fpFree(pMapArr->pArr);
 	}
 	*pMapArr = (StucMapArr){0};

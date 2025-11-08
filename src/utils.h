@@ -612,13 +612,8 @@ typedef struct InPieceKey {
 } InPieceKey;
 
 static inline
-U64 stucInPieceMakeKey(const void *pKeyData) {
-	const InPieceKey *pKey = pKeyData;
-	PIX_ERR_ASSERT("tile isn't 16 bit anymore?", sizeof(pKey->tile.d[0]) == 2);
-	return
-		(U64)pKey->mapFace << 32 |
-		(U64)pKey->tile.d[0] << 16 |
-		(U64)pKey->tile.d[1];
+StucKey stucInPieceMakeKey(const void *pKeyData) {
+	return (StucKey){.pKey = pKeyData, .size = sizeof(InPieceKey)};
 }
 
 static inline
