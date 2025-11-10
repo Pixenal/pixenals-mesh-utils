@@ -322,7 +322,7 @@ static
 		pTable,
 		0,
 		&(StrWithLen){.pStr = pNameCpy, .len = nameLen},
-		ppEntry,
+		(void **)ppEntry,
 		true,
 		(char *[]){pNameCpy, pPathCpy},
 		mapDepMakeKey, NULL, mapDepInit, mapDepCmp
@@ -339,10 +339,9 @@ StucErr addMapEntryDeps(
 ) {
 	StucErr err = PIX_ERR_SUCCESS;
 	for (I32 i = 0; i < pDeps->maps.count; ++i) {
-		I32 nameLen = strnlen(pDeps->maps.pArr[i].pStr, pixioPathMaxGet());
 		I32 idx = 0;
 		PIXALC_DYN_ARR_ADD(void *, pAlloc, &pEntry->deps, idx);
-		SearchResult result = addMapDepEntry(
+		addMapDepEntry(
 			pAlloc,
 			pTable,
 			pDeps->maps.pArr[i].pStr,
@@ -378,71 +377,7 @@ StucErr mapDepStackPop(MapDepStack *pStack) {
 	return err;
 }
 
-StucErr stucMapFileLoad(
-	StucContext pCtx,
-	const char *filePath,
-	PixErr (* fpMapGet)(const char *, const char **, StucMap * const),
-	PixErr (* fpMapStore)(const char *, StucMap)
-) {
-	StucErr err = PIX_ERR_SUCCESS;
-	PIX_ERR_RETURN_IFNOT_COND(err, filePath, "provided filepath was NULL");
-
-	HTable table;
-	stucHTableInit(
-		&pCtx->alloc,
-		&table,
-		64,
-		(I32Arr){.pArr = (I32[]){sizeof(MapDepEntry)}, .count = 1},
-		NULL
-	);
-	MapDepStack stack = {0};
-	do {
-		MapDepStackEntry *pStackEntry = stack.stack + stack.ptr;
-		if (!filePath) {
-			StucMap pMap = NULL;
-			err = fpMapGet(pStackEntry->pMap->pName, &filePath, &pMap);
-			PIX_ERR_THROW_IFNOT(err, "", 0);
-			if (pMap) {
-				mapDepStackPop(&stack);
-				continue;
-			}
-			PIX_ERR_THROW_IFNOT_COND(err, filePath, "not path provided", 0);
-		}
-		StucMapDeps deps = {0};
-		err = stucMapImportGetDep(pCtx, filePath, &deps);
-		PIX_ERR_THROW_IFNOT(err, "", 0);
-		if (addMapDepEntry(&pCtx->alloc, &table, filePath, &pStackEntry->pMap) ==
-			STUC_SEARCH_ADDED &&
-			deps.maps.count
-		) {
-			err = addMapEntryDeps(&pCtx->alloc, &stack, &table, pStackEntry->pMap, &deps);
-			PIX_ERR_THROW_IFNOT(err, "", 0);
-		}
-		else if (pStackEntry->depIdx < pStackEntry->pMap->deps.count) {
-			++pStackEntry->depIdx;
-		}
-		else {
-			StucMap pMap = NULL;
-			err = stucMapFileLoadIntern(
-				pCtx,
-				&pMap,
-				pStackEntry->pMap
-			);
-			PIX_ERR_THROW_IFNOT_COND(err, pMap, "", 0);
-			fpMapStore(pMap->pName, pMap);
-			err = mapDepStackPop(&stack);
-			PIX_ERR_THROW_IFNOT(err, "", 0);
-			continue;
-		}
-		err = mapDepStackPush(&stack, pStackEntry->pMap->deps.pArr[pStackEntry->depIdx]);
-		PIX_ERR_THROW_IFNOT(err, "", 0);
-	} while(filePath = NULL, stack.ptr >= 0);
-
-	PIX_ERR_CATCH(0, err, ;);
-	stucHTableDestroy(&table);
-	return err;
-}
-
+static
 StucErr stucMapFileLoadIntern(
 	StucContext pCtx,
 	StucMap *pMapHandle,
@@ -626,6 +561,71 @@ StucErr stucMapFileLoadIntern(
 	*pMapHandle = pMap;
 	PIX_ERR_CATCH(0, err, stucMapFileUnload(pCtx, pMap);)
 
+	return err;
+}
+
+StucErr stucMapFileLoad(
+	StucContext pCtx,
+	const char *filePath,
+	PixErr (* fpMapGet)(const char *, const char **, StucMap * const),
+	PixErr (* fpMapStore)(const char *, StucMap)
+) {
+	StucErr err = PIX_ERR_SUCCESS;
+	PIX_ERR_RETURN_IFNOT_COND(err, filePath, "provided filepath was NULL");
+
+	HTable table;
+	stucHTableInit(
+		&pCtx->alloc,
+		&table,
+		64,
+		(I32Arr){.pArr = (I32[]){sizeof(MapDepEntry)}, .count = 1},
+		NULL
+	);
+	MapDepStack stack = {0};
+	do {
+		MapDepStackEntry *pStackEntry = stack.stack + stack.ptr;
+		if (!filePath) {
+			StucMap pMap = NULL;
+			err = fpMapGet(pStackEntry->pMap->pName, &filePath, &pMap);
+			PIX_ERR_THROW_IFNOT(err, "", 0);
+			if (pMap) {
+				mapDepStackPop(&stack);
+				continue;
+			}
+			PIX_ERR_THROW_IFNOT_COND(err, filePath, "not path provided", 0);
+		}
+		StucMapDeps deps = {0};
+		err = stucMapImportGetDep(pCtx, filePath, &deps);
+		PIX_ERR_THROW_IFNOT(err, "", 0);
+		if (addMapDepEntry(&pCtx->alloc, &table, filePath, &pStackEntry->pMap) ==
+			STUC_SEARCH_ADDED &&
+			deps.maps.count
+		) {
+			err = addMapEntryDeps(&pCtx->alloc, &stack, &table, pStackEntry->pMap, &deps);
+			PIX_ERR_THROW_IFNOT(err, "", 0);
+		}
+		else if (pStackEntry->depIdx < pStackEntry->pMap->deps.count) {
+			++pStackEntry->depIdx;
+		}
+		else {
+			StucMap pMap = NULL;
+			err = stucMapFileLoadIntern(
+				pCtx,
+				&pMap,
+				pStackEntry->pMap
+			);
+			PIX_ERR_THROW_IFNOT_COND(err, pMap, "", 0);
+			fpMapStore(pMap->pName, pMap);
+			err = mapDepStackPop(&stack);
+			PIX_ERR_THROW_IFNOT(err, "", 0);
+			continue;
+		}
+		err = mapDepStackPush(&stack, pStackEntry->pMap->deps.pArr[pStackEntry->depIdx]);
+		PIX_ERR_THROW_IFNOT(err, "", 0);
+	} while(filePath = NULL, stack.ptr >= 0);
+
+	PIX_ERR_CATCH(0, err, ;);
+	stucHTableDestroy(&table);
 	return err;
 }
 
