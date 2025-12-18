@@ -1309,6 +1309,69 @@ StucErr correctIdxIndices(
 }
 
 static
+StucErr appendOutIndexedAttrib(
+	StucContext pCtx,
+	const StucMapArr *pMapArr,
+	const AttribIndexed **ppMapAttribs,
+	const Attrib *pAttrib,
+	const AttribIndexedArr *pInIndexedAttribs,
+	AttribIndexedArr *pOutIndexedAttribs,
+	AttribIndexed **ppIndexedAttrib,
+	bool keepExisting
+) {
+	StucErr err = PIX_ERR_SUCCESS;
+	const AttribIndexed *pRefAttrib = NULL;
+	switch (pAttrib->origin) {
+		case STUC_ATTRIB_ORIGIN_MAP:
+			for (I32 l = 0; l < pMapArr->count; ++l) {
+				if (ppMapAttribs[l]) {
+					pRefAttrib = ppMapAttribs[l];
+					break;
+				}
+			}
+			PIX_ERR_ASSERT("", pRefAttrib);
+			*ppIndexedAttrib = stucAppendIndexedAttrib(
+				pCtx,
+				pOutIndexedAttribs,
+				pRefAttrib->core.name,
+				0, //dont allocate pData
+				pRefAttrib->core.type,
+				pRefAttrib->core.use
+			);
+			break;
+		case STUC_ATTRIB_ORIGIN_COMMON:
+			pRefAttrib = stucGetAttribIndexedInternConst(
+				pInIndexedAttribs,
+				pAttrib->core.name
+			);
+			if (keepExisting) {
+				err = stucAppendAndCopyIdxAttrib(
+					pCtx,
+					pRefAttrib,
+					pOutIndexedAttribs
+				);
+				PIX_ERR_RETURN_IFNOT(err, "");
+				*ppIndexedAttrib = pOutIndexedAttribs->pArr + pOutIndexedAttribs->count - 1;
+			}
+			else {
+				*ppIndexedAttrib = stucAppendIndexedAttrib(
+					pCtx,
+					pOutIndexedAttribs,
+					pRefAttrib->core.name,
+					0, //dont allocate pData
+					pRefAttrib->core.type,
+					pRefAttrib->core.use
+				);
+			}
+			break;
+		default:
+			PIX_ERR_ASSERT("invalid attrib origin", false);
+	}
+	return err;
+}
+
+
+static
 StucErr mergeIndexedAttribs(
 	StucContext pCtx,
 	Mesh *pMeshArr,
@@ -1355,9 +1418,9 @@ StucErr mergeIndexedAttribs(
 					}
 					continue;
 				}
-				const AttribIndexed **ppMapAttribs = NULL;
 				stucGetAttribIndexed(pAttrib->core.name, pOutIndexedAttribs, &pIndexedAttrib);
 				if (!pIndexedAttrib) {
+					const AttribIndexed **ppMapAttribs = NULL;
 					err = getIndexedAttribInMaps(
 						pCtx,
 						pMesh,
@@ -1367,56 +1430,29 @@ StucErr mergeIndexedAttribs(
 						&ppMapAttribs
 					);
 					PIX_ERR_THROW_IFNOT_COND(err, ppMapAttribs, "", 0);
-					{
-						const AttribIndexed *pRefAttrib = NULL;
-						switch (pAttrib->origin) {
-							case STUC_ATTRIB_ORIGIN_MAP:
-								for (I32 l = 0; l < pMapArr->count; ++l) {
-									if (ppMapAttribs[l]) {
-										pRefAttrib = ppMapAttribs[l];
-										break;
-									}
-								}
-								PIX_ERR_ASSERT("", pRefAttrib);
-								pIndexedAttrib = stucAppendIndexedAttrib(
-									pCtx,
-									pOutIndexedAttribs,
-									pRefAttrib->core.name,
-									0, //dont allocate pData
-									pRefAttrib->core.type,
-									pRefAttrib->core.use
-								);
-								break;
-							case STUC_ATTRIB_ORIGIN_COMMON:
-								pRefAttrib = stucGetAttribIndexedInternConst(
-									pInIndexedAttribs,
-									pAttrib->core.name
-								);
-								if (!keepExisting) {
-									err = stucAppendAndCopyIdxAttrib(
-										pCtx,
-										pRefAttrib,
-										pOutIndexedAttribs
-									);
-									PIX_ERR_THROW_IFNOT(err, "", 0);
-								}
-								break;
-							default:
-								PIX_ERR_ASSERT("invalid attrib origin", false);
-						}
-					}
+					err = appendOutIndexedAttrib(
+						pCtx,
+						pMapArr,
+						ppMapAttribs,
+						pAttrib,
+						pInIndexedAttribs,
+						pOutIndexedAttribs,
+						&pIndexedAttrib,
+						keepExisting
+					);
+					PIX_ERR_THROW_IFNOT(err, "", 0);
+					err = correctIdxIndices(
+						pCtx,
+						pAttrib->core.name,
+						pMeshArr,
+						pMapArr,
+						pInIndexedAttribs,
+						ppMapAttribs,
+						pIndexedAttrib,
+						j
+					);
+					PIX_ERR_THROW_IFNOT(err, "", 0);
 				}
-				err = correctIdxIndices(
-					pCtx,
-					pAttrib->core.name,
-					pMeshArr,
-					pMapArr,
-					pInIndexedAttribs,
-					ppMapAttribs,
-					pIndexedAttrib,
-					j
-				);
-				PIX_ERR_THROW_IFNOT(err, "", 0);
 			}
 		}
 	}
