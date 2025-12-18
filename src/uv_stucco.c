@@ -1632,7 +1632,7 @@ StucErr mapMapArrToMesh(
 		stucMeshDestroy(pCtx, &pOutBufArr[i].core);
 	}
 	pCtx->alloc.fpFree(pOutBufArr);
-	stucObjArrDestroy(pCtx, &outObjWrapArr);
+	pCtx->alloc.fpFree(outObjWrapArr.pArr);
 	return err;
 }
 
