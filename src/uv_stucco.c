@@ -144,37 +144,6 @@ void buildEdgeLenList(StucContext pCtx, Mesh *pMesh) {
 }
 
 static
-StucErr attemptToSetMissingActiveDomains(StucMesh *pMesh) {
-	StucErr err = PIX_ERR_SUCCESS;
-	for (I32 i = 1; i < STUC_ATTRIB_USE_ENUM_COUNT; ++i) {
-		if (i == STUC_ATTRIB_USE_SP_ENUM_COUNT) {
-			continue;
-		}
-		AttribActive *pIdx = pMesh->activeAttribs + i;
-		if (pIdx->domain != STUC_DOMAIN_NONE) {
-			continue;
-		}
-		for (I32 j = STUC_DOMAIN_FACE; j <= STUC_DOMAIN_VERT; ++j) {
-			const AttribArray *pAttribArr = stucGetAttribArrFromDomainConst(pMesh, j);
-			if (pIdx->idx >= pAttribArr->count ||
-				pAttribArr->pArr[pIdx->idx].core.use != i
-			) {
-				continue;
-			}
-			//the below is false, 2 domains have their own candidate.
-			//the intended attrib is ambiguous, so return error
-			PIX_ERR_RETURN_IFNOT_COND(
-				err,
-				pIdx->domain == STUC_DOMAIN_NONE,
-				"Unable to determine active attrib domain"
-			);
-			pIdx->domain = j;
-		}
-	}
-	return err;
-}
-
-static
 void triCacheBuild(const StucAlloc *pAlloc, StucMap pMap) {
 	bool ngons = checkForNgonsInMesh(&pMap->pMesh->core);
 	if (ngons) {
@@ -221,7 +190,7 @@ StucErr initFlatCutoff(
 	pUsg->pFlatCutoff = pCtx->alloc.fpCalloc(1, sizeof(Mesh));
 	pUsg->pFlatCutoff->core = *(StucMesh *)pCutoffObj->pData;
 
-	err = attemptToSetMissingActiveDomains(&pUsg->pFlatCutoff->core);
+	err = stucAttemptToSetMissingActiveDomains(&pUsg->pFlatCutoff->core);
 	PIX_ERR_RETURN_IFNOT(err, "");
 	err = stucAssignActiveAliases(
 		pCtx,
@@ -410,7 +379,7 @@ StucErr stucMapFileLoadIntern(
 	for (I32 i = 0; i < objArr.count; ++i) {
 		Mesh *pMesh = (Mesh *)objArr.pArr[i].pData;
 		
-		err = attemptToSetMissingActiveDomains(&pMesh->core);
+		err = stucAttemptToSetMissingActiveDomains(&pMesh->core);
 		PIX_ERR_THROW_IFNOT(err, "", 0);
 
 		if (targetIdx < mapOptsArr.count &&
@@ -530,7 +499,7 @@ StucErr stucMapFileLoadIntern(
 		pMap->usgArr.pArr = pCtx->alloc.fpCalloc(pMap->usgArr.count, sizeof(Usg));
 		for (I32 i = 0; i < pMap->usgArr.count; ++i) {
 			Mesh *pUsgMesh = (Mesh *)usgArr.pArr[i].obj.pData;
-			err = attemptToSetMissingActiveDomains(&pUsgMesh->core);
+			err = stucAttemptToSetMissingActiveDomains(&pUsgMesh->core);
 			PIX_ERR_THROW_IFNOT(err, "", 0);
 			err = stucAssignActiveAliases(
 				pCtx,
@@ -732,7 +701,7 @@ StucErr stucQueryCommonAttribs(
 	PIX_ERR_RETURN_IFNOT_COND(err, pCtx && pMap && pMesh && pOptArr, "");
 	const StucMesh *pMapMesh = &pMap->pMesh->core;
 	StucMesh meshWrap = *pMesh;
-	err = attemptToSetMissingActiveDomains(&meshWrap);
+	err = stucAttemptToSetMissingActiveDomains(&meshWrap);
 	PIX_ERR_RETURN_IFNOT(err, "");
 	for (I32 domain = STUC_DOMAIN_FACE; domain <= STUC_DOMAIN_MESH; ++domain) {
 		err = getCommonAttribs(
@@ -1710,7 +1679,7 @@ StucErr initMeshInWrap(
 	bool *pBuildEdges
 ) {
 	StucErr err = PIX_ERR_SUCCESS;
-	err = attemptToSetMissingActiveDomains(&meshIn);
+	err = stucAttemptToSetMissingActiveDomains(&meshIn);
 	PIX_ERR_RETURN_IFNOT(err, "");
 	stucAliasMeshCoreNoAttribs(&pWrap->core, &meshIn);
 	*pBuildEdges = !meshIn.edgeCount;
