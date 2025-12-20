@@ -191,15 +191,15 @@ void adjTableDestroyBuckets(const StucAlloc *pAlloc, I32 count, AdjBucket *pAdjT
 static
 StucErr buildCornerAdjTable(
 	const StucAlloc *pAlloc,
-	const Mesh* pMesh,
+	const StucMesh *pMesh,
 	AdjBucket *pAdjTable
 ) {
 	StucErr err = PIX_ERR_SUCCESS;
 	PIX_ERR_ASSERT("", pAdjTable);
-	for (I32 i = 0; i < pMesh->core.faceCount; ++i) {
-		FaceRange face = stucGetFaceRange(&pMesh->core, i);
+	for (I32 i = 0; i < pMesh->faceCount; ++i) {
+		FaceRange face = stucGetFaceRange(pMesh, i);
 		for (I32 j = 0; j < face.size; ++j) {
-			AdjBucket* pBucket = pAdjTable + pMesh->core.pCorners[face.start + j];
+			AdjBucket* pBucket = pAdjTable + pMesh->pCorners[face.start + j];
 			PIX_ERR_ASSERT("", pBucket->count <= pBucket->size);
 			if (!pBucket->pArr) {
 				pBucket->size = 2;
@@ -220,22 +220,22 @@ StucErr buildCornerAdjTable(
 		}
 	}
 	PIX_ERR_CATCH(0, err,
-		adjTableDestroyBuckets(pAlloc, pMesh->core.vertCount, pAdjTable);
+		adjTableDestroyBuckets(pAlloc, pMesh->vertCount, pAdjTable);
 	;);
 	return err;
 }
 
 static
-StucErr findEdgesForFace(Mesh* pMesh, AdjBucket* pAdjTable, I32 idx) {
+StucErr findEdgesForFace(StucMesh *pMesh, AdjBucket* pAdjTable, I32 idx) {
 	StucErr err = PIX_ERR_SUCCESS;
-	FaceRange face = stucGetFaceRange(&pMesh->core, idx);
+	FaceRange face = stucGetFaceRange(pMesh, idx);
 	for (I32 j = 0; j < face.size; ++j) {
-		if (pMesh->core.pEdges[face.start + j] >= 0) {
+		if (pMesh->pEdges[face.start + j] >= 0) {
 			continue; //Already set
 		}
-		I32 edge = pMesh->core.edgeCount;
-		pMesh->core.edgeCount++;
-		AdjBucket* pBucket = pAdjTable + pMesh->core.pCorners[face.start + j];
+		I32 edge = pMesh->edgeCount;
+		pMesh->edgeCount++;
+		AdjBucket* pBucket = pAdjTable + pMesh->pCorners[face.start + j];
 		PIX_ERR_ASSERT("", pBucket->count > 0 && pBucket->size >= pBucket->count);
 		for (I32 k = 0; k < pBucket->count; ++k) {
 			AdjEntry* pEntry = pBucket->pArr + k;
@@ -247,57 +247,57 @@ StucErr findEdgesForFace(Mesh* pMesh, AdjBucket* pAdjTable, I32 idx) {
 				);
 				continue;
 			}
-			FaceRange otherFace = stucGetFaceRange(&pMesh->core, pEntry->face);
+			FaceRange otherFace = stucGetFaceRange(pMesh, pEntry->face);
 			I32 nextCorner = (j + 1) % face.size;
 			I32 otherPrevCorner = pEntry->corner ?
 				pEntry->corner - 1 : otherFace.size - 1;
-			if (pMesh->core.pEdges[otherFace.start + otherPrevCorner] >= 0) {
+			if (pMesh->pEdges[otherFace.start + otherPrevCorner] >= 0) {
 				continue; //Already set
 			}
-			if (pMesh->core.pCorners[face.start + nextCorner] !=
-				pMesh->core.pCorners[otherFace.start + otherPrevCorner]) {
+			if (pMesh->pCorners[face.start + nextCorner] !=
+				pMesh->pCorners[otherFace.start + otherPrevCorner]) {
 				continue; //Not connected
 			}
-			pMesh->core.pEdges[otherFace.start + otherPrevCorner] = edge;
+			pMesh->pEdges[otherFace.start + otherPrevCorner] = edge;
 			break;
 		}
-		pMesh->core.pEdges[face.start + j] = edge;
+		pMesh->pEdges[face.start + j] = edge;
 	}
 	return err;
 }
 
 static
-StucErr findEdges(Mesh* pMesh, AdjBucket* pAdjTable) {
+StucErr findEdges(StucMesh* pMesh, AdjBucket* pAdjTable) {
 	StucErr err = PIX_ERR_SUCCESS;
-	for (I32 i = 0; i < pMesh->core.faceCount; ++i) {
+	for (I32 i = 0; i < pMesh->faceCount; ++i) {
 		err = findEdgesForFace(pMesh, pAdjTable, i);
 		PIX_ERR_RETURN_IFNOT(err, "");
 	}
 	return err;
 }
 
-StucErr stucBuildEdgeList(StucContext pCtx, Mesh* pMesh) {
+StucErr stucBuildEdgeList(StucContext pCtx, StucMesh *pMesh) {
 	StucErr err = PIX_ERR_SUCCESS;
-	PIX_ERR_RETURN_IFNOT_COND(err, !pMesh->core.pEdges, "");
+	PIX_ERR_RETURN_IFNOT_COND(err, !pMesh->pEdges, "");
 	const StucAlloc *pAlloc = &pCtx->alloc;
-	PIX_ERR_ASSERT("", pMesh->core.vertCount);
+	PIX_ERR_ASSERT("", pMesh->vertCount);
 	AdjBucket* pAdjTable =
-		pAlloc->fpCalloc(pMesh->core.vertCount, sizeof(AdjBucket));
+		pAlloc->fpCalloc(pMesh->vertCount, sizeof(AdjBucket));
 	err = buildCornerAdjTable(pAlloc, pMesh, pAdjTable);
 	PIX_ERR_THROW_IFNOT(err, "", 0);
 	{
-		PIX_ERR_ASSERT("", pMesh->core.cornerCount);
-		I32 dataSize = sizeof(I32) * pMesh->core.cornerCount;
-		pMesh->core.pEdges = pAlloc->fpMalloc(dataSize);
-		memset(pMesh->core.pEdges, -1, dataSize);
+		PIX_ERR_ASSERT("", pMesh->cornerCount);
+		I32 dataSize = sizeof(I32) * pMesh->cornerCount;
+		pMesh->pEdges = pAlloc->fpMalloc(dataSize);
+		memset(pMesh->pEdges, -1, dataSize);
 		err = findEdges(pMesh, pAdjTable);
 		PIX_ERR_THROW_IFNOT(err, "'findEdges' returned error", 1);
 		PIX_ERR_CATCH(1, err,
-			pAlloc->fpFree(pMesh->core.pEdges);
+			pAlloc->fpFree(pMesh->pEdges);
 		);
 	}
 	PIX_ERR_CATCH(0, err, ;);
-	adjTableDestroyBuckets(pAlloc, pMesh->core.vertCount, pAdjTable);
+	adjTableDestroyBuckets(pAlloc, pMesh->vertCount, pAdjTable);
 	pAlloc->fpFree(pAdjTable);
 	return err;
 }

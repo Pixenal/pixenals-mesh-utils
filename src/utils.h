@@ -519,7 +519,7 @@ V3_F32 stucGetBarycentricInFaceFromUvs(
 	);
 }
 
-StucErr stucBuildEdgeList(StucContext pCtx, Mesh *pMesh);
+StucErr stucBuildEdgeList(StucContext pCtx, StucMesh *pMesh);
 void stucProgressBarClear();
 void stucProgressBarPrint(StucContext pCtx, I32 progress);
 void stucStageBegin(void *pCtx, StucStageReport *pReport, const char *pName);

@@ -228,6 +228,7 @@ typedef struct MapDepEntry {
 typedef struct MapDepStackEntry {
 	MapDepEntry *pMap;
 	I32 depIdx;
+	bool depsAdded;
 } MapDepStackEntry;
 
 #define MAP_DEP_STACK_SIZE 64
@@ -251,9 +252,6 @@ void mapDepInit(
 	I32 linIdx
 ) {
 	MapDepEntry *pEntry = (MapDepEntry *)pEntryCore;
-	char **ppStrArr = pInitInfo;
-	pEntry->pName = ppStrArr[0];
-	pEntry->pPath = ppStrArr[1];
 }
 
 static
@@ -283,19 +281,20 @@ static
 	I32 nameLen = 0;
 	I32 pathLen = 0;
 	const char *pName = stucGetBasename(pFilepath, &nameLen, &pathLen);
-	char *pNameCpy = pAlloc->fpMalloc(nameLen + 1);
-	char *pPathCpy = pAlloc->fpMalloc(pathLen + 1);
-	memcpy(pNameCpy, pName, nameLen + 1);
-	memcpy(pPathCpy, pFilepath, pathLen + 1);
-	return stucHTableGet(
+	SearchResult result = stucHTableGet(
 		pTable,
 		0,
-		&(StrWithLen){.pStr = pNameCpy, .len = nameLen},
+		&(StrWithLen){.pStr = pName, .len = nameLen},
 		(void **)ppEntry,
 		true,
-		(char *[]){pNameCpy, pPathCpy},
+		NULL,
 		mapDepMakeKey, NULL, mapDepInit, mapDepCmp
 	);
+	if (result == STUC_SEARCH_ADDED) {
+		(*ppEntry)->pName = pAlloc->fpMalloc(nameLen + 1);
+		memcpy((*ppEntry)->pName, pName, nameLen + 1);
+	}
+	return result;
 }
 
 static
@@ -318,7 +317,7 @@ StucErr addMapEntryDeps(
 		);
 		PIX_ERR_RETURN_IFNOT_COND(
 			err,
-			pEntry->deps.pArr[idx]->onStack,
+			!pEntry->deps.pArr[idx]->onStack,
 			"circular map dependency"
 		);
 	}
@@ -335,6 +334,7 @@ StucErr mapDepStackPush(MapDepStack *pStack, MapDepEntry *pEntry) {
 		"too many map dependencies"
 	);
 	pStack->stack[pStack->ptr] = (MapDepStackEntry){.pMap = pEntry};
+	pEntry->onStack = true;
 	return err;
 }
 
@@ -342,8 +342,22 @@ static
 StucErr mapDepStackPop(MapDepStack *pStack) {
 	StucErr err = PIX_ERR_SUCCESS;
 	PIX_ERR_RETURN_IFNOT_COND(err, pStack->ptr >= 0, "");
+	pStack->stack[pStack->ptr].pMap->onStack = false;
 	--pStack->ptr;
 	return err;
+}
+
+static
+void destroyMapOptsArr(const StucAlloc *pAlloc, ObjMapOptsArr *pArr) {
+	for (I32 i = 0; i < pArr->count; ++i) {
+		if (pArr->pArr[i].arr.pArr) {
+			pAlloc->fpFree(pArr->pArr[i].arr.pArr);
+		}
+	}
+	if (pArr->pArr) {
+		pAlloc->fpFree(pArr->pArr);
+	}
+	*pArr = (ObjMapOptsArr){0};
 }
 
 static
@@ -385,22 +399,33 @@ StucErr stucMapFileLoadIntern(
 		if (targetIdx < mapOptsArr.count &&
 			mapOptsArr.pArr[targetIdx].obj == i
 		) {
+			StucMapArr *pMapArr = &mapOptsArr.pArr[targetIdx].arr;
+			for (I32 j = 0; j < pMapArr->count; ++j) {
+				StucMapArrEntry *pArrEntry = pMapArr->pArr + j;
+				pArrEntry->map.ptr = pEntry->deps.pArr[pArrEntry->map.idx]->pMap;
+				PIX_ERR_ASSERT("", pMapArr->pArr[j].map.ptr);
+			}
 			StucMesh meshOut = {0};
-			AttribIndexedArr outIdxAttribArr= {0};
-			//TODO add an option to stucMapToMesh which retains all
-			//original indexed attribs, rather than only keeping those
-			//that are used
-			stucMapToMesh(
+			AttribIndexedArr outIdxAttribArr = {0};
+			err = stucMapToMesh(
 				pCtx,
-				&mapOptsArr.pArr[targetIdx].arr,
+				pMapArr,
 				&pMesh->core,
 				&pMap->indexedAttribs,
 				&meshOut,
 				&outIdxAttribArr,
 				1.0f,//TODO replace with actual wScale an receiveLen vars
 				-1.0f,
-				true
+				false //TODO should this be true? if not remove option from merge func
 			);
+			PIX_ERR_THROW_IFNOT(err, "", 0);
+			//TODO edge list returned from stucMapToMesh is broken, this is a temp fix
+			if (meshOut.pEdges) {
+				pCtx->alloc.fpFree(meshOut.pEdges);
+				meshOut.pEdges = NULL;
+			}
+			err = stucBuildEdgeList(pCtx, &meshOut);
+			PIX_ERR_THROW_IFNOT(err, "", 0);
 			stucAttribIndexedArrDestroy(pCtx, &pMap->indexedAttribs);
 			pMap->indexedAttribs = outIdxAttribArr;
 			stucMeshDestroy(pCtx, &pMesh->core);
@@ -529,6 +554,7 @@ StucErr stucMapFileLoadIntern(
 
 	*pMapHandle = pMap;
 	PIX_ERR_CATCH(0, err, stucMapFileUnload(pCtx, pMap);)
+	destroyMapOptsArr(&pCtx->alloc, &mapOptsArr);
 
 	return err;
 }
@@ -536,8 +562,9 @@ StucErr stucMapFileLoadIntern(
 StucErr stucMapFileLoad(
 	StucContext pCtx,
 	const char *filePath,
-	PixErr (* fpMapGet)(const char *, const char **, StucMap * const),
-	PixErr (* fpMapStore)(const char *, StucMap)
+	void *pUserData,
+	PixErr (* fpMapGet)(void *, const char *, const char **, StucMap * const),
+	PixErr (* fpMapStore)(void *, const char *, StucMap)
 ) {
 	StucErr err = PIX_ERR_SUCCESS;
 	PIX_ERR_RETURN_IFNOT_COND(err, filePath, "provided filepath was NULL");
@@ -555,28 +582,32 @@ StucErr stucMapFileLoad(
 		MapDepStackEntry *pStackEntry = stack.stack + stack.ptr;
 		if (!filePath) {
 			StucMap pMap = NULL;
-			err = fpMapGet(pStackEntry->pMap->pName, &filePath, &pMap);
+			err = fpMapGet(pUserData, pStackEntry->pMap->pName, &filePath, &pMap);
 			PIX_ERR_THROW_IFNOT(err, "", 0);
 			if (pMap) {
 				mapDepStackPop(&stack);
 				continue;
 			}
-			PIX_ERR_THROW_IFNOT_COND(err, filePath, "not path provided", 0);
+			PIX_ERR_THROW_IFNOT_COND(err, filePath, "no path provided", 0);
 		}
+		addMapDepEntry(&pCtx->alloc, &table, filePath, &pStackEntry->pMap);
 		StucMapDeps deps = {0};
 		err = stucMapImportGetDep(pCtx, filePath, &deps);
 		PIX_ERR_THROW_IFNOT(err, "", 0);
-		if (addMapDepEntry(&pCtx->alloc, &table, filePath, &pStackEntry->pMap) ==
-			STUC_SEARCH_ADDED &&
-			deps.maps.count
-		) {
+		if (deps.maps.count && !pStackEntry->depsAdded) {
 			err = addMapEntryDeps(&pCtx->alloc, &stack, &table, pStackEntry->pMap, &deps);
 			PIX_ERR_THROW_IFNOT(err, "", 0);
+			pStackEntry->depsAdded = true;
 		}
 		else if (pStackEntry->depIdx < pStackEntry->pMap->deps.count) {
 			++pStackEntry->depIdx;
 		}
-		else {
+		PIX_ERR_ASSERT("", pStackEntry->depIdx <= pStackEntry->pMap->deps.count);
+		if (pStackEntry->depIdx == pStackEntry->pMap->deps.count) {
+			PIX_ERR_ASSERT("", !pStackEntry->pMap->pPath);
+			I32 pathLen = strnlen(filePath, PIXIO_PATH_MAX);
+			pStackEntry->pMap->pPath = pCtx->alloc.fpMalloc(pathLen + 1);
+			memcpy(pStackEntry->pMap->pPath, filePath, pathLen + 1);
 			StucMap pMap = NULL;
 			err = stucMapFileLoadIntern(
 				pCtx,
@@ -584,7 +615,8 @@ StucErr stucMapFileLoad(
 				pStackEntry->pMap
 			);
 			PIX_ERR_THROW_IFNOT_COND(err, pMap, "", 0);
-			fpMapStore(pMap->pName, pMap);
+			fpMapStore(pUserData, pMap->pName, pMap);
+			pStackEntry->pMap->pMap = pMap;
 			err = mapDepStackPop(&stack);
 			PIX_ERR_THROW_IFNOT(err, "", 0);
 			continue;
@@ -595,6 +627,19 @@ StucErr stucMapFileLoad(
 
 	PIX_ERR_CATCH(0, err, ;);
 	stucHTableDestroy(&table);
+	PixalcLinAlloc *pLinAlloc = stucHTableAllocGet(&table, 0);
+	PixalcLinAllocIter iter = {0}; 
+	pixalcLinAllocIterInit(pLinAlloc, (PixtyRange){0, INT32_MAX}, &iter);
+	for (; !pixalcLinAllocIterAtEnd(&iter); pixalcLinAllocIterInc(&iter)) {
+		MapDepEntry *pEntry = pixalcLinAllocGetItem(&iter);
+		if (pEntry->pName) {
+			pCtx->alloc.fpFree(pEntry->pName);
+		}
+		if (pEntry->pPath) {
+			pCtx->alloc.fpFree(pEntry->pPath);
+		}
+		*pEntry = (MapDepEntry){0};
+	}
 	return err;
 }
 
@@ -1354,6 +1399,7 @@ StucErr mergeIndexedAttribs(
 	pOutIndexedAttribs->size = pInIndexedAttribs->count;
 	pOutIndexedAttribs->pArr =
 		pAlloc->fpCalloc(pOutIndexedAttribs->size, sizeof(AttribIndexed));
+	/*
 	if (keepExisting) {
 		for (I32 i = 0; i < pInIndexedAttribs->count; ++i) {
 			err = stucAppendAndCopyIdxAttrib(
@@ -1364,6 +1410,7 @@ StucErr mergeIndexedAttribs(
 			PIX_ERR_THROW_IFNOT(err, "", 0);
 		}
 	}
+	*/
 	for (I32 i = 0; i < pMapArr->count; ++i) {
 		Mesh *pMesh = pMeshArr + i;
 		for (I32 j = STUC_DOMAIN_FACE; j <= STUC_DOMAIN_VERT; ++j) {
@@ -1690,7 +1737,7 @@ StucErr initMeshInWrap(
 			!meshIn.edgeAttribs.count,
 			"in-mesh has edge attribs, yet no edge list"
 		);
-		err = stucBuildEdgeList(pCtx, pWrap);
+		err = stucBuildEdgeList(pCtx, &pWrap->core);
 		PIX_ERR_RETURN_IFNOT(err, "failed to build edge list");
 		printf("finished building edge list\n");
 	}
