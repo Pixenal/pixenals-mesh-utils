@@ -372,7 +372,12 @@ StucErr stucObjArrDestroy(const StucContext pCtx, StucObjArr *pArr) {
 	return err;
 }
 
-StucErr stucValidateMesh(const StucMesh *pMesh, bool checkEdges, bool posOnly) {
+StucErr stucValidateMesh(
+	const StucAlloc *pAlloc,
+	const StucMesh *pMesh,
+	bool checkEdges,
+	bool posOnly
+) {
 	StucErr err = PIX_ERR_SUCCESS;
 	PIX_ERR_RETURN_IFNOT_COND(err, pMesh->faceCount && pMesh->pFaces, "");
 	PIX_ERR_RETURN_IFNOT_COND(err, pMesh->cornerCount && pMesh->pCorners, "");
@@ -406,6 +411,8 @@ StucErr stucValidateMesh(const StucMesh *pMesh, bool checkEdges, bool posOnly) {
 		pMesh->vertAttribs.pArr && pMesh->vertAttribs.count,
 		""
 	);
+	I8 *pCornerUsed = pAlloc->fpCalloc(pMesh->cornerCount, 1);
+	I8 *pVertUsed = pAlloc->fpCalloc(pMesh->vertCount, 1);
 	for (I32 i = 0; i < pMesh->faceCount; ++i) {
 		FaceRange face = stucGetFaceRange(pMesh, i);
 		PIX_ERR_RETURN_IFNOT_COND(err, face.size >= 3, "");
@@ -413,8 +420,33 @@ StucErr stucValidateMesh(const StucMesh *pMesh, bool checkEdges, bool posOnly) {
 			I32 corner = face.start + j;
 			PIX_ERR_RETURN_IFNOT_COND(err, corner < pMesh->cornerCount, "");
 			PIX_ERR_RETURN_IFNOT_COND(err, pMesh->pCorners[corner] < pMesh->vertCount, "");
+			pCornerUsed[corner] = true;
+			pVertUsed[pMesh->pCorners[corner]] = true;
 		}
 	}
+	for (I32 i = 0; i < pMesh->cornerCount; ++i) {
+		PIX_ERR_THROW_IFNOT_COND(
+			err,
+			pCornerUsed[i],
+			"in mesh contains floating corner(s)",
+			0
+		);
+	}
+	for (I32 i = 0; i < pMesh->vertCount; ++i) {
+		PIX_ERR_THROW_IFNOT_COND(
+			err,
+			pVertUsed[i],
+			"in mesh contains floating vert(s)",
+			0
+		);
+	}
+	PIX_ERR_CATCH(0, err, ;);
+	pAlloc->fpFree(pCornerUsed);
+	pCornerUsed = NULL;
+	pAlloc->fpFree(pVertUsed);
+	pVertUsed = NULL;
+	PIX_ERR_RETURN_IFNOT(err, "");
+
 	for (I32 i = 1; i < STUC_ATTRIB_USE_ENUM_COUNT; ++i) {
 		if (i == STUC_ATTRIB_USE_SP_ENUM_COUNT) {
 			continue;

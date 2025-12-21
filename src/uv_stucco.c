@@ -1805,7 +1805,7 @@ StucErr stucMapToMesh(
 ) {
 	StucErr err = PIX_ERR_SUCCESS;
 	PIX_ERR_RETURN_IFNOT_COND(err, pMeshIn, "");
-	err = stucValidateMesh(pMeshIn, false, false);
+	err = stucValidateMesh(&pCtx->alloc, pMeshIn, false, false);
 	PIX_ERR_RETURN_IFNOT(err, "invalid in-mesh");
 	Mesh meshInWrap = {0};
 	UBitField32 spAttribsToAppend = STUC_ATTRIB_USE_FIELD(((StucAttribUse[]) {

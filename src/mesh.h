@@ -113,7 +113,12 @@ FaceRange stucGetFaceRange(const StucMesh *pMesh, I32 idx) {
 	PIX_ERR_ASSERT("", face.size >= 3);
 	return face;
 }
-StucErr stucValidateMesh(const StucMesh *pMesh, bool checkEdges, bool posOnly);
+StucErr stucValidateMesh(
+	const StucAlloc *pAlloc,
+	const StucMesh *pMesh,
+	bool checkEdges,
+	bool posOnly
+);
 void stucAliasMeshCoreNoAttribs(StucMesh *pDest, StucMesh *pSrc);
 I32 stucGetDomainSize(const Mesh *pMesh, StucDomain domain);
 I32 stucDomainCountGetIntern(const StucMesh *pMesh, StucDomain domain);
