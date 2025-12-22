@@ -660,7 +660,7 @@ StucErr stucMapFileUnload(StucContext pCtx, StucMap pMap) {
 	return PIX_ERR_SUCCESS;
 }
 
-StucErr stucMapFileMeshGet(StucContext pCtx, StucMap pMap, const StucMesh **ppMesh) {
+StucErr stucMapFileMeshGet(StucContext pCtx, StucMap pMap, StucMesh **ppMesh) {
 	StucErr err = PIX_ERR_SUCCESS;
 	PIX_ERR_RETURN_IFNOT_COND(err, pCtx && pMap && ppMesh, "invalid args");
 	*ppMesh = &pMap->pMesh->core;
@@ -2043,19 +2043,29 @@ StucErr stucAttribSpIsValid(
 		pCtx->spAttribDomains[pCore->use] == domain;
 }
 
+//TODO move funcs like these out of uv-stucco.c. eg move this one into attrib_utils.c
 StucErr stucAttribGetAllDomains(
 	StucContext pCtx,
 	StucMesh *pMesh,
 	const char *pName,
-	Attrib **ppAttrib,
+	StucAttrib **ppAttrib,
+	I32 *pIdx,
 	StucDomain *pDomain
 ) {
 	for (I32 i = STUC_DOMAIN_FACE; i <= STUC_DOMAIN_VERT; ++i) {
 		AttribArray *pArr = stucGetAttribArrFromDomain(pMesh, i);
-		Attrib *pAttrib = stucGetAttribIntern(pName, pArr, false, NULL, NULL, NULL);
+		I32 idx = 0;
+		Attrib *pAttrib = stucGetAttribIntern(pName, pArr, false, NULL, NULL, &idx);
 		if (pAttrib) {
-			*ppAttrib = pAttrib;
-			*pDomain = i;
+			if (ppAttrib) {
+				*ppAttrib = pAttrib;
+			}
+			if (pIdx) {
+				*pIdx = idx;
+			}
+			if (pDomain) {
+				*pDomain = i;
+			}
 			break;
 		}
 	}
@@ -2067,9 +2077,17 @@ StucErr stucAttribGetAllDomainsConst(
 	const StucMesh *pMesh,
 	const char *pName,
 	const StucAttrib **ppAttrib,
+	I32 *pIdx,
 	StucDomain *pDomain
 ) {
-	return stucAttribGetAllDomains(pCtx, (StucMesh *)pMesh, pName, (StucAttrib **)ppAttrib, pDomain);
+	return stucAttribGetAllDomains(
+		pCtx,
+		(StucMesh *)pMesh,
+		pName,
+		(StucAttrib **)ppAttrib,
+		pIdx,
+		pDomain
+	);
 }
 
 StucErr stucAttribArrGet(
