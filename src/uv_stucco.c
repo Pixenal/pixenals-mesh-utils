@@ -217,7 +217,7 @@ typedef struct MapDepPtrArr {
 } MapDepPtrArr;
 
 typedef struct MapDepEntry {
-	HTableEntryCore core;
+	PixuctHTableEntryCore core;
 	MapDepPtrArr deps;
 	StucMap pMap;
 	double timestamp;
@@ -249,7 +249,7 @@ typedef struct StrWithLen {
 static
 void mapDepInit(
 	void *pUserData,
-	HTableEntryCore *pEntryCore,
+	PixuctHTableEntryCore *pEntryCore,
 	const void *pKeyData,
 	void *pInitInfo,
 	I32 linIdx
@@ -259,7 +259,7 @@ void mapDepInit(
 
 static
 bool mapDepCmp(
-	const HTableEntryCore *pEntryCore,
+	const PixuctHTableEntryCore *pEntryCore,
 	const void *pKeyData,
 	const void *pInitInfo
 ) {
@@ -269,22 +269,22 @@ bool mapDepCmp(
 }
 
 static
-StucKey mapDepMakeKey(const void *pKeyData) {
+PixuctKey mapDepMakeKey(const void *pKeyData) {
 	const StrWithLen *pStr = pKeyData;
-	return (StucKey){.pKey = pStr->pStr, .size = pStr->len};
+	return (PixuctKey){.pKey = pStr->pStr, .size = pStr->len};
 }
 
 static
  SearchResult addMapDepEntry(
 	 const StucAlloc *pAlloc,
-	 HTable *pTable,
+	 PixuctHTable *pTable,
 	 const char *pFilepath,
 	 MapDepEntry **ppEntry
  ) {
 	I32 nameLen = 0;
 	I32 pathLen = 0;
 	const char *pName = stucGetBasename(pFilepath, &nameLen, &pathLen);
-	SearchResult result = stucHTableGet(
+	SearchResult result = pixuctHTableGet(
 		pTable,
 		0,
 		&(StrWithLen){.pStr = pName, .len = nameLen},
@@ -293,7 +293,7 @@ static
 		NULL,
 		mapDepMakeKey, NULL, mapDepInit, mapDepCmp
 	);
-	if (result == STUC_SEARCH_ADDED) {
+	if (result == PIX_SEARCH_ADDED) {
 		(*ppEntry)->pName = pAlloc->fpMalloc(nameLen + 1);
 		memcpy((*ppEntry)->pName, pName, nameLen + 1);
 	}
@@ -304,7 +304,7 @@ static
 StucErr addMapEntryDeps(
 	const StucAlloc *pAlloc,
 	MapDepStack *pStack,
-	HTable *pTable,
+	PixuctHTable *pTable,
 	MapDepEntry *pEntry,
 	StucMapDeps *pDeps
 ) {
@@ -586,7 +586,7 @@ typedef struct StucMapLoadIntern {
 		StucMapStatus,
 		const PixtyStrArr *
 	);
-	HTable table;
+	PixuctHTable table;
 	bool depsPassDone;
 } StucMapLoadIntern;
 
@@ -616,7 +616,7 @@ StucErr stucMapFileLoadInit(
 	pState->pUserData = pUserData;
 	pState->fpMapGet = fpMapGet;
 	pState->fpMapStore = fpMapStore;
-	stucHTableInit(
+	pixuctHTableInit(
 		&pCtx->alloc,
 		&pState->table,
 		64,
@@ -668,7 +668,7 @@ StucErr stucMapLoadDestroy(StucMapLoad *pState) {
 	if (!pState->table.pTable) {
 		return PIX_ERR_SUCCESS;
 	}
-	PixalcLinAlloc *pLinAlloc = stucHTableAllocGet(&pState->table, 0);
+	PixalcLinAlloc *pLinAlloc = pixuctHTableAllocGet(&pState->table, 0);
 	PixalcLinAllocIter iter = {0}; 
 	pixalcLinAllocIterInit(pLinAlloc, (PixtyRange){0, INT32_MAX}, &iter);
 	for (; !pixalcLinAllocIterAtEnd(&iter); pixalcLinAllocIterInc(&iter)) {
@@ -684,7 +684,7 @@ StucErr stucMapLoadDestroy(StucMapLoad *pState) {
 		}
 		*pEntry = (MapDepEntry){0};
 	}
-	stucHTableDestroy(&pState->table);
+	pixuctHTableDestroy(&pState->table);
 	*pState = (StucMapLoad){0};
 	return PIX_ERR_SUCCESS;
 }
@@ -809,7 +809,7 @@ StucErr walkMapDeps(StucMapLoad *pState) {
 
 StucErr stucMapFileLoadGetDepStatus(StucMapLoad *pState, StucMapStatus *pStatus) {
 	StucErr err = PIX_ERR_SUCCESS;
-	PixalcLinAlloc *pLinAlloc = stucHTableAllocGet(&pState->table, 0);
+	PixalcLinAlloc *pLinAlloc = pixuctHTableAllocGet(&pState->table, 0);
 	PixalcLinAllocIter iter = {0}; 
 	pixalcLinAllocIterInit(pLinAlloc, (PixtyRange){0, INT32_MAX}, &iter);
 	PIX_ERR_RETURN_IFNOT_COND(err, !pixalcLinAllocIterAtEnd(&iter), "");
@@ -1136,7 +1136,7 @@ StucErr mapToMeshInternal(
 		);
 		for (I32 i = 0; i < findEncasedJobCount; ++i) {
 			PixalcLinAlloc *pEncasedAlloc =
-				stucHTableAllocGet(&findEncasedJobArgs[i].encasedFaces, 0);
+				pixuctHTableAllocGet(&findEncasedJobArgs[i].encasedFaces, 0);
 			PixalcLinAllocIter iter = {0};
 			pixalcLinAllocIterInit(pEncasedAlloc, (Range) {0, INT32_MAX}, &iter);
 			for (; !pixalcLinAllocIterAtEnd(&iter); pixalcLinAllocIterInc(&iter)) {
@@ -1146,7 +1146,7 @@ StucErr mapToMeshInternal(
 					pEntry->inFaces.pArr = NULL;
 				}
 			}
-			stucHTableDestroy(&findEncasedJobArgs[i].encasedFaces);
+			pixuctHTableDestroy(&findEncasedJobArgs[i].encasedFaces);
 		}
 		PIX_ERR_RETURN_IFNOT(err, "");
 		printf("C\n");
@@ -1157,7 +1157,7 @@ StucErr mapToMeshInternal(
 		PIX_ERR_RETURN_IFNOT(err, "");
 		printf("D\n");
 
-		HTable mergeTable = {0};
+		PixuctHTable mergeTable = {0};
 		stucVertMergeTableInit(&basic, &inPiecesSplit, &inPiecesSplitClip, &mergeTable);
 		stucMergeVerts(&basic, &inPiecesSplit, false, &mergeTable);
 		stucMergeVerts(&basic, &inPiecesSplitClip, true, &mergeTable);
@@ -1258,7 +1258,7 @@ StucErr mapToMeshInternal(
 				pixalcLinAllocDestroy(&splitAlloc.pArr[i].border);
 			}
 		}
-		stucHTableDestroy(&mergeTable);
+		pixuctHTableDestroy(&mergeTable);
 		inPieceArrDestroy(pCtx, &inPiecesSplit);
 		inPieceArrDestroy(pCtx, &inPiecesSplitClip);
 		stucBufMeshArrDestroy(pCtx, &bufMeshes);

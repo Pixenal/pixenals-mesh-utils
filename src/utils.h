@@ -91,7 +91,6 @@ bool stucIsBBoxInBBox(BBox bboxA, BBox bboxB) {
 }
 void stucGetInFaceBounds(FaceBounds *pBounds, const V2_F32 *pUvs, FaceRange face);
 I32 stucIsEdgeSeam(const Mesh *pMesh, I32 edge);
-U32 stucFnvHash(const U8 *value, I32 valueSize, U32 size);
 bool stucGetIfPreserveEdge(const Mesh *pMesh, I32 edge);
 bool stucCheckIfVertIsPreserve(const Mesh *pMesh, I32 vert);
 bool stucCheckIfEdgeIsReceive(const Mesh *pMesh, I32 edge, F32 receiveLen);
@@ -612,8 +611,8 @@ typedef struct InPieceKey {
 } InPieceKey;
 
 static inline
-StucKey stucInPieceMakeKey(const void *pKeyData) {
-	return (StucKey){.pKey = pKeyData, .size = sizeof(InPieceKey)};
+PixuctKey stucInPieceMakeKey(const void *pKeyData) {
+	return (PixuctKey){.pKey = pKeyData, .size = sizeof(InPieceKey)};
 }
 
 static inline

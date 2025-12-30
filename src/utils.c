@@ -42,18 +42,6 @@ BBox stucBBoxGet(const Mesh *pMesh, FaceRange *pFace) {
 	return bbox;
 }
 
-U32 stucFnvHash(const U8 *value, I32 valueSize, U32 size) {
-	PIX_ERR_ASSERT("", value && valueSize > 0 && size > 0);
-	U32 hash = 2166136261;
-	for (I32 i = 0; i < valueSize; ++i) {
-		hash ^= value[i];
-		hash *= 16777619;
-	}
-	hash %= size;
-	PIX_ERR_ASSERT("", hash >= 0);
-	return hash;
-}
-
 void stucGetInFaceBounds(FaceBounds *pBounds, const V2_F32 *pUvs, FaceRange face) {
 	PIX_ERR_ASSERT("", pBounds && pUvs);
 	PIX_ERR_ASSERT("", face.size >= 3 && face.start >= 0);
