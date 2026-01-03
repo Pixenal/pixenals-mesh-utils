@@ -153,6 +153,12 @@ V2_F32 stucGetUvPos(const Mesh *pMesh, const FaceRange *pFace, I32 corner) {
 	PIX_ERR_ASSERT("", corner >= 0 && corner < pFace->size);
 	return pMesh->pUvs[pFace->start + corner];
 }
+static inline
+V3_F32 stucGetUvPosAsV3(const Mesh *pMesh, const FaceRange *pFace, I32 corner) {
+	PIX_ERR_ASSERT("", corner >= 0 && corner < pFace->size);
+	V2_F32 uv =  pMesh->pUvs[pFace->start + corner];
+	return (V3_F32){.d = {uv.d[0], uv.d[1]}};
+}
 I32 stucGetMeshVert(const StucMesh *pMesh, FaceCorner corner);
 I32 stucGetMeshEdge(const StucMesh *pMesh, FaceCorner corner);
 bool checkForNgonsInMesh(const StucMesh *pMesh);
