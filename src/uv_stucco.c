@@ -613,6 +613,12 @@ StucErr stucMapFileLoadIntern(
 		STUC_DOMAIN_NONE
 	);
 	PIX_ERR_THROW_IFNOT(err, "", 0);
+	{
+		V3_F32 offset = {.d = {.5f, .5f, .0f}};
+		for (I32 i = 0; i < pMapMesh->core.vertCount; ++i) {
+			pMapMesh->pPos[i] = _(_(pMapMesh->pPos[i] V3MULS .5f) V3ADD offset);
+		}
+	}
 
 	buildEdgeLenList(pCtx, pMapMesh);
 
@@ -975,10 +981,24 @@ StucErr stucMapFileUnload(StucContext pCtx, StucMap pMap) {
 	return PIX_ERR_SUCCESS;
 }
 
-StucErr stucMapFileMeshGet(StucContext pCtx, StucMap pMap, StucMesh **ppMesh) {
+StucErr stucMapFileMeshGet(
+	StucContext pCtx,
+	StucMap pMap,
+	StucMesh **ppMesh,
+	StucAttribIndexedArr **ppIdxAttribs
+) {
 	StucErr err = PIX_ERR_SUCCESS;
-	PIX_ERR_RETURN_IFNOT_COND(err, pCtx && pMap && ppMesh, "invalid args");
-	*ppMesh = &pMap->pMesh->core;
+	PIX_ERR_RETURN_IFNOT_COND(
+		err,
+		pCtx && pMap && (ppMesh || ppIdxAttribs),
+		"invalid args"
+	);
+	if (ppMesh) {
+		*ppMesh = &pMap->pMesh->core;
+	}
+	if (ppIdxAttribs) {
+		*ppIdxAttribs = &pMap->indexedAttribs;
+	}
 	return err;
 }
 
@@ -1862,6 +1882,13 @@ StucErr mapMapArrToMesh(
 	StucObjArr outObjWrapArr = {0};
 	outObjWrapArr.size = outObjWrapArr.count = pMapArr->count;
 	outObjWrapArr.pArr = pCtx->alloc.fpCalloc(outObjWrapArr.size, sizeof(StucObject));
+	{
+		for (I32 i = 1; i < pMeshIn->core.faceCount; ++i) {
+			if (pMeshIn->pMatIdx[i] == 0) {
+				printf("mesh has multiply material indices assigned\n");
+			}
+		}
+	}
 	for (I32 i = 0; i < pMapArr->count; ++i) {
 		outObjWrapArr.pArr[i].pData = (StucObjectData *)&pOutBufArr[i];
 		const StucMap pMap = pMapArr->pArr[i].map.ptr;
