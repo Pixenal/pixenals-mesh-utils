@@ -1328,7 +1328,7 @@ StucErr mapToMeshInternal(
 		//printf("G\n");
 
 		err = stucBuildTangentsForInPieces(
-			&basic,
+			pCtx,
 			pMeshIn,
 			&inPiecesSplit, &inPiecesSplitClip,
 			&mergeTable
@@ -2639,5 +2639,34 @@ StucErr stucMeshAttribsCornerToVert(StucContext pCtx, StucMesh *pMesh) {
 	}
 	pCtx->alloc.fpFree(pMesh->cornerAttribs.pArr);
 	pMesh->cornerAttribs = (AttribArray){0};
+	return err;
+}
+
+StucErr stucMeshBuildTangentsForTris(StucContext pCtx, StucMesh *pMesh) {
+	StucErr err = PIX_ERR_SUCCESS;
+	Mesh wrap = {0};
+	err = stucAttemptToSetMissingActiveDomains(pMesh);
+	PIX_ERR_RETURN_IFNOT(err, "");
+	wrap.core = *pMesh;
+	UBitField32 spAttribsToAppend = STUC_ATTRIB_USE_FIELD(((StucAttribUse[]) {
+		STUC_ATTRIB_USE_TANGENT,
+		STUC_ATTRIB_USE_TSIGN
+	}));
+	stucAppendSpAttribsToMesh(
+		pCtx,
+		&wrap,
+		spAttribsToAppend, 
+		STUC_ATTRIB_ORIGIN_MESH_OUT
+	);
+	err = stucAssignActiveAliases(
+		pCtx,
+		&wrap,
+		0xffffffff,
+		STUC_DOMAIN_NONE
+	);
+	PIX_ERR_RETURN_IFNOT(err, "");
+	err = stucBuildTangentsForTris(pCtx, &wrap);
+	PIX_ERR_RETURN_IFNOT(err, "");
+	*pMesh = wrap.core;
 	return err;
 }

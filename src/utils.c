@@ -521,14 +521,13 @@ I32 stucGetBorderFaceMemType(I32 mapFaceSize, I32 bufFaceSize) {
 
 static
 StucErr sendOffJobs(
-	const MapToMeshBasic *pBasic,
+	StucContext pCtx,
 	I32 jobCount,
 	void *pJobArgs, I32 argStructSize,
 	StucErr (* func)(void *),
 	void ***pppJobHandles
 ) {
 	StucErr err = PIX_ERR_SUCCESS;
-	StucContext pCtx = pBasic->pCtx;
 	void *jobArgPtrs[PIX_THREAD_MAX_THREADS] = {0};
 	for (I32 i = 0; i < jobCount; ++i) {
 		jobArgPtrs[i] = (U8 *)pJobArgs + i * argStructSize;
@@ -546,7 +545,7 @@ StucErr sendOffJobs(
 }
 
 StucErr stucDoJobInParallel(
-	const MapToMeshBasic *pBasic,
+	StucContext pCtx,
 	I32 jobCount, void *pJobArgs, I32 argStructSize,
 	StucErr (* func)(void *)
 ) {
@@ -556,22 +555,22 @@ StucErr stucDoJobInParallel(
 		return err;
 	}
 	void **ppJobHandles = NULL;
-	err = sendOffJobs(pBasic, jobCount, pJobArgs, argStructSize, func, &ppJobHandles);
+	err = sendOffJobs(pCtx, jobCount, pJobArgs, argStructSize, func, &ppJobHandles);
 	PIX_ERR_THROW_IFNOT(err, "", 0);
-	err = pBasic->pCtx->threadPool.fpWaitForJobs(
-		pBasic->pCtx->pThreadPoolHandle,
+	err = pCtx->threadPool.fpWaitForJobs(
+		pCtx->pThreadPoolHandle,
 		jobCount,
 		ppJobHandles,
 		true,
 		NULL
 	);
 	PIX_ERR_THROW_IFNOT(err, "", 0);
-	err = stucJobGetErrs(pBasic->pCtx, jobCount, &ppJobHandles);
+	err = stucJobGetErrs(pCtx, jobCount, &ppJobHandles);
 	PIX_ERR_THROW_IFNOT(err, "", 0);
 	PIX_ERR_CATCH(0, err, ;);
 	if (ppJobHandles) {
-		stucJobDestroyHandles(pBasic->pCtx, jobCount, ppJobHandles);
-		pBasic->pCtx->alloc.fpFree(ppJobHandles);
+		stucJobDestroyHandles(pCtx, jobCount, ppJobHandles);
+		pCtx->alloc.fpFree(ppJobHandles);
 	}
 	return err;
 }
