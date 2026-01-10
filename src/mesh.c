@@ -244,60 +244,72 @@ void stucAddToMeshCounts(
 	pCounts->verts += pMeshSrc->core.vertCount;
 }
 
-StucErr stucCopyMesh(StucMesh *pDestMesh, const StucMesh *pSrcMesh) {
+StucErr stucCopyMesh(StucContext pCtx, StucMesh *pDest, const StucMesh *pSrc) {
 	StucErr err = PIX_ERR_SUCCESS;
-	if (pSrcMesh->type.type == STUC_OBJECT_DATA_NULL) {
+	if (pSrc->type.type == STUC_OBJECT_DATA_NULL) {
 		//TODO why doesn't this return PIX_ERR_ERROR?
 		return err;
 	}
-	PIX_ERR_RETURN_IFNOT_COND(err, stucCheckIfMesh(pDestMesh->type), "");
-	PIX_ERR_RETURN_IFNOT_COND(err, stucCheckIfMesh(pSrcMesh->type), "");
-	I32 faceBase = pDestMesh->faceCount;
-	I32 cornerBase = pDestMesh->cornerCount;
-	I32 edgeBase = pDestMesh->edgeCount;
-	I32 vertBase = pDestMesh->vertCount;
-	I32 *facesStart = pDestMesh->pFaces + faceBase;
-	I32 *cornersStart = pDestMesh->pCorners + cornerBase;
-	I32 *edgesStart = pDestMesh->pEdges + cornerBase;
-	memcpy(facesStart, pSrcMesh->pFaces, sizeof(I32) * pSrcMesh->faceCount);
+	PIX_ERR_RETURN_IFNOT_COND(err, stucCheckIfMesh(pDest->type), "");
+	PIX_ERR_RETURN_IFNOT_COND(err, stucCheckIfMesh(pSrc->type), "");
+	I32 faceBase = pDest->faceCount;
+	I32 cornerBase = pDest->cornerCount;
+	I32 edgeBase = pDest->edgeCount;
+	I32 vertBase = pDest->vertCount;
+	I32 *facesStart = pDest->pFaces + faceBase;
+	I32 *cornersStart = pDest->pCorners + cornerBase;
+	memcpy(facesStart, pSrc->pFaces, sizeof(I32) * pSrc->faceCount);
 	bulkCopyAttribs(
-		&pSrcMesh->faceAttribs,
-		pDestMesh->faceCount,
-		&pDestMesh->faceAttribs,
-		pSrcMesh->faceCount
+		&pSrc->faceAttribs,
+		pDest->faceCount,
+		&pDest->faceAttribs,
+		pSrc->faceCount
 	);
-	pDestMesh->faceCount += pSrcMesh->faceCount;
-	pDestMesh->pFaces[pDestMesh->faceCount] = pSrcMesh->pFaces[pSrcMesh->faceCount];
-	memcpy(cornersStart, pSrcMesh->pCorners, sizeof(I32) * pSrcMesh->cornerCount);
+	pDest->faceCount += pSrc->faceCount;
+	pDest->pFaces[pDest->faceCount] = pSrc->pFaces[pSrc->faceCount];
+	memcpy(cornersStart, pSrc->pCorners, sizeof(I32) * pSrc->cornerCount);
 	bulkCopyAttribs(
-		&pSrcMesh->cornerAttribs,
-		pDestMesh->cornerCount,
-		&pDestMesh->cornerAttribs,
-		pSrcMesh->cornerCount
+		&pSrc->cornerAttribs,
+		pDest->cornerCount,
+		&pDest->cornerAttribs,
+		pSrc->cornerCount
 	);
-	pDestMesh->cornerCount += pSrcMesh->cornerCount;
-	memcpy(edgesStart, pSrcMesh->pEdges, sizeof(I32) * pSrcMesh->cornerCount);
-	bulkCopyAttribs(
-		&pSrcMesh->edgeAttribs,
-		pDestMesh->edgeCount,
-		&pDestMesh->edgeAttribs,
-		pSrcMesh->edgeCount
-	);
-	pDestMesh->edgeCount += pSrcMesh->edgeCount;
-	bulkCopyAttribs(
-		&pSrcMesh->vertAttribs,
-		pDestMesh->vertCount,
-		&pDestMesh->vertAttribs,
-		pSrcMesh->vertCount
-	);
-	pDestMesh->vertCount += pSrcMesh->vertCount;
-	for (I32 i = faceBase; i < pDestMesh->faceCount; ++i) {
-		pDestMesh->pFaces[i] += cornerBase;
+	pDest->cornerCount += pSrc->cornerCount;
+	if (pDest->pEdges) {
+		I32 *edgesStart = pDest->pEdges + cornerBase;
+		memcpy(edgesStart, pSrc->pEdges, sizeof(I32) * pSrc->cornerCount);
 	}
-	pDestMesh->pFaces[pDestMesh->faceCount] += cornerBase;
-	for (I32 i = cornerBase; i < pDestMesh->cornerCount; ++i) {
-		pDestMesh->pCorners[i] += vertBase;
-		pDestMesh->pEdges[i] += edgeBase;
+	bulkCopyAttribs(
+		&pSrc->edgeAttribs,
+		pDest->edgeCount,
+		&pDest->edgeAttribs,
+		pSrc->edgeCount
+	);
+	pDest->edgeCount += pSrc->edgeCount;
+	bulkCopyAttribs(
+		&pSrc->vertAttribs,
+		pDest->vertCount,
+		&pDest->vertAttribs,
+		pSrc->vertCount
+	);
+	pDest->vertCount += pSrc->vertCount;
+	if (cornerBase) {
+		for (I32 i = faceBase; i < pDest->faceCount; ++i) {
+			pDest->pFaces[i] += cornerBase;
+		}
+		pDest->pFaces[pDest->faceCount] += cornerBase;
+	}
+	if (vertBase) {
+		for (I32 i = cornerBase; i < pDest->cornerCount; ++i) {
+			pDest->pCorners[i] += vertBase;
+		}
+	}
+	if (edgeBase) {
+		if (pDest->pEdges) {
+			for (I32 i = cornerBase; i < pDest->cornerCount; ++i) {
+				pDest->pEdges[i] += edgeBase;
+			}
+		}
 	}
 	return err;
 }
@@ -340,21 +352,72 @@ StucErr stucMergeObjArr(
 	pMesh->cornerBufSize = totalCount.corners;
 	pMesh->edgeBufSize = totalCount.edges;
 	pMesh->vertBufSize = totalCount.verts;
-	pMesh->core.pFaces =
-		pCtx->alloc.fpMalloc(sizeof(I32) * pMesh->faceBufSize);
-	pMesh->core.pCorners =
-		pCtx->alloc.fpMalloc(sizeof(I32) * pMesh->cornerBufSize);
-	pMesh->core.pEdges =
-		pCtx->alloc.fpMalloc(sizeof(I32) * pMesh->cornerBufSize);
-	err = stucAllocAttribsFromMeshArr(pCtx, pMesh, pObjArr->count, ppSrcs, -1, setCommon, true, false);
+	pMesh->core.pFaces = pCtx->alloc.fpMalloc(sizeof(I32) * pMesh->faceBufSize);
+	pMesh->core.pCorners = pCtx->alloc.fpMalloc(sizeof(I32) * pMesh->cornerBufSize);
+	pMesh->core.pEdges = pCtx->alloc.fpMalloc(sizeof(I32) * pMesh->cornerBufSize);
+	err = stucAllocAttribsFromMeshArr(
+		pCtx,
+		pMesh,
+		pObjArr->count,
+		ppSrcs,
+		-1,
+		setCommon,
+		true,
+		false
+	);
 	PIX_ERR_THROW_IFNOT(err, "", 0);
 	for (I32 i = 0; i < pObjArr->count; ++i) {
-		stucCopyMesh(&pMesh->core, (StucMesh *)pObjArr->pArr[i].pData);
+		err = stucCopyMesh(pCtx, &pMesh->core, (StucMesh *)pObjArr->pArr[i].pData);
+		PIX_ERR_THROW_IFNOT(err, "", 0);
 	}
 	PIX_ERR_CATCH(0, err,
 		stucMeshDestroy(pCtx, &pMesh->core);
 	);
 	return err;
+}
+
+StucErr stucMeshAllocCopy(StucContext pCtx, StucMesh *pDest, const StucMesh *pSrc) {
+	StucErr err = PIX_ERR_SUCCESS;
+	Mesh destWrap = {
+		.core.type.type = STUC_OBJECT_DATA_MESH,
+		.faceBufSize = pSrc->faceCount + 1,
+		.cornerBufSize = pSrc->cornerCount,
+		.edgeBufSize = pSrc->edgeCount,
+		.vertBufSize = pSrc->vertCount
+	};
+	if (pSrc->faceCount) {
+		destWrap.core.pFaces = pCtx->alloc.fpMalloc(sizeof(I32) * destWrap.faceBufSize);
+	}
+	if (pSrc->cornerCount) {
+		destWrap.core.pCorners =
+			pCtx->alloc.fpMalloc(sizeof(I32) * destWrap.cornerBufSize);
+		if (pSrc->pEdges) {
+			destWrap.core.pEdges =
+				pCtx->alloc.fpMalloc(sizeof(I32) * destWrap.cornerBufSize);
+		}
+	}
+
+	Mesh srcWrap = {.core = *pSrc};
+	err = stucAttemptToSetMissingActiveDomains(&srcWrap.core);
+	PIX_ERR_RETURN_IFNOT(err, "");
+	err = stucAssignActiveAliases(
+		pCtx,
+		&srcWrap,
+		0xffffffff,
+		STUC_DOMAIN_NONE
+	);
+	PIX_ERR_RETURN_IFNOT(err, "");
+	const Mesh *pSrcWrap = &srcWrap;
+
+	err = stucAllocAttribsFromMeshArr(pCtx, &destWrap, 1, &pSrcWrap, -1, false, true, false);
+	PIX_ERR_THROW_IFNOT(err, "", 0);
+	*pDest = destWrap.core;
+	err = stucCopyMesh(pCtx, pDest, pSrc);
+	PIX_ERR_CATCH(0, err,
+		stucMeshDestroy(pCtx, pDest);
+	);
+	return err;
+
 }
 
 StucErr stucObjArrDestroy(const StucContext pCtx, StucObjArr *pArr) {

@@ -183,8 +183,7 @@ void addTri(
 	pBufMesh->cornerCount += 3;
 }
 
-static
-StucErr triangulateMesh(StucContext pCtx, StucMesh *pMesh) {
+StucErr stucMeshTriangulate(StucContext pCtx, StucMesh *pMesh) {
 	StucErr err = PIX_ERR_SUCCESS;
 	PIX_ERR_ASSERT("", pMesh->pFaces && pMesh->pCorners);
 
@@ -1882,13 +1881,6 @@ StucErr mapMapArrToMesh(
 	StucObjArr outObjWrapArr = {0};
 	outObjWrapArr.size = outObjWrapArr.count = pMapArr->count;
 	outObjWrapArr.pArr = pCtx->alloc.fpCalloc(outObjWrapArr.size, sizeof(StucObject));
-	{
-		for (I32 i = 1; i < pMeshIn->core.faceCount; ++i) {
-			if (pMeshIn->pMatIdx[i] == 0) {
-				printf("mesh has multiply material indices assigned\n");
-			}
-		}
-	}
 	for (I32 i = 0; i < pMapArr->count; ++i) {
 		outObjWrapArr.pArr[i].pData = (StucObjectData *)&pOutBufArr[i];
 		const StucMap pMap = pMapArr->pArr[i].map.ptr;
@@ -2186,7 +2178,7 @@ StucErr stucMapToMesh(
 	);
 	PIX_ERR_THROW_IFNOT(err, "mapMapArrToMesh returned error", 0);
 	if (triangulate) {
-		err = triangulateMesh(pCtx, pMeshOut);
+		err = stucMeshTriangulate(pCtx, pMeshOut);
 		PIX_ERR_THROW_IFNOT(err, "", 0);
 	}
 	//printf("----------------------FINISHING IN-MESH\n");

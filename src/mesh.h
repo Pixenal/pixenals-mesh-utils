@@ -91,7 +91,6 @@ void stucAddToMeshCounts(
 	MeshCounts *pBoundsCounts,
 	const Mesh *pMeshSrc
 );
-StucErr stucCopyMesh(StucMesh *pDestMesh, const StucMesh *pSrcMesh);
 void stucApplyObjTransform(StucObject *pObj);
 StucErr stucMergeObjArr(
 	StucContext pCtx,
