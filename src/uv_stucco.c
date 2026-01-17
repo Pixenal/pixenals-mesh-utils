@@ -173,12 +173,14 @@ void addTri(
 		pBufMesh->pCorners[pBufMesh->cornerCount + i] = vert;
 		stucCopyAllAttribs(
 			&pBufMesh->cornerAttribs, pBufMesh->cornerCount + i,
-			&pMesh->cornerAttribs, pFace->start + pTri[i]
+			&pMesh->cornerAttribs, pFace->start + pTri[i],
+			true
 		);
 	}
 	stucCopyAllAttribs(
 		&pBufMesh->faceAttribs, pBufMesh->cornerCount / 3,
-		&pMesh->faceAttribs, pFace->idx
+		&pMesh->faceAttribs, pFace->idx,
+		true
 	);
 	pBufMesh->cornerCount += 3;
 }
@@ -203,10 +205,10 @@ StucErr stucMeshTriangulate(StucContext pCtx, StucMesh *pMesh) {
 	StucMesh bufMesh = {.faceCount = triCount, .cornerCount = triCount * 3};
 	bufMesh.pCorners = pCtx->alloc.fpMalloc(sizeof(I32) * bufMesh.cornerCount);
 	StucDomain domain = STUC_DOMAIN_FACE;
-	err = stucAllocAttribs(pCtx, domain, triCount, &bufMesh, 1, &pMesh, 0, false, true, false);
+	err = stucAllocAttribs(pCtx, domain, triCount, &bufMesh, 1, &pMesh, 0, false, true, false, true);
 	PIX_ERR_THROW_IFNOT(err, "", 0);
 	domain = STUC_DOMAIN_CORNER;
-	err = stucAllocAttribs(pCtx, domain, triCount * 3, &bufMesh, 1, &pMesh, 0, false, true, false);
+	err = stucAllocAttribs(pCtx, domain, triCount * 3, &bufMesh, 1, &pMesh, 0, false, true, false, true);
 	PIX_ERR_THROW_IFNOT(err, "", 0);
 
 	bufMesh.cornerCount = 0;
@@ -2005,7 +2007,8 @@ StucErr appendSpAttribsToInMesh(
 		0,
 		false,
 		false, //dont allocate data
-		true //alias pMeshIn's data instead
+		true, //alias pMeshIn's data instead
+		false
 	);
 	stucAppendSpAttribsToMesh(
 		pCtx,
@@ -2533,61 +2536,6 @@ StucErr stucObjectInit(
 	return err;
 }
 
-static
-void copyAttribs(AttribArray *pDest, I32 iDest, AttribArray *pSrc, I32 iSrc) {
-	for (I32 i = 0; i < pSrc->count; ++i) {
-		AttribCore *pDestAttrib = &pDest->pArr[pDest->count + i].core;
-		AttribCore *pSrcAttrib = &pSrc->pArr[i].core;
-		memcpy(
-			stucAttribAsVoid(pDestAttrib, iDest),
-			stucAttribAsVoid(pSrcAttrib, iSrc),
-			stucGetAttribSizeIntern(pSrcAttrib->type)
-		);
-	}
-}
-
-static
-void copyInSameAttrib(AttribArray *pArr, I32 iDest, I32 iSrc) {
-	for (I32 i = 0; i < pArr->count; ++i) {
-		AttribCore *pAttrib = &pArr->pArr[i].core;
-		memcpy(
-			stucAttribAsVoid(pAttrib, iDest),
-			stucAttribAsVoid(pAttrib, iSrc),
-			stucGetAttribSizeIntern(pAttrib->type)
-		);
-	}
-}
-
-static
-bool cmpAttribs(AttribArray *pDest, I32 iDest, AttribArray *pSrc, I32 iSrc) {
-	for (I32 i = 0; i < pSrc->count; ++i) {
-		AttribCore *pDestAttrib = &pDest->pArr[pDest->count + i].core;
-		AttribCore *pSrcAttrib = &pSrc->pArr[i].core;
-		if (!memcmp(
-			stucAttribAsVoid(pDestAttrib, iDest),
-			stucAttribAsVoid(pSrcAttrib, iSrc),
-			stucGetAttribSizeIntern(pSrcAttrib->type)
-		)) {
-			return false;
-		}
-	}
-	return true;
-}
-
-static
-void reallocVertAttribsIfNeeded(StucContext pCtx, StucMesh *pMesh, I32 *pVertSize) {
-	PIX_ERR_ASSERT("", pMesh->vertCount <= *pVertSize);
-	if (pMesh->vertCount == *pVertSize) {
-		*pVertSize *= 2;
-		for (I32 i = 0; i < pMesh->vertAttribs.size; ++i) {
-			AttribCore *pAttrib = &pMesh->vertAttribs.pArr[i].core;
-			if (pAttrib->pData) {
-				stucReallocAttrib(&pCtx->alloc, NULL, pAttrib, *pVertSize);
-			}
-		}
-	}
-}
-
 StucErr stucMeshAttribsCornerToVert(StucContext pCtx, StucMesh *pMesh) {
 	StucErr err = PIX_ERR_SUCCESS;
 	I32 newSize = pMesh->vertAttribs.count + pMesh->cornerAttribs.count;
@@ -2611,18 +2559,18 @@ StucErr stucMeshAttribsCornerToVert(StucContext pCtx, StucMesh *pMesh) {
 		I32 vert = pMesh->pCorners[i];
 		if (!flags.pArr[vert]) {
 			flags.pArr[vert] = true;
-			copyAttribs(&pMesh->vertAttribs, vert, &pMesh->cornerAttribs, i);
+			stucCopyAttribs(&pMesh->vertAttribs, vert, &pMesh->cornerAttribs, i);
 			continue;
 		}
-		bool split = !cmpAttribs(&pMesh->vertAttribs, vert, &pMesh->cornerAttribs, i);
+		bool split = !stucCmpAttribs(&pMesh->vertAttribs, vert, &pMesh->cornerAttribs, i);
 		if (split) {
-			reallocVertAttribsIfNeeded(pCtx, pMesh, &vertSize);
-			copyInSameAttrib(&pMesh->vertAttribs, pMesh->vertCount, vert);
+			stucReallocVertAttribsIfNeeded(pCtx, pMesh, &vertSize);
+			stucCopyInSameAttrib(&pMesh->vertAttribs, pMesh->vertCount, vert);
 			vert = pMesh->vertCount;
 			++pMesh->vertCount;
 			pMesh->pCorners[i] = vert;
 		}
-		copyAttribs(&pMesh->vertAttribs, vert, &pMesh->cornerAttribs, i);
+		stucCopyAttribs(&pMesh->vertAttribs, vert, &pMesh->cornerAttribs, i);
 	}
 	pMesh->vertAttribs.count = newSize;
 	pCtx->alloc.fpFree(flags.pArr);

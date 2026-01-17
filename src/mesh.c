@@ -363,6 +363,7 @@ StucErr stucMergeObjArr(
 		-1,
 		setCommon,
 		true,
+		false,
 		false
 	);
 	PIX_ERR_THROW_IFNOT(err, "", 0);
@@ -376,7 +377,12 @@ StucErr stucMergeObjArr(
 	return err;
 }
 
-StucErr stucMeshAllocCopy(StucContext pCtx, StucMesh *pDest, const StucMesh *pSrc) {
+StucErr stucMeshAllocCopy(
+	StucContext pCtx,
+	StucMesh *pDest,
+	const StucMesh *pSrc,
+	bool activeOnly
+) {
 	StucErr err = PIX_ERR_SUCCESS;
 	Mesh destWrap = {
 		.core.type.type = STUC_OBJECT_DATA_MESH,
@@ -396,7 +402,6 @@ StucErr stucMeshAllocCopy(StucContext pCtx, StucMesh *pDest, const StucMesh *pSr
 				pCtx->alloc.fpMalloc(sizeof(I32) * destWrap.cornerBufSize);
 		}
 	}
-
 	Mesh srcWrap = {.core = *pSrc};
 	err = stucAttemptToSetMissingActiveDomains(&srcWrap.core);
 	PIX_ERR_RETURN_IFNOT(err, "");
@@ -409,7 +414,14 @@ StucErr stucMeshAllocCopy(StucContext pCtx, StucMesh *pDest, const StucMesh *pSr
 	PIX_ERR_RETURN_IFNOT(err, "");
 	const Mesh *pSrcWrap = &srcWrap;
 
-	err = stucAllocAttribsFromMeshArr(pCtx, &destWrap, 1, &pSrcWrap, -1, false, true, false);
+	err = stucAllocAttribsFromMeshArr(
+		pCtx,
+		&destWrap,
+		1,
+		&pSrcWrap,
+		-1,
+		false, true, false, activeOnly
+	);
 	PIX_ERR_THROW_IFNOT(err, "", 0);
 	*pDest = destWrap.core;
 	err = stucCopyMesh(pCtx, pDest, pSrc);
@@ -417,7 +429,6 @@ StucErr stucMeshAllocCopy(StucContext pCtx, StucMesh *pDest, const StucMesh *pSr
 		stucMeshDestroy(pCtx, pDest);
 	);
 	return err;
-
 }
 
 StucErr stucObjArrDestroy(const StucContext pCtx, StucObjArr *pArr) {

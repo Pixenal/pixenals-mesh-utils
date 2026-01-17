@@ -136,7 +136,7 @@ bool doesEarIntersectFace(
 		}
 		V3_F32 point = pState->fpGetPoint(pState->pMesh, pState->pFace, i);
 		F32 distFromPlane = _(normal V3DOT point) + triDistFromOrigin;
-		V3_F32 projPoint = _(point V3ADD _(normal V3MULS (distFromPlane * -1.0)));
+		V3_F32 projPoint = _(point V3ADD _(normal V3MULS (distFromPlane * -1.0f)));
 		V3_F32 bc = pixmCartesianToBarycentric(pTri, &projPoint, &normal);
 		if (_(bc V3GREAT (V3_F32){0})) {
 			return true;
