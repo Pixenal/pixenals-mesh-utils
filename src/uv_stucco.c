@@ -234,6 +234,7 @@ StucErr stucMeshTriangulate(StucContext pCtx, StucMesh *pMesh) {
 			}
 		}
 	}
+	/*
 	if (pMesh->pEdges) {
 		pCtx->alloc.fpFree(pMesh->pEdges);
 		pMesh->pEdges = NULL;
@@ -242,6 +243,7 @@ StucErr stucMeshTriangulate(StucContext pCtx, StucMesh *pMesh) {
 		pCtx->alloc.fpFree(pMesh->edgeAttribs.pArr);
 		pMesh->edgeAttribs = (AttribArray){0};
 	}
+	*/
 	pCtx->alloc.fpFree(pMesh->pFaces);
 	pCtx->alloc.fpFree(pMesh->pCorners);
 	pCtx->alloc.fpFree(pMesh->faceAttribs.pArr);
