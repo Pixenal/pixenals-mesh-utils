@@ -47,11 +47,11 @@ StucErr stucContextInit(
 	StucTypeDefaultConfig *pTypeDefaultConfig,
 	StucStageReport *pStageReport
 ) {
+	StucErr err = PIX_ERR_SUCCESS;
 #ifndef NDEBUG
 	stucIoDataTagValidate();
 #endif
-
-	StucAlloc alloc;
+	StucAlloc alloc = {0};
 	if (pAlloc) {
 		stucAllocSetCustom(&alloc, pAlloc);
 	}
@@ -61,7 +61,8 @@ StucErr stucContextInit(
 	*pCtx = alloc.fpCalloc(1, sizeof(StucContextInternal));
 	(*pCtx)->alloc = alloc;
 	if (pThreadPool) {
-		stucThreadPoolSetCustom(*pCtx, pThreadPool);
+		err = stucThreadPoolSetCustom(*pCtx, pThreadPool);
+		PIX_ERR_THROW_IFNOT(err, "", 0);
 	}
 	else {
 		stucThreadPoolSetDefault(*pCtx);
@@ -72,11 +73,12 @@ StucErr stucContextInit(
 	else {
 		stucIoSetDefault(*pCtx);
 	}
-	(*pCtx)->threadPool.fpInit(
+	err = (*pCtx)->threadPool.fpInit(
 		&(*pCtx)->pThreadPoolHandle,
 		&(*pCtx)->threadCount,
 		&(*pCtx)->alloc
 	);
+	PIX_ERR_THROW_IFNOT(err, "", 0);
 	if (pTypeDefaultConfig) {
 		(*pCtx)->typeDefaults = *pTypeDefaultConfig;
 	}
@@ -93,11 +95,18 @@ StucErr stucContextInit(
 	stucSetDefaultSpAttribNames(*pCtx);
 	stucSetDefaultSpAttribDomains(*pCtx);
 	stucSetDefaultSpAttribTypes(*pCtx);
-	return PIX_ERR_SUCCESS;
+
+	PIX_ERR_CATCH(0, err,
+		stucContextDestroy(*pCtx);
+		*pCtx = NULL;
+	);
+	return err;
 }
 
 StucErr stucContextDestroy(StucContext pCtx) {
-	pCtx->threadPool.fpDestroy(pCtx->pThreadPoolHandle);
+	if (pCtx->pThreadPoolHandle) {
+		pCtx->threadPool.fpDestroy(pCtx->pThreadPoolHandle);
+	}
 	pCtx->alloc.fpFree(pCtx);
 	return PIX_ERR_SUCCESS;
 }
@@ -205,10 +214,10 @@ StucErr stucMeshTriangulate(StucContext pCtx, StucMesh *pMesh) {
 	StucMesh bufMesh = {.faceCount = triCount, .cornerCount = triCount * 3};
 	bufMesh.pCorners = pCtx->alloc.fpMalloc(sizeof(I32) * bufMesh.cornerCount);
 	StucDomain domain = STUC_DOMAIN_FACE;
-	err = stucAllocAttribs(pCtx, domain, triCount, &bufMesh, 1, &pMesh, 0, false, true, false, true);
+	err = stucAllocAttribs(pCtx, domain, triCount, &bufMesh, 1, &pMesh, 0, false, true, false, false);
 	PIX_ERR_THROW_IFNOT(err, "", 0);
 	domain = STUC_DOMAIN_CORNER;
-	err = stucAllocAttribs(pCtx, domain, triCount * 3, &bufMesh, 1, &pMesh, 0, false, true, false, true);
+	err = stucAllocAttribs(pCtx, domain, triCount * 3, &bufMesh, 1, &pMesh, 0, false, true, false, false);
 	PIX_ERR_THROW_IFNOT(err, "", 0);
 
 	bufMesh.cornerCount = 0;
