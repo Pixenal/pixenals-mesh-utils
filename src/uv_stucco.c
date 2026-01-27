@@ -2510,9 +2510,8 @@ StucErr stucAttribIndexedArrDestroy(StucContext pCtx, StucAttribIndexedArr *pArr
 			}
 		}
 		pCtx->alloc.fpFree(pArr->pArr);
-		pArr->pArr = NULL;
 	}
-	pArr->count = pArr->size = 0;
+	*pArr = (StucAttribIndexedArr){0};
 	return err;
 }
 
