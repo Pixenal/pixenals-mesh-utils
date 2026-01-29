@@ -56,16 +56,16 @@ void initHalfPlaneLookup(
 ) {
 	V2_F32 fTile = {.d = {(F32)tile.d[0], (F32)tile.d[1]}};
 	for (I32 i = 0; i < pInFace->size; ++i) {
-		pCache[i].idx = (I8)i;
-		pCache[i].idxNext = (I8)stucGetCornerNext(i, pInFace);
-		pCache[i].idxPrev = (I8)stucGetCornerPrev(i, pInFace);
-
-		pCache[i].edge = stucGetMeshEdge(
-			&pMesh->core,
-			(FaceCorner) {.face = pInFace->idx, .corner = i}
-		);
-
-		pCache[i].uv = _(pMesh->pUvs[pInFace->start + i] V2SUB fTile);
+		pCache[i] = (HalfPlane){
+			.idx = (I8)i,
+			.idxNext = (I8)stucGetCornerNext(i, pInFace),
+			.idxPrev = (I8)stucGetCornerPrev(i, pInFace),
+			.edge = stucGetMeshEdge(
+				&pMesh->core,
+				(FaceCorner) {.face = pInFace->idx, .corner = i}
+			),
+			.uv = _(pMesh->pUvs[pInFace->start + i] V2SUB fTile)
+		};
 		pCache[i].uvNext = _(pMesh->pUvs[pInFace->start + pCache[i].idxNext] V2SUB fTile);
 		
 		pCache[i].dir = _(pCache[i].uvNext V2SUB pCache[i].uv);

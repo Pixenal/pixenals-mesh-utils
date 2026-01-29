@@ -745,7 +745,9 @@ StucErr stucMapFileLoadInit(
 		&pState->table,
 		64,
 		(I32Arr){.pArr = (I32[]){sizeof(MapDepEntry)}, .count = 1},
-		NULL
+		NULL,
+		NULL,
+		true
 	);
 	*ppState = pState;
 	return err;
@@ -775,7 +777,7 @@ StucErr getMapOrPath(StucMapLoad *pState, MapDepStack *pStack) {
 			return err;
 		}
 		if (pMap) {
-			pStackEntry->pMap->status = mapErr = STUC_MAP_LOADED;
+			pStackEntry->pMap->status = STUC_MAP_LOADED;
 			PIX_ERR_ASSERT("", !pStackEntry->pMap->pMap);
 			pStackEntry->pMap->pMap = pMap;
 			return err;
