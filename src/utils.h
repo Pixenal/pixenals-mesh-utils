@@ -32,19 +32,11 @@ typedef enum StucCompare {
 	STUC_COMPARE_GREAT
 } StucCompare;
 
-//TODO remove unused fields
 typedef struct HalfPlane {
 	V2_F32 uv;
-	V2_F32 uvNext;
-	V2_F32 dir;
 	V2_F32 dirUnit;
-	V2_F32 halfPlane;
 	F32 len;
 	I32 edge;
-	I8 idx;
-	I8 idxPrev;
-	I8 idxNext;
-	bool flipEdgeDir;
 } HalfPlane;
 
 static inline
@@ -57,21 +49,17 @@ void initHalfPlaneLookup(
 	V2_F32 fTile = {.d = {(F32)tile.d[0], (F32)tile.d[1]}};
 	for (I32 i = 0; i < pInFace->size; ++i) {
 		pCache[i] = (HalfPlane){
-			.idx = (I8)i,
-			.idxNext = (I8)stucGetCornerNext(i, pInFace),
-			.idxPrev = (I8)stucGetCornerPrev(i, pInFace),
 			.edge = stucGetMeshEdge(
 				&pMesh->core,
 				(FaceCorner) {.face = pInFace->idx, .corner = i}
 			),
 			.uv = _(pMesh->pUvs[pInFace->start + i] V2SUB fTile)
 		};
-		pCache[i].uvNext = _(pMesh->pUvs[pInFace->start + pCache[i].idxNext] V2SUB fTile);
-		
-		pCache[i].dir = _(pCache[i].uvNext V2SUB pCache[i].uv);
-		pCache[i].len = pixmV2F32Len(pCache[i].dir);
-		pCache[i].dirUnit = _(pCache[i].dir V2DIVS pCache[i].len);
-		pCache[i].halfPlane = pixmV2F32LineNormal(pCache[i].dir);
+	}
+	for (I32 i = 0; i < pInFace->size; ++i) {
+		I32 iNext = stucGetCornerNext(i, pInFace);
+		V2_F32 dir = _(pCache[iNext].uv V2SUB pCache[i].uv);
+		pCache[i].len = pixmV2F32Len(dir);
 	}
 }
 
