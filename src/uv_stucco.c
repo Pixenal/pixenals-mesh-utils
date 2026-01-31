@@ -18,19 +18,6 @@ SPDX-License-Identifier: Apache-2.0
 #include <interp_and_xform.h>
 #include <merge_and_snap.h>
 
-//TODO Reduce the bits written to the UVGP file for vert and corner indices, based on the total amount, in order to save space.
-//	No point storing them as 32 bit if there's only like 4,000 verts
-//TODO Split compressed data into chunks maybe?
-//TODO add option to vary z projection depth with uv stretch (for wires and such)
-//TODO Add an option for subdivision like smoothing (for instances where
-//	the map is higher res than the base mesh). So that the surface can be
-//	smoothed, without needing to induce the perf cost of actually subdividing
-//	the base mesh. Is this possible?
-//TODO add user define void * args to custom callbacks
-//TODO allow for layered mapping. eg, map-faces assigned layer 0 are only mapped
-//	to in-faces with a layer attribute of 0
-//TODO make naming for MeshIn consistent
-
 static
 void setDefaultStageReport(StucContext pCtx) {
 	pCtx->stageReport.outOf = 50,
@@ -514,8 +501,6 @@ StucErr stucMapFileLoadIntern(
 		&pMap->indexedAttribs,
 		true
 	);
-	//TODO validate meshes, ensure pMatIdx is within mat range, faces are within max corner limit,
-	//F32 values are valid, etc.
 	PIX_ERR_THROW_IFNOT(err, "failed to load file from disk", 0);
 
 	I32 targetIdx = 0;
@@ -1938,8 +1923,6 @@ StucErr mapMapArrToMesh(
 			);
 			PIX_ERR_THROW_IFNOT(err, "", 1);
 			InFaceTableToHashTable(&pCtx->alloc, pMap, squaresOut.faceCount, inFaceTable.pArr);
-			//*pMeshOut = squaresOut;
-			//return PIX_ERR_SUCCESS;
 			stucMeshDestroy(pCtx, &squaresOut);
 			stucAssignActiveAliases(
 				pCtx,
@@ -2108,8 +2091,6 @@ StucErr initMeshInWrap(
 	);
 	PIX_ERR_RETURN_IFNOT(err, "");
 
-	//err = stucBuildTangents(pWrap);
-	//PIX_ERR_RETURN_IFNOT(err, "failed to build tangents");
 	buildEdgeAdj(pWrap);
 	buildSeamAndPreserveTables(pWrap);
 
@@ -2197,7 +2178,6 @@ StucErr stucMapToMesh(
 		err = stucMeshTriangulate(pCtx, pMeshOut);
 		PIX_ERR_THROW_IFNOT(err, "", 0);
 	}
-	//printf("----------------------FINISHING IN-MESH\n");
 	PIX_ERR_CATCH(0, err, ;);
 	if (builtEdges && meshInWrap.core.pEdges) {
 		if (meshInWrap.core.pEdges) {

@@ -619,7 +619,6 @@ void stucInsertionSort(
 		bufSize++;
 	}
 }
-//void stucFInsertionSort(I32 *pIdxTable, I32 count, F32 *pSort);
 M3x3 stucGetInterpolatedTbn(
 	const Mesh *pMesh,
 	const FaceRange *pFace,
@@ -632,20 +631,6 @@ StucErr stucDoJobInParallel(
 	I32 jobCount, void *pJobArgs, I32 argStructSize,
 	StucErr (* func)(void *)
 );
-//U32 stucGetEncasedFaceHash(I32 mapFace, V2_I16 tile, I32 tableSize);
-
-/*
-typedef struct VertMergeBucket {
-	VertMergeCore *pList;
-} VertMergeBucket;
-
-typedef struct VertMergeTable {
-	PixalcLinAlloc alloc;
-	PixalcLinAlloc intersectAlloc;
-	VertMergeBucket *pTable;
-	I32 size;
-} VertMergeTable;
-*/
 
 typedef struct InPieceKey {
 	I32 mapFace;

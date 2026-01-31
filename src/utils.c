@@ -22,7 +22,6 @@ BBox stucBBoxGet(const Mesh *pMesh, FaceRange *pFace) {
 	for (I32 i = 0; i < pFace->size; ++i) {
 		I32 vertIdx = pMesh->core.pCorners[pFace->start + i];
 		V3_F32 pos = pMesh->pPos[vertIdx];
-		//PIX_ERR_ASSERT("", pVert && pixmV3F32IsFinite(*pVert)); //TODO validate this earlier
 		if (pos.d[0] < bbox.min.d[0]) {
 			bbox.min.d[0] = pos.d[0];
 		}
@@ -616,11 +615,6 @@ void stucThreadPoolSetDefault(StucContext pCtx) {
 	pCtx->threadPool.fpMutexLock = pixthMutexLock;
 	pCtx->threadPool.fpMutexUnlock = pixthMutexUnlock;
 	pCtx->threadPool.fpMutexDestroy = pixthMutexDestroy;
-	/*
-	pCtx->threadPool.fpBarrierGet = stucBarrierGet;
-	pCtx->threadPool.fpBarrierWait = stucBarrierWait;
-	pCtx->threadPool.fpBarrierDestroy = stucBarrierDestroy;
-	*/
 	pCtx->threadPool.fpJobStackGetJob = pixthJobStackGetJob;
 	pCtx->threadPool.pJobStackPushJobs = pixthJobStackPushJobs;
 	pCtx->threadPool.fpGetAndDoJob = pixthGetAndDoJob;
