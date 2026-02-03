@@ -12,6 +12,8 @@ SPDX-License-Identifier: Apache-2.0
 
 #include <uv_stucco_intern.h>
 
+#define STUC_NGON_MAX_SIZE 64
+
 typedef struct BaseTriVerts {
 	V3_F32 xyz[4];
 	V2_F32 uv[4];
@@ -337,6 +339,71 @@ V3_F32 getTriNormal(
 	return cross;
 }
 
+typedef struct AxisBounds{
+	I32 minIdx;
+	I32 maxIdx;
+	F32 min;
+	F32 max;
+	F32 len;
+} AxisBounds;
+
+static inline
+void axisBoundsCalcLen(AxisBounds *pBounds) {
+	pBounds->len = pBounds->max - pBounds->min;
+	PIX_ERR_ASSERT("", pBounds->len >= .0f);
+}
+
+static inline
+void axisBoundsCmp(AxisBounds *pBounds, float pos, I32 idx) {
+	if (pos < pBounds->min) {
+		pBounds->min = pos;
+		pBounds->minIdx = idx;
+	}
+	if (pos > pBounds->max) {
+		pBounds->max = pos;
+		pBounds->maxIdx = idx;
+	}
+}
+
+//returns the longest axis
+static inline
+I32 axisBoundsMake(
+	const FaceRange *pFace,
+	const Mesh *pMesh,
+	V3_F32 (* fpGetPoint) (const Mesh *, const FaceRange *, I32),
+	I32Arr *pSkip,
+	AxisBounds *pBounds
+) {
+	for (I32 i = 0; i < 3; ++i) {
+		pBounds[i].max = -FLT_MAX;
+		pBounds[i].min = FLT_MAX;
+	}
+	for (I32 i = 0; i < pFace->size; ++i) {
+		if (isMarkedSkip(pSkip, i)) {
+			continue;
+		}
+		V3_F32 pos = fpGetPoint(pMesh, pFace, i);
+		axisBoundsCmp(pBounds + 0, pos.d[0], i);
+		axisBoundsCmp(pBounds + 1, pos.d[1], i);
+		axisBoundsCmp(pBounds + 2, pos.d[2], i);
+	}
+	axisBoundsCalcLen(pBounds + 0);
+	axisBoundsCalcLen(pBounds + 1);
+	axisBoundsCalcLen(pBounds + 2);
+	I32 highAxis = pBounds[0].len < pBounds[1].len;
+	if (pBounds[2].len > pBounds[1].len && pBounds[2].len > pBounds[0].len) {
+		highAxis = 2;
+	}
+	return highAxis;
+}
+
+static inline
+void markSkip(I32Arr *pSkip, I32 idx) {
+	PIX_ERR_ASSERT("", pSkip->count < STUC_NGON_MAX_SIZE);
+	pSkip->pArr[pSkip->count] = idx;
+	++pSkip->count;
+}
+
 static inline
 V3_F32 stucCalcFaceNormal(
 	const FaceRange *pFace,
@@ -344,51 +411,24 @@ V3_F32 stucCalcFaceNormal(
 	V3_F32 (* fpGetPoint) (const Mesh *, const FaceRange *, I32)
 ) {
 	PIX_ERR_ASSERT("", pFace->start >= 0 && pFace->size >= 3);
-	I32 skipArr[32] = {0};
+	I32 skipArr[STUC_NGON_MAX_SIZE] = {0};
 	I32Arr skip = {.pArr = skipArr};
 	do {
-		I32 highCorner = 0;
-		I32 lowCorner = 0;
-		V3_F32 highCoord = { -FLT_MAX, -FLT_MAX, -FLT_MAX };
-		V3_F32 lowCoord = { FLT_MAX, FLT_MAX, FLT_MAX };
-		for (I32 i = 0; i < pFace->size; ++i) {
-			if (isMarkedSkip(&skip, i)) {
-				continue;
-			}
-			V3_F32 pos = fpGetPoint(pMesh, pFace, i);
-			if (!(
-				pos.d[0] > lowCoord.d[0] ||
-
-				pos.d[0] == lowCoord.d[0] &&
-				pos.d[1] > lowCoord.d[1] ||
-
-				pos.d[0] == lowCoord.d[0] &&
-				pos.d[1] == lowCoord.d[1] &&
-				pos.d[2] >= lowCoord.d[2]
-			)) {
-				lowCorner = i;
-				lowCoord = pos;
-			}
-			if (!(
-				pos.d[0] < highCoord.d[0] ||
-
-				pos.d[0] == highCoord.d[0] &&
-				pos.d[1] < highCoord.d[1] ||
-
-				pos.d[0] == highCoord.d[0] &&
-				pos.d[1] == highCoord.d[1] &&
-				pos.d[2] <= highCoord.d[2]
-			)) {
-				highCorner = i;
-				highCoord = pos;
-			}
-		}
-		V3_F32 lowNormal = getTriNormal(pMesh, pFace, &skip, lowCorner, fpGetPoint);
+		AxisBounds bounds[3] = {0};
+		AxisBounds *pAxis =
+			bounds + axisBoundsMake(pFace, pMesh, fpGetPoint, &skip, bounds);
+		V3_F32 lowNormal = getTriNormal(pMesh, pFace, &skip, pAxis->minIdx, fpGetPoint);
+		V3_F32 highNormal = getTriNormal(pMesh, pFace, &skip, pAxis->maxIdx, fpGetPoint);
+		bool redo = false;
 		if (_(lowNormal V3EQL (V3_F32){0})) {
-			continue;
+			markSkip(&skip, pAxis->minIdx);
+			redo = true;
 		}
-		V3_F32 highNormal = getTriNormal(pMesh, pFace, &skip, highCorner, fpGetPoint);
 		if (_(highNormal V3EQL (V3_F32){0})) {
+			markSkip(&skip, pAxis->maxIdx);
+			redo = true;
+		}
+		if (redo) {
 			continue;
 		}
 		if (_(lowNormal V3EQL highNormal)) {

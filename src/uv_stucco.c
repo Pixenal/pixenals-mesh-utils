@@ -218,8 +218,8 @@ StucErr stucMeshTriangulate(StucContext pCtx, StucMesh *pMesh) {
 			addTri(&bufMesh, pMesh, &face, (I32[]){2, 3, 0});
 		}
 		else {
-			PIX_ERR_ASSERT("degen face", face.size > 4);
-			U8 triArr[30] = {0};
+			PIX_ERR_ASSERT("degen face", face.size > 4 && face.size < STUC_NGON_MAX_SIZE);
+			U8 triArr[STUC_NGON_MAX_SIZE] = {0};
 			FaceTriangulated ngonTris = {.pTris = triArr};
 			stucTriangulateFaceFromVerts(&pCtx->alloc, &face, &wrap, &ngonTris);
 			I32 ngonTriCount = face.size - 2;
