@@ -142,18 +142,26 @@ void buildEdgeLenList(StucContext pCtx, Mesh *pMesh) {
 static
 void triCacheBuild(const StucAlloc *pAlloc, StucMap pMap) {
 	bool ngons = checkForNgonsInMesh(&pMap->pMesh->core);
-	if (ngons) {
-		pMap->triCache.pArr =
-			pAlloc->fpCalloc(pMap->pMesh->core.faceCount, sizeof(FaceTriangulated));
-		pixalcLinAllocInit(pAlloc, &pMap->triCache.alloc, 3, 16, false);
-		for (I32 i = 0; i < pMap->pMesh->core.faceCount; ++i) {
-			FaceRange face = stucGetFaceRange(&pMap->pMesh->core, i);
-			if (face.size > 4) {
-				FaceTriangulated *pTris = pMap->triCache.pArr + i;
-				pixalcLinAlloc(&pMap->triCache.alloc, (void **)&pTris->pTris, face.size - 2);
-				stucTriangulateFaceFromVerts(pAlloc, &face, pMap->pMesh, pTris);
-			}
+	if (!ngons) {
+		return;
+	}
+	U8 triBuf[STUC_NGON_MAX_SIZE];
+	pMap->triCache.pArr =
+		pAlloc->fpCalloc(pMap->pMesh->core.faceCount, sizeof(FaceTriangulated));
+	pixalcLinAllocInit(pAlloc, &pMap->triCache.alloc, 3, 16, false);
+	for (I32 i = 0; i < pMap->pMesh->core.faceCount; ++i) {
+		FaceRange face = stucGetFaceRange(&pMap->pMesh->core, i);
+		if (face.size <= 4) {
+			continue;
 		}
+		FaceTriangulated *pTris = pMap->triCache.pArr + i;
+		pTris->count = stucTriangulateFaceFromVerts(pAlloc, &face, pMap->pMesh, triBuf);
+		if (!pTris->count) {
+			continue;
+		}
+		void *pTrisMem = NULL;
+		pTris->idx = pixalcLinAlloc(&pMap->triCache.alloc, &pTrisMem, pTris->count);
+		memcpy(pTrisMem, triBuf, pTris->count * 3);
 	}
 }
 
@@ -162,7 +170,7 @@ void addTri(
 	StucMesh *pBufMesh,
 	const StucMesh *pMesh,
 	const FaceRange *pFace,
-	const I32 *pTri
+	const U8 *pTri
 ) {
 	for (I32 i = 0; i < 3; ++i) {
 		I32 vert = pMesh->pCorners[pFace->start + pTri[i]];
@@ -179,6 +187,7 @@ void addTri(
 		true
 	);
 	pBufMesh->cornerCount += 3;
+	++pBufMesh->faceCount;
 }
 
 StucErr stucMeshTriangulate(StucContext pCtx, StucMesh *pMesh) {
@@ -207,26 +216,26 @@ StucErr stucMeshTriangulate(StucContext pCtx, StucMesh *pMesh) {
 	err = stucAllocAttribs(pCtx, domain, triCount * 3, &bufMesh, 1, &pMesh, 0, false, true, false, false);
 	PIX_ERR_THROW_IFNOT(err, "", 0);
 
+	bufMesh.faceCount = 0;
 	bufMesh.cornerCount = 0;
+	U8 triBuf[STUC_NGON_MAX_SIZE];
 	for (I32 i = 0; i < pMesh->faceCount; ++i) {
 		FaceRange face = stucGetFaceRange(pMesh, i);
 		if (face.size == 3) {
-			addTri(&bufMesh, pMesh, &face, (I32[]){0, 1, 2});
+			addTri(&bufMesh, pMesh, &face, (U8[]){0, 1, 2});
 		}
 		else if (face.size == 4) {
-			addTri(&bufMesh, pMesh, &face, (I32[]){0, 1, 2});
-			addTri(&bufMesh, pMesh, &face, (I32[]){2, 3, 0});
+			addTri(&bufMesh, pMesh, &face, (U8[]){0, 1, 2});
+			addTri(&bufMesh, pMesh, &face, (U8[]){2, 3, 0});
 		}
 		else {
-			PIX_ERR_ASSERT("degen face", face.size > 4 && face.size < STUC_NGON_MAX_SIZE);
-			U8 triArr[STUC_NGON_MAX_SIZE] = {0};
-			FaceTriangulated ngonTris = {.pTris = triArr};
-			stucTriangulateFaceFromVerts(&pCtx->alloc, &face, &wrap, &ngonTris);
-			I32 ngonTriCount = face.size - 2;
-			for (I32 i = 0; i < ngonTriCount; ++i) {
-				const U8 *pTriByte = ngonTris.pTris + 3 * i;
-				I32 tri[] = {(I32)pTriByte[0], (I32)pTriByte[1], (I32)pTriByte[2]};
-				addTri(&bufMesh, pMesh, &face, tri);
+			PIX_ERR_ASSERT(
+				"invalid face size",
+				face.size > 4 && face.size <= STUC_NGON_MAX_SIZE
+			);
+			I32 count = stucTriangulateFaceFromVerts(&pCtx->alloc, &face, &wrap, triBuf);
+			for (I32 i = 0; i < count; ++i) {
+				addTri(&bufMesh, pMesh, &face, triBuf + i * 3);
 			}
 		}
 	}

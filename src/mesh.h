@@ -13,6 +13,8 @@ SPDX-License-Identifier: Apache-2.0
 #include <uv_stucco.h>
 #include <types.h>
 
+#define STUC_NGON_MAX_SIZE 256
+
 //is it worth just putting pData at the start of Attrib,
 //so you can just have pNormalAttrib and remove pNormal.
 //or would having to cast all the time be too annoying?
@@ -70,13 +72,22 @@ typedef struct FaceCorner {
 } FaceCorner;
 
 typedef struct FaceTriangulated {
-	U8 *pTris;
+	I32 idx;
+	I32 count;
 } FaceTriangulated;
 
 typedef struct TriCache {
 	FaceTriangulated *pArr;
 	PixalcLinAlloc alloc;
 } TriCache;
+
+static inline
+const U8 *stucTriGet(const TriCache *pCache, I32 face, I32 idx) {
+	if (!pCache->pArr || idx >= pCache->pArr[face].count) {
+		return NULL;
+	}
+	return (U8 *)pixalcLinAllocIdxConst(&pCache->alloc, pCache->pArr[face].idx) + idx * 3;
+}
 
 void stucCreateMesh(const StucContext pCtx, StucObject *pObj, StucObjectType type);
 I32 stucMeshAddFace(const StucContext pCtx, Mesh *pMesh, bool *pRealloced);
@@ -146,6 +157,24 @@ static inline
 V2_F32 stucGetVertPosAsV2(const Mesh *pMesh, const FaceRange *pFace, I32 corner) {
 	PIX_ERR_ASSERT("", corner >= 0 && corner < pFace->size);
 	return *(V2_F32 *)&pMesh->pPos[pMesh->core.pCorners[pFace->start + corner]];
+}
+static inline
+V2_F32 stucVertPosXy(const Mesh *pMesh, const FaceRange *pFace, I32 corner) {
+	PIX_ERR_ASSERT("", corner >= 0 && corner < pFace->size);
+	V3_F32 pos = pMesh->pPos[pMesh->core.pCorners[pFace->start + corner]];
+	return (V2_F32){pos.d[0], pos.d[1]};
+}
+static inline
+V2_F32 stucVertPosXz(const Mesh *pMesh, const FaceRange *pFace, I32 corner) {
+	PIX_ERR_ASSERT("", corner >= 0 && corner < pFace->size);
+	V3_F32 pos = pMesh->pPos[pMesh->core.pCorners[pFace->start + corner]];
+	return (V2_F32){pos.d[0], pos.d[2]};
+}
+static inline
+V2_F32 stucVertPosYz(const Mesh *pMesh, const FaceRange *pFace, I32 corner) {
+	PIX_ERR_ASSERT("", corner >= 0 && corner < pFace->size);
+	V3_F32 pos = pMesh->pPos[pMesh->core.pCorners[pFace->start + corner]];
+	return (V2_F32){pos.d[1], pos.d[2]};
 }
 static inline
 V2_F32 stucGetUvPos(const Mesh *pMesh, const FaceRange *pFace, I32 corner) {

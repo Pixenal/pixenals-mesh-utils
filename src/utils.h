@@ -12,8 +12,6 @@ SPDX-License-Identifier: Apache-2.0
 
 #include <uv_stucco_intern.h>
 
-#define STUC_NGON_MAX_SIZE 64
-
 typedef struct BaseTriVerts {
 	V3_F32 xyz[4];
 	V2_F32 uv[4];
@@ -88,7 +86,9 @@ bool stucCheckIfEdgeIsReceive(const Mesh *pMesh, I32 edge, F32 receiveLen);
 typedef struct Ear {
 	struct Ear *pNext;
 	struct Ear *pPrev;
+	I32 cornerPrev;
 	I32 corner;
+	I32 cornerNext;
 	F32 len;
 } Ear;
 
@@ -98,9 +98,7 @@ typedef struct TriangulateState {
 	const Mesh *pMesh;
 	const FaceRange *pFace;
 	V3_F32 (* fpGetPoint)(const Mesh *, const FaceRange *, I32);
-	FaceTriangulated *pTris;
-	bool *pRemoved;
-	I32 triCount;
+	I8 *pRemoved;
 	V3_F32 normal;
 } TriangulateState;
 
@@ -214,7 +212,9 @@ Ear *addEarCandidate(TriangulateState *pState, I32 corner) {
 			pEar->pNext = pNewEar;
 		}
 	}
+	pNewEar->cornerPrev = cornerPrev;
 	pNewEar->corner = corner;
+	pNewEar->cornerNext = cornerNext;
 	pNewEar->len = len;
 	return pNewEar;
 }
@@ -228,15 +228,18 @@ void addAdjEarCandidates(TriangulateState *pState, Ear *pEar) {
 }
 
 static inline
-Ear *addEar(TriangulateState *pState) {
+Ear *addEar(TriangulateState *pState, I32 *pCount, U8 *pTris) {
 	Ear *pEar = pState->pEarList;
-	U8 *pTri = pState->pTris->pTris + pState->triCount * 3;
+	U8 *pTri = pTris + *pCount * 3;
 	I32 cornerPrev = stucGetPrevRemaining(pState, pEar->corner, pState->pFace);
 	I32 cornerNext = stucGetNextRemaining(pState, pEar->corner, pState->pFace);
+	if (cornerPrev != pEar->cornerPrev || cornerNext != pEar->cornerNext) {
+		return NULL;//ear entry is outdated
+	}
 	pTri[0] = cornerPrev;
 	pTri[1] = pEar->corner;
 	pTri[2] = cornerNext;
-	pState->triCount++;
+	++*pCount;
 	
 	pState->pRemoved[pEar->corner] = true;
 	return pEar;
@@ -260,6 +263,72 @@ bool isMarkedSkip(I32Arr *pSkip, I32 idx) {
 	}
 	return false;
 }
+
+STUC_FORCE_INLINE
+I32 stucGetNonDegenBoundCorner(
+	const FaceRange *pFace,
+	const Mesh *pMesh,
+	V2_F32 (* fpGetPoint) (const Mesh *, const FaceRange *, I32),
+	bool useMin,
+	I32Arr *pExternSkip,
+	F32 *pDet
+) {
+	PIX_ERR_ASSERT("", pFace->start >= 0 && pFace->size >= 3);
+	I32 skipArr[STUC_NGON_MAX_SIZE] = {0};
+	I32Arr skip = {.pArr = skipArr};
+	do {
+		I32 corner = 0;
+		V2_F32 boundPos = {FLT_MAX, FLT_MAX};
+		boundPos = useMin ? boundPos : _(boundPos V2MULS -1.0f);
+		for (I32 i = 0; i < pFace->size; ++i) {
+			if (isMarkedSkip(&skip, i) || pExternSkip && isMarkedSkip(pExternSkip, i)) {
+				continue;
+			}
+			V2_F32 pos = fpGetPoint(pMesh, pFace, i);
+			if (useMin) {
+				if (pos.d[0] > boundPos.d[0] ||
+
+					pos.d[0] == boundPos.d[0] &&
+					pos.d[1] >= boundPos.d[1]
+				) {
+					continue;
+				}
+			}
+			else {
+				if (pos.d[0] < boundPos.d[0] ||
+
+					pos.d[0] == boundPos.d[0] &&
+					pos.d[1] <= boundPos.d[1]
+				) {
+					continue;
+				}
+			}
+			corner = i;
+			boundPos = pos;
+		}
+		I32 prev = corner == 0 ? pFace->size - 1 : corner - 1;
+		I32 next = (corner + 1) % pFace->size;
+		V2_F32 a = fpGetPoint(pMesh, pFace, prev);
+		V2_F32 b = fpGetPoint(pMesh, pFace, corner);
+		V2_F32 c = fpGetPoint(pMesh, pFace, next);
+		//alt formula for determinate,
+		//shorter and less likely to cause numerical error
+		F32 det =
+			(b.d[0] - a.d[0]) * (c.d[1] - a.d[1]) -
+			(c.d[0] - a.d[0]) * (b.d[1] - a.d[1]);
+		if (det) {
+			if (pDet) {
+				*pDet = det;
+			}
+			return corner;
+		}
+		//abc is degenerate, find another corner
+		skip.pArr[skip.count] = corner;
+		++skip.count;
+	} while(skip.count < pFace->size);
+	return -1;
+}
+
 //finds corner on convex hull of face, & determines wind direction from that
 //returns 0 for clockwise, 1 for counterclockwise, & 2 if degenerate
 STUC_FORCE_INLINE
@@ -268,45 +337,9 @@ I32 stucCalcFaceWind(
 	const Mesh *pMesh,
 	V2_F32 (* fpGetPoint) (const Mesh *, const FaceRange *, I32)
 ) {
-	PIX_ERR_ASSERT("", pFace->start >= 0 && pFace->size >= 3);
-	I32 skipArr[32] = {0};
-	I32Arr skip = {.pArr = skipArr};
-	do {
-		I32 lowCorner = 0;
-		V2_F32 lowCoord = { FLT_MAX, FLT_MAX };
-		for (I32 i = 0; i < pFace->size; ++i) {
-			if (isMarkedSkip(&skip, i)) {
-				continue;
-			}
-			V2_F32 pos = fpGetPoint(pMesh, pFace, i);
-			if (pos.d[0] > lowCoord.d[0] ||
-
-				pos.d[0] == lowCoord.d[0] &&
-				pos.d[1] >= lowCoord.d[1]
-			) {
-				continue;
-			}
-			lowCorner = i;
-			lowCoord = pos;
-		}
-		I32 prev = lowCorner == 0 ? pFace->size - 1 : lowCorner - 1;
-		I32 next = (lowCorner + 1) % pFace->size;
-		V2_F32 a = fpGetPoint(pMesh, pFace, prev);
-		V2_F32 b = fpGetPoint(pMesh, pFace, lowCorner);
-		V2_F32 c = fpGetPoint(pMesh, pFace, next);
-		//alt formula for determinate,
-		//shorter and less likely to cause numerical error
-		F32 det =
-			(b.d[0] - a.d[0]) * (c.d[1] - a.d[1]) -
-			(c.d[0] - a.d[0]) * (b.d[1] - a.d[1]);
-		if (det) {
-			return det > .0f;
-		}
-		//abc is degenerate, find another corner
-		skip.pArr[skip.count] = lowCorner;
-		++skip.count;
-	} while(skip.count < pFace->size);
-	return 2;
+	F32 det = .0f;
+	I32 corner = stucGetNonDegenBoundCorner(pFace, pMesh, fpGetPoint, true, NULL, &det);
+	return corner != -1 ? det > .0f : 2;
 }
 static inline
 I32 stucCalcFaceWindFromVerts(const FaceRange *pFace, const Mesh *pMesh) {
@@ -321,7 +354,6 @@ static
 V3_F32 getTriNormal(
 	const Mesh *pMesh,
 	const FaceRange *pFace,
-	I32Arr *pSkip,
 	I32 corner,
 	V3_F32 (* fpGetPoint) (const Mesh *, const FaceRange *, I32)
 ) {
@@ -330,13 +362,7 @@ V3_F32 getTriNormal(
 	V3_F32 a = fpGetPoint(pMesh, pFace, prev);
 	V3_F32 b = fpGetPoint(pMesh, pFace, corner);
 	V3_F32 c = fpGetPoint(pMesh, pFace, next);
-	V3_F32 cross = _(_(b V3SUB a) V3CROSS _(c V3SUB a));
-	if (_(cross V3EQL (V3_F32){0})) {
-		//tri is degenerate, find another corner
-		pSkip->pArr[pSkip->count] = corner;
-		++pSkip->count;
-	}
-	return cross;
+	return _(_(b V3SUB a) V3CROSS _(c V3SUB a));
 }
 
 typedef struct AxisBounds{
@@ -379,7 +405,7 @@ I32 axisBoundsMake(
 		pBounds[i].min = FLT_MAX;
 	}
 	for (I32 i = 0; i < pFace->size; ++i) {
-		if (isMarkedSkip(pSkip, i)) {
+		if (pSkip && isMarkedSkip(pSkip, i)) {
 			continue;
 		}
 		V3_F32 pos = fpGetPoint(pMesh, pFace, i);
@@ -390,11 +416,11 @@ I32 axisBoundsMake(
 	axisBoundsCalcLen(pBounds + 0);
 	axisBoundsCalcLen(pBounds + 1);
 	axisBoundsCalcLen(pBounds + 2);
-	I32 highAxis = pBounds[0].len < pBounds[1].len;
-	if (pBounds[2].len > pBounds[1].len && pBounds[2].len > pBounds[0].len) {
-		highAxis = 2;
+	I32 lowAxis = pBounds[0].len > pBounds[1].len;
+	if (pBounds[2].len < pBounds[1].len && pBounds[2].len < pBounds[0].len) {
+		lowAxis = 2;
 	}
-	return highAxis;
+	return lowAxis;
 }
 
 static inline
@@ -410,32 +436,31 @@ V3_F32 stucCalcFaceNormal(
 	const Mesh *pMesh,
 	V3_F32 (* fpGetPoint) (const Mesh *, const FaceRange *, I32)
 ) {
-	PIX_ERR_ASSERT("", pFace->start >= 0 && pFace->size >= 3);
+	PIX_ERR_ASSERT(
+		"invalid face size",
+		pFace->start >= 0 && pFace->size >= 3 && pFace->size <= STUC_NGON_MAX_SIZE
+	);
 	I32 skipArr[STUC_NGON_MAX_SIZE] = {0};
 	I32Arr skip = {.pArr = skipArr};
+	AxisBounds bounds[3] = {0};
+	I32 axis = axisBoundsMake(pFace, pMesh, fpGetPoint, NULL, bounds);
+	V2_F32 (*fpPos)(const Mesh *, const FaceRange *, I32) =
+		axis == 2 ? stucVertPosXy : axis ? stucVertPosXz : stucVertPosYz;
 	do {
-		AxisBounds bounds[3] = {0};
-		AxisBounds *pAxis =
-			bounds + axisBoundsMake(pFace, pMesh, fpGetPoint, &skip, bounds);
-		V3_F32 lowNormal = getTriNormal(pMesh, pFace, &skip, pAxis->minIdx, fpGetPoint);
-		V3_F32 highNormal = getTriNormal(pMesh, pFace, &skip, pAxis->maxIdx, fpGetPoint);
-		bool redo = false;
-		if (_(lowNormal V3EQL (V3_F32){0})) {
-			markSkip(&skip, pAxis->minIdx);
-			redo = true;
-		}
-		if (_(highNormal V3EQL (V3_F32){0})) {
-			markSkip(&skip, pAxis->maxIdx);
-			redo = true;
-		}
-		if (redo) {
+		I32 minIdx = stucGetNonDegenBoundCorner(pFace, pMesh, fpPos, true, &skip, NULL);
+		I32 maxIdx = stucGetNonDegenBoundCorner(pFace, pMesh, fpPos, false, &skip, NULL);
+		V3_F32 minNormal = getTriNormal(pMesh, pFace, minIdx, fpGetPoint);
+		V3_F32 maxNormal = getTriNormal(pMesh, pFace, maxIdx, fpGetPoint);
+		if (_(minNormal V3DOT maxNormal) <= .0f) {
+			markSkip(&skip, minIdx);
+			markSkip(&skip, maxIdx);
 			continue;
 		}
-		if (_(lowNormal V3EQL highNormal)) {
-			return lowNormal;
+		if (_(minNormal V3EQL maxNormal)) {
+			return minNormal;
 		}
 		return _(
-			_(pixmV3F32Normalize(highNormal) V3ADD pixmV3F32Normalize(lowNormal)) V3DIVS
+			_(pixmV3F32Normalize(maxNormal) V3ADD pixmV3F32Normalize(minNormal)) V3DIVS
 			2.0f
 		);
 	} while(skip.count < pFace->size);
@@ -443,21 +468,21 @@ V3_F32 stucCalcFaceNormal(
 	return (V3_F32){0};
 }
 
+//returns tri count (may be less than size - 2 if face is degen)
 STUC_FORCE_INLINE
-void stucTriangulateFace(
+I32 stucTriangulateFace(
 	const StucAlloc *pAlloc,
 	const FaceRange *pFace,
 	const Mesh *pMesh,
 	V3_F32 (* fpGetPoint)(const Mesh *, const FaceRange *, I32),
-	FaceTriangulated *pTris
+	U8 *pTris
 ) {
-	PIX_ERR_ASSERT("", pTris->pTris);
+	PIX_ERR_ASSERT("", pTris);
 	TriangulateState state = {
 		.pMesh = pMesh,
 		.fpGetPoint = fpGetPoint,
 		.pFace = pFace,
-		.pTris = pTris,
-		.pRemoved = pAlloc->fpCalloc(pFace->size, sizeof(bool)),
+		.pRemoved = pAlloc->fpCalloc(pFace->size, 1),
 		.normal = stucCalcFaceNormal(pFace, pMesh, fpGetPoint)
 	};
 
@@ -467,31 +492,34 @@ void stucTriangulateFace(
 	for (I32 i = 0; i < pFace->size; ++i) {
 		addEarCandidate(&state, i);
 	}
-	PIX_ERR_ASSERT("", state.pEarList);
-	do {
+	I32 triCount = 0;
+	while (state.pEarList) {
 		Ear *pAddedEar = NULL;
-		if (!state.pRemoved[state.pEarList->corner]) {
-			pAddedEar = addEar(&state);
+		if (!state.pRemoved[state.pEarList->cornerPrev] &&
+			!state.pRemoved[state.pEarList->corner] &&
+			!state.pRemoved[state.pEarList->cornerNext]
+		) {
+			pAddedEar = addEar(&state, &triCount, pTris);
 		}
 		stucRemoveEar(&state);
 		if (pAddedEar) {
 			addAdjEarCandidates(&state, pAddedEar);
 		}
-	} while(state.triCount < pFace->size - 2);
+	}
 	pixalcLinAllocDestroy(&state.earAlloc);
 	pAlloc->fpFree(state.pRemoved);
-	PIX_ERR_ASSERT("", state.triCount == pFace->size - 2);
-	return;
+	PIX_ERR_ASSERT("", triCount <= pFace->size - 2);
+	return triCount;
 }
 
 static inline
-void stucTriangulateFaceFromVerts(
+I32 stucTriangulateFaceFromVerts(
 	const StucAlloc *pAlloc,
 	const FaceRange *pFace,
 	const Mesh *pMesh,
-	FaceTriangulated *pTris
+	U8 *pTris
 ) {
-	stucTriangulateFace(pAlloc, pFace, pMesh, stucGetVertPos, pTris);
+	return stucTriangulateFace(pAlloc, pFace, pMesh, stucGetVertPos, pTris);
 }
 
 STUC_FORCE_INLINE
@@ -680,11 +708,6 @@ typedef struct InPieceKey {
 static inline
 PixuctKey stucInPieceMakeKey(const void *pKeyData) {
 	return (PixuctKey){.pKey = pKeyData, .size = sizeof(InPieceKey)};
-}
-
-static inline
-const U8 *stucGetTri(const FaceTriangulated *pFaceTris, I32 face, I32 idx) {
-	return pFaceTris ? pFaceTris[face].pTris + idx * 3 : NULL;
 }
 
 typedef struct CachedBc {
