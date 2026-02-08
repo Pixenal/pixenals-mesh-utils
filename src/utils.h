@@ -449,6 +449,9 @@ V3_F32 stucCalcFaceNormal(
 	do {
 		I32 minIdx = stucGetNonDegenBoundCorner(pFace, pMesh, fpPos, true, &skip, NULL);
 		I32 maxIdx = stucGetNonDegenBoundCorner(pFace, pMesh, fpPos, false, &skip, NULL);
+		if (minIdx == -1 || maxIdx == -1) {
+			return (V3_F32){0};
+		}
 		V3_F32 minNormal = getTriNormal(pMesh, pFace, minIdx, fpGetPoint);
 		V3_F32 maxNormal = getTriNormal(pMesh, pFace, maxIdx, fpGetPoint);
 		if (_(minNormal V3DOT maxNormal) <= .0f) {
@@ -485,6 +488,9 @@ I32 stucTriangulateFace(
 		.pRemoved = pAlloc->fpCalloc(pFace->size, 1),
 		.normal = stucCalcFaceNormal(pFace, pMesh, fpGetPoint)
 	};
+	if (_(state.normal V3EQL (V3_F32){0})) {
+		return 0;
+	}
 
 	pixalcLinAllocInit(pAlloc, &state.earAlloc, sizeof(Ear), pFace->size, true);
 
