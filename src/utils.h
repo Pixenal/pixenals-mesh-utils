@@ -467,7 +467,6 @@ V3_F32 stucCalcFaceNormal(
 			2.0f
 		);
 	} while(skip.count < pFace->size);
-	PIX_ERR_ASSERT("", false);
 	return (V3_F32){0};
 }
 
