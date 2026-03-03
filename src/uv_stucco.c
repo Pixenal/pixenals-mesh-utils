@@ -27,12 +27,13 @@ void setDefaultStageReport(StucContext pCtx) {
 }
 
 StucErr stucContextInit(
-	StucContext *pCtx,
+	StucContext pCtx,
 	StucAlloc *pAlloc,
 	StucThreadPool *pThreadPool,
 	StucIo *pIo,
 	StucTypeDefaultConfig *pTypeDefaultConfig,
-	StucStageReport *pStageReport
+	StucStageReport *pStageReport,
+	bool threadLogging
 ) {
 	StucErr err = PIX_ERR_SUCCESS;
 #ifndef NDEBUG
@@ -45,56 +46,56 @@ StucErr stucContextInit(
 	else {
 		stucAllocSetDefault(&alloc);
 	}
-	*pCtx = alloc.fpCalloc(1, sizeof(StucContextInternal));
-	(*pCtx)->alloc = alloc;
+	pCtx->alloc = alloc;
 	if (pThreadPool) {
-		err = stucThreadPoolSetCustom(*pCtx, pThreadPool);
+		err = stucThreadPoolSetCustom(pCtx, pThreadPool);
 		PIX_ERR_THROW_IFNOT(err, "", 0);
 	}
 	else {
-		stucThreadPoolSetDefault(*pCtx);
+		stucThreadPoolSetDefault(pCtx);
 	}
 	if (pIo) {
-		stucIoSetCustom(*pCtx, pIo);
+		stucIoSetCustom(pCtx, pIo);
 	}
 	else {
-		stucIoSetDefault(*pCtx);
+		stucIoSetDefault(pCtx);
 	}
-	err = (*pCtx)->threadPool.fpInit(
-		&(*pCtx)->pThreadPoolHandle,
-		&(*pCtx)->threadCount,
-		&(*pCtx)->alloc
+	pCtx->threadCount = 12;
+	err = pCtx->threadPool.fpInit(
+		&pCtx->threadPool.handle,
+		&pCtx->threadCount,
+		&pCtx->alloc,
+		threadLogging
 	);
 	PIX_ERR_THROW_IFNOT(err, "", 0);
 	if (pTypeDefaultConfig) {
-		(*pCtx)->typeDefaults = *pTypeDefaultConfig;
+		pCtx->typeDefaults = *pTypeDefaultConfig;
 	}
 	else {
-		stucSetTypeDefaultConfig(*pCtx);
+		stucSetTypeDefaultConfig(pCtx);
 	}
 	if (pStageReport) {
-		(*pCtx)->stageReport = *pStageReport;
+		pCtx->stageReport = *pStageReport;
 	}
 	else {
-		setDefaultStageReport(*pCtx);
+		setDefaultStageReport(pCtx);
 	}
 	//TODO add ability to set custom specialAttrib names
-	stucSetDefaultSpAttribNames(*pCtx);
-	stucSetDefaultSpAttribDomains(*pCtx);
-	stucSetDefaultSpAttribTypes(*pCtx);
+	stucSetDefaultSpAttribNames(pCtx);
+	stucSetDefaultSpAttribDomains(pCtx);
+	stucSetDefaultSpAttribTypes(pCtx);
 
 	PIX_ERR_CATCH(0, err,
-		stucContextDestroy(*pCtx);
-		*pCtx = NULL;
+		stucContextDestroy(pCtx);
 	);
 	return err;
 }
 
 StucErr stucContextDestroy(StucContext pCtx) {
-	if (pCtx->pThreadPoolHandle) {
-		pCtx->threadPool.fpDestroy(pCtx->pThreadPoolHandle);
+	if (pCtx->threadPool.fpDestroy) {
+		pCtx->threadPool.fpDestroy(&pCtx->threadPool.handle);
 	}
-	pCtx->alloc.fpFree(pCtx);
+	*pCtx = (StucContextInternal){0};
 	return PIX_ERR_SUCCESS;
 }
 
@@ -532,6 +533,7 @@ StucErr stucMapFileLoadIntern(
 			AttribIndexedArr outIdxAttribArr = {0};
 			err = stucMapToMesh(
 				pCtx,
+				-1,
 				pMapArr,
 				&pMesh->core,
 				&pMap->indexedAttribs,
@@ -778,7 +780,7 @@ StucErr getMapOrPath(StucMapLoad *pState, MapDepStack *pStack) {
 		}
 	}
 	PIX_ERR_ASSERT("", !pStackEntry->pMap->pPath);
-	I32 pathLen = strnlen(pPath, PIXIO_PATH_MAX);
+	I32 pathLen = (I32)strnlen(pPath, PIXIO_PATH_MAX);
 	pStackEntry->pMap->pPath = pState->pCtx->alloc.fpMalloc(pathLen + 1);
 	memcpy(pStackEntry->pMap->pPath, pPath, pathLen + 1);
 	return err;
@@ -1207,6 +1209,7 @@ bool checkIfNoFacesHaveMaskIdx(const Mesh *pMesh, I8 maskIdx) {
 static
 StucErr mapToMeshInternal(
 	StucContext pCtx,
+	I32 threadId,
 	const StucMap pMap,
 	Mesh *pMeshIn,
 	StucMesh *pOutMesh,
@@ -1243,9 +1246,10 @@ StucErr mapToMeshInternal(
 	bool empty = false;
 	InPieceArr inPieceArr = {0};
 	I32 findEncasedJobCount = 0;
-	FindEncasedFacesJobArgs findEncasedJobArgs[PIX_THREAD_MAX_SUB_MAPPING_JOBS] = {0};
+	FindEncasedFacesJobArgs findEncasedJobArgs[PIXTH_MAX_SUB_MAPPING_JOBS] = {0};
 	err = stucInPieceArrInit(
 		&basic,
+		threadId,
 		&inPieceArr,
 		&findEncasedJobCount, findEncasedJobArgs,
 		&empty
@@ -1258,12 +1262,13 @@ StucErr mapToMeshInternal(
 		InPieceArr inPiecesSplit = {.pBufMeshes = &bufMeshes};
 		InPieceArr inPiecesSplitClip = {.pBufMeshes = &bufMeshesClip};
 		SplitInPiecesAllocArr splitAlloc = {
-			.pArr = (SplitInPiecesAlloc[PIX_THREAD_MAX_SUB_MAPPING_JOBS]){0}
+			.pArr = (SplitInPiecesAlloc[PIXTH_MAX_SUB_MAPPING_JOBS]){0}
 		};
 		BufOutRangeTable bufOutTable = {0};
 		OutBufIdxArr outBufIdxArr = {0};
 		err = stucInPieceArrSplit(
 			&basic,
+			threadId,
 			&inPieceArr,
 			&inPiecesSplit, &inPiecesSplitClip,
 			&splitAlloc
@@ -1285,9 +1290,19 @@ StucErr mapToMeshInternal(
 		PIX_ERR_RETURN_IFNOT(err, "");
 		//printf("C\n");
 		
-		err = stucInPieceArrInitBufMeshes(&basic, &inPiecesSplitClip, stucClipMapFace);
+		err = stucInPieceArrInitBufMeshes(
+			&basic,
+			threadId,
+			&inPiecesSplitClip,
+			stucClipMapFace
+		);
 		PIX_ERR_RETURN_IFNOT(err, "");
-		err = stucInPieceArrInitBufMeshes(&basic, &inPiecesSplit, stucAddMapFaceToBufMesh);
+		err = stucInPieceArrInitBufMeshes(
+			&basic,
+			threadId,
+			&inPiecesSplit,
+			stucAddMapFaceToBufMesh
+		);
 		PIX_ERR_RETURN_IFNOT(err, "");
 		//printf("D\n");
 
@@ -1300,6 +1315,7 @@ StucErr mapToMeshInternal(
 		I32 snappedVerts = 0;
 		err = stucSnapIntersectVerts(
 			&basic,
+			threadId,
 			&inPiecesSplit, &inPiecesSplitClip,
 			&mergeTable,
 			&snappedVerts
@@ -1337,6 +1353,7 @@ StucErr mapToMeshInternal(
 
 		err = stucBuildTangentsForInPieces(
 			pCtx,
+			threadId,
 			pMeshIn,
 			&inPiecesSplit, &inPiecesSplitClip,
 			&mergeTable
@@ -1344,13 +1361,28 @@ StucErr mapToMeshInternal(
 		PIX_ERR_RETURN_IFNOT(err, "");
 		//printf("H\n");
 		
-		err = stucXFormAndInterpVerts(&basic, &inPiecesSplit, &inPiecesSplitClip, &mergeTable, 0);
+		err = stucXFormAndInterpVerts(
+			&basic,
+			threadId,
+			&inPiecesSplit,
+			&inPiecesSplitClip,
+			&mergeTable,
+			0
+		);
 		PIX_ERR_RETURN_IFNOT(err, "");
 		//intersect verts
-		err = stucXFormAndInterpVerts(&basic, &inPiecesSplit, &inPiecesSplitClip, &mergeTable, 1);
+		err = stucXFormAndInterpVerts(
+			&basic,
+			threadId,
+			&inPiecesSplit,
+			&inPiecesSplitClip,
+			&mergeTable,
+			1
+		);
 		PIX_ERR_RETURN_IFNOT(err, "");
 		err = stucInterpAttribs(
 			&basic,
+			threadId,
 			&inPiecesSplit, &inPiecesSplitClip,
 			&mergeTable,
 			&bufOutTable,
@@ -1362,6 +1394,7 @@ StucErr mapToMeshInternal(
 		// so faces must be interpolated before corners
 		err = stucInterpAttribs(
 			&basic,
+			threadId,
 			&inPiecesSplit, &inPiecesSplitClip,
 			&mergeTable,
 			&bufOutTable,
@@ -1825,10 +1858,11 @@ typedef struct StucMapToMeshArgs {
 } StucMapToMeshArgs;
 
 static
-StucErr mapToMeshFromJob(void *pArgsVoid) {
+StucErr mapToMeshFromJob(void *pArgsVoid, I32 threadId) {
 	StucMapToMeshArgs *pArgs = pArgsVoid;
 	return stucMapToMesh(
 		pArgs->pCtx,
+		threadId,
 		pArgs->pMapArr,
 		pArgs->pMeshIn,
 		pArgs->pInIndexedAttribs,
@@ -1843,7 +1877,7 @@ StucErr mapToMeshFromJob(void *pArgsVoid) {
 
 StucErr stucQueueMapToMesh(
 	StucContext pCtx,
-	void **ppJobHandle,
+	PixthJob *pJobHandle,
 	StucMapArr *pMapArr,
 	StucMesh *pMeshIn,
 	StucAttribIndexedArr *pInIndexedAttribs,
@@ -1863,12 +1897,12 @@ StucErr stucQueueMapToMesh(
 	pArgs->wScale = wScale;
 	pArgs->receiveLen = receiveLen;
 	pArgs->triangulate = triangulate;
+	pixthJobsInit(pJobHandle, 1, mapToMeshFromJob, (void **)&pArgs);
 	pCtx->threadPool.pJobStackPushJobs(
-		pCtx->pThreadPoolHandle,
+		&pCtx->threadPool.handle,
+		0,
 		1,
-		ppJobHandle,
-		mapToMeshFromJob,
-		(void **)&pArgs
+		pJobHandle
 	);
 	return PIX_ERR_SUCCESS;
 }
@@ -1876,6 +1910,7 @@ StucErr stucQueueMapToMesh(
 static
 StucErr mapMapArrToMesh(
 	StucContext pCtx,
+	I32 threadId,
 	const StucMapArr *pMapArr,
 	Mesh *pMeshIn,
 	const StucAttribIndexedArr *pInIndexedAttribs,
@@ -1913,6 +1948,7 @@ StucErr mapMapArrToMesh(
 			StucMesh squaresOut = { 0 };
 			err = mapToMeshInternal(
 				pCtx,
+				threadId,
 				&squares,
 				pMeshIn,
 				&squaresOut,
@@ -1945,6 +1981,7 @@ StucErr mapMapArrToMesh(
 		}
 		err = mapToMeshInternal(
 			pCtx,
+			threadId,
 			pMap,
 			pMeshIn,
 			&pOutBufArr[i].core,
@@ -2131,6 +2168,7 @@ StucErr initMeshInWrap(
 
 StucErr stucMapToMesh(
 	StucContext pCtx,
+	I32 threadId,
 	const StucMapArr *pMapArr,
 	const StucMesh *pMeshIn,
 	const StucAttribIndexedArr *pInIndexedAttribs,
@@ -2173,6 +2211,7 @@ StucErr stucMapToMesh(
 
 	err = mapMapArrToMesh(
 		pCtx,
+		threadId,
 		pMapArr,
 		&meshInWrap,
 		pInIndexedAttribs,
@@ -2306,17 +2345,19 @@ void stucMapIndexedAttribsGet(
 	*pIndexedAttribs = pMap->indexedAttribs;
 }
 
+//this should not be called by a callback called from uv-stucco
 StucErr stucWaitForJobs(
 	StucContext pCtx,
 	I32 count,
-	void **ppHandles,
+	PixthJob *pHandles,
 	bool wait,
 	bool *pDone
 ) {
 	return pCtx->threadPool.fpWaitForJobs(
-		pCtx->pThreadPoolHandle,
+		&pCtx->threadPool.handle,
 		count,
-		ppHandles,
+		pHandles,
+		0,
 		wait,
 		pDone
 	);
@@ -2325,37 +2366,22 @@ StucErr stucWaitForJobs(
 StucErr stucJobGetErrs(
 	StucContext pCtx,
 	I32 jobCount,
-	void ***pppJobHandles
+	PixthJob *pJobHandles
 ) {
 	StucErr err = PIX_ERR_SUCCESS;
-	PIX_ERR_ASSERT("", pCtx && pppJobHandles);
+	PIX_ERR_ASSERT("", pCtx && pJobHandles);
 	PIX_ERR_ASSERT("", jobCount > 0);
 	for (I32 i = 0; i < jobCount; ++i) {
 		StucErr jobErr = PIX_ERR_NOT_SET;
 		err = pCtx->threadPool.fpGetJobErr(
-			pCtx->pThreadPoolHandle,
-			(*pppJobHandles)[i],
+			&pCtx->threadPool.handle,
+			pJobHandles + i,
 			&jobErr
 		);
 		PIX_ERR_THROW_IFNOT_COND(err, jobErr == PIX_ERR_SUCCESS, "", 0);
 	}
 	PIX_ERR_CATCH(0, err, ;);
 	return err;
-}
-
-void stucJobDestroyHandles(
-	StucContext pCtx,
-	I32 jobCount,
-	void **ppJobHandles
-) {
-	PIX_ERR_ASSERT("", pCtx && ppJobHandles);
-	PIX_ERR_ASSERT("", jobCount > 0);
-	for (I32 i = 0; i < jobCount; ++i) {
-		pCtx->threadPool.fpJobHandleDestroy(
-			pCtx->pThreadPoolHandle,
-			ppJobHandles + i
-		);
-	}
 }
 
 StucErr stucAttribSpTypesGet(StucContext pCtx, const AttribType **ppTypes) {

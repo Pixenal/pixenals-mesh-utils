@@ -12,7 +12,6 @@ SPDX-License-Identifier: Apache-2.0
 
 #include <utils.h>
 #include <pixenals_math_utils.h>
-#include <context.h>
 #include <attrib_utils.h>
 #include <pixenals_error_utils.h>
 #include <pixenals_thread_utils.h>
@@ -519,25 +518,32 @@ I32 stucGetBorderFaceMemType(I32 mapFaceSize, I32 bufFaceSize) {
 }
 
 static
+StucErr jobEntry(void *pArgs, I32 threadId) {
+	JobArgs *pCore = pArgs;
+	pCore->threadId = threadId;
+	return pCore->fpJob(pArgs);
+}
+
+static
 StucErr sendOffJobs(
 	StucContext pCtx,
+	I32 threadId,
 	I32 jobCount,
 	void *pJobArgs, I32 argStructSize,
-	StucErr (* func)(void *),
-	void ***pppJobHandles
+	StucErr (* func)(void *, I32),
+	PixthJob *pJobHandles
 ) {
 	StucErr err = PIX_ERR_SUCCESS;
-	void *jobArgPtrs[PIX_THREAD_MAX_THREADS] = {0};
+	void *jobArgPtrs[PIXTH_MAX_THREADS] = {0};
 	for (I32 i = 0; i < jobCount; ++i) {
 		jobArgPtrs[i] = (U8 *)pJobArgs + i * argStructSize;
 	}
-	*pppJobHandles = pCtx->alloc.fpCalloc(jobCount, sizeof(void *));
+	pixthJobsInit(pJobHandles, jobCount, func, jobArgPtrs);
 	err = pCtx->threadPool.pJobStackPushJobs(
-		pCtx->pThreadPoolHandle,
+		&pCtx->threadPool.handle,
+		threadId,
 		jobCount,
-		*pppJobHandles,
-		func,
-		jobArgPtrs
+		pJobHandles
 	);
 	PIX_ERR_RETURN_IFNOT(err, "");
 	return err;
@@ -545,6 +551,7 @@ StucErr sendOffJobs(
 
 StucErr stucDoJobInParallel(
 	StucContext pCtx,
+	I32 threadId,
 	I32 jobCount, void *pJobArgs, I32 argStructSize,
 	StucErr (* func)(void *)
 ) {
@@ -553,24 +560,32 @@ StucErr stucDoJobInParallel(
 	if (!jobCount) {
 		return err;
 	}
-	void **ppJobHandles = NULL;
-	err = sendOffJobs(pCtx, jobCount, pJobArgs, argStructSize, func, &ppJobHandles);
+	for (I32 i = 0; i < jobCount; ++i) {
+		((JobArgs *)((U8 *)pJobArgs + argStructSize * i))->fpJob = func;
+	}
+	PixthJob jobHandles[PIXTH_MAX_THREADS] = {0};
+	err = sendOffJobs(
+		pCtx,
+		threadId,
+		jobCount,
+		pJobArgs,
+		argStructSize,
+		jobEntry,
+		jobHandles
+	);
 	PIX_ERR_THROW_IFNOT(err, "", 0);
 	err = pCtx->threadPool.fpWaitForJobs(
-		pCtx->pThreadPoolHandle,
+		&pCtx->threadPool.handle,
 		jobCount,
-		ppJobHandles,
+		jobHandles,
+		threadId,
 		true,
 		NULL
 	);
 	PIX_ERR_THROW_IFNOT(err, "", 0);
-	err = stucJobGetErrs(pCtx, jobCount, &ppJobHandles);
+	err = stucJobGetErrs(pCtx, jobCount, jobHandles);
 	PIX_ERR_THROW_IFNOT(err, "", 0);
 	PIX_ERR_CATCH(0, err, ;);
-	if (ppJobHandles) {
-		stucJobDestroyHandles(pCtx, jobCount, ppJobHandles);
-		pCtx->alloc.fpFree(ppJobHandles);
-	}
 	return err;
 }
 
@@ -594,30 +609,28 @@ StucErr stucThreadPoolSetCustom(
 	StucContext pCtx,
 	const StucThreadPool *pThreadPool
 ) {
-	if (!pThreadPool->fpInit || !pThreadPool->fpDestroy || !pThreadPool->fpMutexGet ||
-	    !pThreadPool->fpMutexLock || !pThreadPool->fpMutexUnlock || !pThreadPool->fpMutexDestroy ||
-	    !pThreadPool->fpJobStackGetJob || !pThreadPool->pJobStackPushJobs) {
+	if (!pThreadPool->fpInit ||
+		!pThreadPool->fpWaitForJobs ||
+		!pThreadPool->fpGetJobErr ||
+		!pThreadPool->fpDestroy ||
+		!pThreadPool->pJobStackPushJobs
+	) {
+		//TODO remove remaining uses of print for error
+		//swap with PIX_ERROR_* macros
 		printf("Failed to set custom thread pool. One or more functions were NULL");
 		return PIX_ERR_ERROR;
 	}
-	pCtx->threadPool.fpDestroy(pCtx);
 	pCtx->threadPool = *pThreadPool;
 	return PIX_ERR_SUCCESS;
 }
 
 void stucThreadPoolSetDefault(StucContext pCtx) {
 	pCtx->threadPool.fpInit = pixthThreadPoolInit;
-	pCtx->threadPool.fpWaitForJobs = pixthWaitForJobsIntern;
+	pCtx->threadPool.fpWaitForJobs = pixthWaitForJobs;
 	pCtx->threadPool.fpGetJobErr = pixthGetJobErr;
-	pCtx->threadPool.fpJobHandleDestroy = pixthJobHandleDestroy;
+	pCtx->threadPool.fpLogDump = pixthThreadPoolLogDump;
 	pCtx->threadPool.fpDestroy = pixthThreadPoolDestroy;
-	pCtx->threadPool.fpMutexGet = pixthMutexGet;
-	pCtx->threadPool.fpMutexLock = pixthMutexLock;
-	pCtx->threadPool.fpMutexUnlock = pixthMutexUnlock;
-	pCtx->threadPool.fpMutexDestroy = pixthMutexDestroy;
-	pCtx->threadPool.fpJobStackGetJob = pixthJobStackGetJob;
 	pCtx->threadPool.pJobStackPushJobs = pixthJobStackPushJobs;
-	pCtx->threadPool.fpGetAndDoJob = pixthGetAndDoJob;
 }
 
 void stucAllocSetCustom(PixalcFPtrs *pAlloc, PixalcFPtrs *pCustomAlloc) {

@@ -9,7 +9,6 @@ SPDX-License-Identifier: Apache-2.0
 #include <pixenals_error_utils.h>
 #include <attrib_utils.h>
 #include <mesh.h>
-#include <context.h>
 
 typedef struct MeshDomain {
 	StucDomain domain;

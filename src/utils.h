@@ -701,6 +701,7 @@ M3x3 stucGetInterpolatedTbn(
 
 StucErr stucDoJobInParallel(
 	StucContext pCtx,
+	I32 threadId,
 	I32 jobCount, void *pJobArgs, I32 argStructSize,
 	StucErr (* func)(void *)
 );
