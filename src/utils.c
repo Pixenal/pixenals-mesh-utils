@@ -649,3 +649,101 @@ void stucAllocSetDefault(PixalcFPtrs *pAlloc) {
 	pAlloc->fpFree = free;
 	pAlloc->fpRealloc = realloc;
 }
+
+static
+void initPieceFaceIdxEntry(
+	void *pUserData,
+	PixuctHTableEntryCore *pEntry,
+	const void *pKeyData,
+	void *pInitInfo,
+	I32 linIdx
+) {
+	((ClustSplitFaceIdx *)pEntry)->face = *(I32 *)pInitInfo;
+}
+
+static
+bool cmpPieceFaceIdxEntry(
+	const PixuctHTableEntryCore *pEntry,
+	const void *pKeyData,
+	const void *pInitInfo
+) {
+	return ((ClustSplitFaceIdx *)pEntry)->face == *(I32 *)pKeyData;
+}
+
+void clustBuildFaceIdxTable(void *pTableRaw, const PixtyI32Arr *pFaces) {
+	PixuctHTable *pTable = pTableRaw;
+	for (I32 i = 0; i < pFaces->count; ++i) {
+		const I32 face = pFaces->pArr + i;
+		ClustSplitFaceIdx *pEntry = NULL;
+		SearchResult result =
+			pixuctHTableGetConst(
+				pTable,
+				0,
+				&face,
+				(void **)&pEntry,
+				true, &face,
+				pixuctKeyFromI32, NULL, initPieceFaceIdxEntry, cmpPieceFaceIdxEntry
+			);
+		PIX_ERR_ASSERT("", result == PIX_SEARCH_ADDED);
+	}
+}
+
+SearchResult clustFaceIdxTableGet(PixuctHTable *pTable, I32 face, void **ppEntry) {
+	return pixuctHTableGet(
+		pTable,
+		0,
+		&face,
+		ppEntry,
+		false, NULL,
+		pixuctKeyFromI32, NULL, NULL, cmpPieceFaceIdxEntry
+	);
+}
+
+static
+void borderEdgeInit(
+	void *pUserData,
+	PixuctHTableEntryCore *pEntry,
+	const void *pKeyData,
+	void *pInitInfo,
+	I32 linIdx
+) {
+	((ClustBorderEdgeTableEntry *)pEntry)->corner = *(ClustFaceCorner *)pKeyData;
+}
+
+static
+bool borderEdgeCmp(
+	const PixuctHTableEntryCore *pEntryCore,
+	const void *pKeyData,
+	const void *pInitInfo
+) {
+	ClustBorderEdgeTableEntry *pEntry = (ClustBorderEdgeTableEntry *)pEntryCore;
+	return
+		pEntry->corner.face == ((ClustFaceCorner *)pKeyData)->face &&
+		pEntry->corner.corner == ((ClustFaceCorner *)pKeyData)->corner;
+}
+
+static
+PixuctKey borderEdgeMakeKey(const void *pKeyData) {
+	return (PixuctKey){.pKey = pKeyData, .size = sizeof(ClustFaceCorner)};
+}
+
+ClustBorderEdgeTableEntry *clustBorderEdgeAddOrGet(
+	PixuctHTable *pBorderTable,
+	ClustFaceCorner corner,
+	bool add
+) {
+	ClustBorderEdgeTableEntry *pEntry = NULL;
+	SearchResult result = pixuctHTableGet(
+		pBorderTable,
+		0,
+		&corner,
+		(void **)&pEntry,
+		add, &corner,
+		borderEdgeMakeKey, NULL, borderEdgeInit, borderEdgeCmp
+	);
+	PIX_ERR_ASSERT(
+		"there shouldn't be an existing entry if adding",
+		!(add ^ (result == PIX_SEARCH_ADDED))
+	);
+	return pEntry;
+}

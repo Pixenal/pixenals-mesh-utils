@@ -12,6 +12,70 @@ SPDX-License-Identifier: Apache-2.0
 
 #include <uv_stucco_intern.h>
 
+//TODO replace Clust prefix with Stuc
+typedef struct ClustFaceCorner {
+	I32 face;
+	I32 corner;
+} ClustFaceCorner;
+
+typedef struct Border {
+	ClustFaceCorner start;
+	I32 len;
+} Border;
+
+typedef struct BorderArr {
+	Border *pArr;
+	I32 size;
+	I32 count;
+} BorderArr;
+
+typedef struct ClustBorderBuf {
+	BorderArr arr;
+} ClustBorderBuf;
+
+typedef struct ClustSplitFaceIdx {
+	PixuctHTableEntryCore core;
+	I32 face;
+	bool removed;
+	bool pendingRemove;
+	bool preserve[4];
+} ClustSplitFaceIdx;
+
+typedef struct ClustSplitFaceBuf {
+	ClustSplitFaceIdx **ppArr;
+	I32 size;
+	I32 count;
+} ClustSplitFaceBuf;
+
+typedef struct ClustBorderEdgeTableEntry {
+	PixuctHTableEntryCore core;
+	ClustFaceCorner corner;
+	bool checked;
+} ClustBorderEdgeTableEntry;
+
+typedef struct SplitMesh {
+	void *pUserData;
+	PixtyRange (*fpFaceRange)(const void *, int32_t);
+	int32_t (*fpVert)(const void *, int32_t);
+	PixtyV2_F32 (*fpPos)(const void *, int32_t);
+	ClustFaceCorner (*fpAdjCorner)(const void *, ClustFaceCorner);
+	int32_t (*fpEdge)(const void *, ClustFaceCorner);
+	int32_t faceCount;
+} SplitMesh;
+
+typedef struct ClustSplitCallbacks {
+	PixErr (*fpIdxTableBuild)(
+		void *,
+		void *,
+		void (*)(void *, const PixtyI32Arr *)
+	);
+	bool (*fpSplitPredicate)(const void *, PixtyRange, ClustFaceCorner);
+	PixErr (*fpBorderAdd)(void *, const ClustBorderBuf *);
+	PixErr (*fpFacesAdd)(void *, const ClustSplitFaceBuf *);
+	bool (* fpIsEdgeIntern)(const void *, const ClustSplitFaceIdx *, int32_t);
+	bool (* fpBorderPredicate)(const void *, int32_t);
+} ClustSplitCallbacks;
+
 typedef struct BaseTriVerts {
 	V3_F32 xyz[4];
 	V2_F32 uv[4];
@@ -731,3 +795,371 @@ I32 stucRangeGetSize(Range range) {
 void stucThreadPoolSetDefault(StucContext context);
 void stucAllocSetCustom(PixalcFPtrs *pAlloc, PixalcFPtrs *pCustomAlloc);
 void stucAllocSetDefault(PixalcFPtrs *pAlloc);
+
+static inline
+PixtyV2_F32 stucClustPos(const void *pMeshRaw, I32 vert) {
+	const Mesh *pMesh = pMeshRaw;
+	PIX_ERR_ASSERT("", pMesh->pPos && vert >= 0 && vert < pMesh->core.vertCount);
+	return *(PixtyV2_F32 *)&pMesh->pPos[vert];
+}
+
+static inline
+I32 stucClustVert(const void *pMeshRaw, I32 corner) {
+	const Mesh *pMesh = pMeshRaw;
+	PIX_ERR_ASSERT("", corner >= 0 && corner < pMesh->core.cornerCount);
+	return pMesh->core.pCorners[corner];
+}
+
+static inline
+PixtyRange stucClustFaceRange(const void *pMeshRaw, I32 face) {
+	const Mesh *pMesh = pMeshRaw;
+	PIX_ERR_ASSERT("", face >= 0 && face < pMesh->core.faceCount);
+	return (PixtyRange) {
+		.start = pMesh->core.pFaces[face],
+		.end = pMesh->core.pFaces[face + 1]
+	};
+}
+
+void clustBuildFaceIdxTable(void *pTableRaw, const PixtyI32Arr *pFaces);
+SearchResult clustFaceIdxTableGet(PixuctHTable *pTable, int32_t face, void **ppEntry);
+ClustBorderEdgeTableEntry *clustBorderEdgeAddOrGet(
+	PixuctHTable *pBorderTable,
+	ClustFaceCorner corner,
+	bool add
+);
+
+CLUST_FORCE_INLINE
+ClustSplitFaceIdx *clustGetAdjFace(
+	const SplitMesh *pMesh,
+	bool (* fpIsEdgeIntern)(const void *, const ClustSplitFaceIdx *, int32_t),
+	PixuctHTable *pIdxTable,
+	ClustFaceCorner corner,
+	int32_t *pAdjCorner
+) {
+	ClustFaceCorner adj = pMesh->fpAdjCorner(pMesh->pUserData, corner);
+	if (adj.corner == -1) {
+		return NULL;
+	}
+	PIX_ERR_ASSERT("", adj.corner >= 0);
+	ClustSplitFaceIdx *pAdjIdxEntry = NULL;
+	clustFaceIdxTableGet(pIdxTable, adj.face, (void **)&pAdjIdxEntry);
+	if (!pAdjIdxEntry) {
+		if (pAdjCorner) {
+			*pAdjCorner = -1;
+		}
+		return NULL;
+	}
+	int32_t edge = pMesh->fpEdge(pMesh->pUserData, corner);
+	if (pAdjIdxEntry->removed || fpIsEdgeIntern(pMesh->pUserData, pAdjIdxEntry, edge)) {
+		if (pAdjCorner) {
+			*pAdjCorner = -1;
+		}
+		return NULL;
+	}
+	if (pAdjCorner) {
+		PixtyRange adjFace = pMesh->fpFaceRange(pMesh->pUserData, pAdjIdxEntry->face);
+		adj.corner = (adj.corner + 1) % (adjFace.end - adjFace.start);
+		if (pAdjIdxEntry->preserve[adj.corner]) {
+			if (pAdjCorner) {
+				*pAdjCorner = -1;
+			}
+			return NULL;
+		}
+		*pAdjCorner = adj.corner;
+	}
+	return pAdjIdxEntry;
+}
+
+CLUST_FORCE_INLINE
+void clustAddAdjFaces(
+	const SplitMesh *pMesh,
+	void *pUserData,
+	const ClustSplitCallbacks *pCallbacks,
+	ClustSplitFaceBuf *pInFaceBuf,
+	PixuctHTable *pIdxTable,
+	PixuctHTable *pBorderEdges,
+	ClustSplitFaceIdx *pFace
+) {
+	PixtyRange inFace = pMesh->fpFaceRange(pMesh->pUserData, pFace->face);
+	int32_t faceSize = inFace.end - inFace.start;
+	for (int32_t i = 0; i < faceSize; ++i) {
+		ClustFaceCorner corner = {.face = pFace->face, .corner = i};
+		int32_t adjCorner = -1;
+		ClustSplitFaceIdx *pAdjFace = clustGetAdjFace(
+			pMesh,
+			pCallbacks->fpIsEdgeIntern,
+			pIdxTable,
+			corner,
+			&adjCorner
+		);
+		if (!pAdjFace) {
+			clustBorderEdgeAddOrGet(pBorderEdges, corner, true);
+			continue;
+		}
+		else if (pAdjFace->pendingRemove) {
+			//already added to this piece
+			continue; 
+		}
+		else if (pCallbacks->fpSplitPredicate(pUserData, inFace, corner)) {
+			pFace->preserve[i] = true;
+			PIX_ERR_ASSERT("", adjCorner != -1);
+			pAdjFace->preserve[adjCorner] = true;
+			clustBorderEdgeAddOrGet(pBorderEdges, corner, true);
+			continue;
+		}
+
+		pAdjFace->pendingRemove = true;
+		PIX_ERR_ASSERT("", pInFaceBuf->count < pInFaceBuf->size);
+		pInFaceBuf->ppArr[pInFaceBuf->count] = pAdjFace;
+		pInFaceBuf->count++;
+	}
+}
+
+static inline
+ClustSplitFaceIdx *clustGetFirstRemainingFace(PixuctHTable *pIdxTable) {
+	PixalcLinAlloc *pTableAlloc = pixuctHTableAllocGet(pIdxTable, 0);
+	PixalcLinAllocIter iter = {0};
+	pixalcLinAllocIterInit(pTableAlloc, (PixtyRange) { 0, INT32_MAX }, &iter);
+	for (; !pixalcLinAllocIterAtEnd(&iter); pixalcLinAllocIterInc(&iter)) {
+		ClustSplitFaceIdx *pEntry = pixalcLinAllocGetItem(&iter);
+		PIX_ERR_ASSERT("", pEntry);
+		if (!pEntry->removed) {
+			return pEntry;
+		}
+	}
+	PIX_ERR_ASSERT("this func shouldn't have been called if no faces remained", false);
+	return NULL;
+}
+
+static inline
+void clustAddBorderToArr(const PixalcFPtrs *pAlloc, BorderArr *pArr, Border border) {
+	PIX_ERR_ASSERT("", pArr->count <= pArr->size);
+	if (!pArr->size) {
+		pArr->size = 2;
+		pArr->pArr = pAlloc->fpMalloc(pArr->size * sizeof(Border));
+	}
+	else if (pArr->count == pArr->size) {
+		pArr->size *= 2;
+		pArr->pArr = pAlloc->fpRealloc(pArr->pArr, pArr->size * sizeof(Border));
+	}
+	pArr->pArr[pArr->count] = border;
+	pArr->count++;
+}
+
+CLUST_FORCE_INLINE
+bool clustFindAndAddBorder(
+	const PixalcFPtrs *pAlloc,
+	const SplitMesh *pMesh,
+	bool (* fpIsEdgeIntern)(const void *, const ClustSplitFaceIdx *, int32_t),
+	ClustBorderBuf *pBorderBuf,
+	PixuctHTable *pIdxTable,
+	PixuctHTable *pBorderEdgeTable,
+	int32_t edgesMax,
+	ClustBorderEdgeTableEntry *pStart
+) {
+	Border border = {.start = pStart->corner};
+	ClustFaceCorner corner = pStart->corner;
+	ClustBorderEdgeTableEntry *pEntry  = pStart;
+	do {
+		if (border.len != 0) {//dont run this on first edge
+			if (
+				corner.face == pStart->corner.face &&
+				corner.corner == pStart->corner.corner
+			) {
+				break;//full loop
+			}
+			pEntry = clustBorderEdgeAddOrGet(pBorderEdgeTable, corner, false);
+		}
+		if (pEntry) {
+			PIX_ERR_ASSERT("", pEntry->checked == false);
+			pEntry->checked = true;
+			border.len++;
+		}
+		PIX_ERR_ASSERT("", border.len <= edgesMax);
+		int32_t adjCorner = 0;
+		//this is using the table for the pre-split piece.
+		//this is fine, as faces arn't marked removed until the end of this func
+		const ClustSplitFaceIdx *pAdjFace = clustGetAdjFace(
+			pMesh,
+			fpIsEdgeIntern,
+			pIdxTable,
+			corner,
+			&adjCorner
+		);
+		PIX_ERR_ASSERT(
+			"if edge isn't in border arr, there should be an adj face",
+			!pEntry ^ !pAdjFace
+		);
+		if (pAdjFace) {
+			//edge is internal, move to next adjacent
+			corner.face = pAdjFace->face;
+			corner.corner = adjCorner;
+			//wind = pAdjFace->pInFace->wind;
+		}
+		else {
+			PixtyRange face = pMesh->fpFaceRange(pMesh->pUserData, corner.face);
+			corner.corner = (corner.corner + 1) % (face.end - face.start);
+		}
+	} while(true);
+	clustAddBorderToArr(pAlloc, &pBorderBuf->arr, border);
+	return true;
+}
+
+CLUST_FORCE_INLINE
+void clustFillBorderBuf(
+	const PixalcFPtrs *pAlloc,
+	const SplitMesh *pMesh,
+	const ClustSplitCallbacks *pCallbacks,
+	ClustBorderBuf *pBorderBuf,
+	PixuctHTable *pIdxTable,
+	PixuctHTable *pBorderEdges
+) {
+	PixalcLinAlloc *pTableAlloc = pixuctHTableAllocGet(pBorderEdges, 0);
+	pBorderBuf->arr.count = 0;
+	int32_t edgeCount = pixalcLinAllocGetCount(pTableAlloc);
+	PixalcLinAllocIter iter = {0};
+	pixalcLinAllocIterInit(pTableAlloc, (PixtyRange) { 0, INT32_MAX }, &iter);
+	for (; !pixalcLinAllocIterAtEnd(&iter); pixalcLinAllocIterInc(&iter)) {
+		ClustBorderEdgeTableEntry *pEntry = pixalcLinAllocGetItem(&iter);
+		if (pEntry->checked) {
+			continue;
+		}
+		int32_t adjCorner = 0;
+		//this is using the table for the pre-split piece.
+		//this is fine, as faces arn't marked removed until the end of this func
+		if (clustGetAdjFace(
+			pMesh,
+			pCallbacks->fpIsEdgeIntern,
+			pIdxTable,
+			pEntry->corner,
+			&adjCorner
+		)) {
+			continue;//we want an exterior edge to start, so skip this one
+		}
+		int32_t edge = pMesh->fpEdge(pMesh->pUserData, pEntry->corner);
+		if (pCallbacks->fpBorderPredicate(pMesh->pUserData, edge)) {
+			clustFindAndAddBorder(
+				pAlloc,
+				pMesh,
+				pCallbacks->fpIsEdgeIntern,
+				pBorderBuf,
+				pIdxTable,
+				pBorderEdges,
+				edgeCount,
+				pEntry
+			);
+		}
+	}
+}
+
+CLUST_FORCE_INLINE
+PixErr clustSplitAdjFaces(
+	const PixalcFPtrs *pAlloc,
+	const SplitMesh *pMesh,
+	void *pUserData,
+	const ClustSplitCallbacks *pCallbacks,
+	ClustSplitFaceBuf *pInFaceBuf,
+	ClustBorderBuf *pBorderBuf,
+	PixuctHTable *pIdxTable,
+	int32_t *pFacesRemaining
+) {
+	PixErr err = PIX_ERR_SUCCESS;
+	PixuctHTable borderEdges = {0};
+	pixuctHTableInit(
+		pAlloc,
+		&borderEdges,
+		*pFacesRemaining / 2 + 1,
+		(PixtyI32Arr) {
+			.pArr = (int32_t[]) {sizeof(ClustBorderEdgeTableEntry)},
+			.count = 1
+		},
+		NULL,
+		NULL,
+		true
+	);
+	pInFaceBuf->count = 0;
+	{
+		ClustSplitFaceIdx *pStartFace = clustGetFirstRemainingFace(pIdxTable);
+		pInFaceBuf->ppArr[0] = pStartFace;
+		pStartFace->pendingRemove = true;
+		pInFaceBuf->count++;
+		int32_t i = 0;
+		do {
+			ClustSplitFaceIdx *pIdxEntry = NULL;
+			clustFaceIdxTableGet(
+				pIdxTable,
+				pInFaceBuf->ppArr[i]->face,
+				(void **)&pIdxEntry
+			);
+			clustAddAdjFaces(
+				pMesh,
+				pUserData,
+				pCallbacks,
+				pInFaceBuf,
+				pIdxTable,
+				&borderEdges,
+				pIdxEntry
+			);
+		} while (i++, i < pInFaceBuf->count);
+	}
+	clustFillBorderBuf(pAlloc, pMesh, pCallbacks, pBorderBuf, pIdxTable, &borderEdges);
+	if (pBorderBuf->arr.count) {
+		err = pCallbacks->fpBorderAdd(pUserData, pBorderBuf);
+		PIX_ERR_RETURN_IFNOT(err, "");
+	}
+	pixuctHTableDestroy(&borderEdges);
+	
+	// copy buf into new in-piece, & mark in-faces as removed in idx-table
+	err = pCallbacks->fpFacesAdd(pUserData, pInFaceBuf);
+	PIX_ERR_RETURN_IFNOT(err, "");
+	for (int32_t i = 0; i < pInFaceBuf->count; ++i) {
+		PIX_ERR_ASSERT("", pInFaceBuf->ppArr[i]->pendingRemove);
+		pInFaceBuf->ppArr[i]->removed = true;
+		pInFaceBuf->ppArr[i]->pendingRemove = false;
+	}
+	*pFacesRemaining -= pInFaceBuf->count;
+	return err;
+}
+
+STUC_FORCE_INLINE
+PixErr clustSplitIslands(
+	const PixalcFPtrs *pAlloc,
+	const SplitMesh *pMesh,
+	void *pUserData,
+	const ClustSplitCallbacks *pCallbacks,
+	int32_t faceCount,
+	ClustSplitFaceBuf *pInFaceBuf,
+	ClustBorderBuf *pBorderBuf
+) {
+	PixErr err = PIX_ERR_SUCCESS;
+	PixuctHTable idxTable = {0};
+	pixuctHTableInit(
+		pAlloc,
+		&idxTable,
+		faceCount / 4 + 1,
+		(PixtyI32Arr) {.pArr = (int32_t[]) {sizeof(ClustSplitFaceIdx)}, .count = 1},
+		NULL,
+		NULL,
+		true
+	);
+	err = pCallbacks->fpIdxTableBuild(pUserData, &idxTable, clustBuildFaceIdxTable);
+	PIX_ERR_THROW_IFNOT(err, "", 0);
+	int32_t facesRemaining = faceCount;
+	do {
+		err = clustSplitAdjFaces(
+			pAlloc,
+			pMesh,
+			pUserData,
+			pCallbacks,
+			pInFaceBuf,
+			pBorderBuf,
+			&idxTable,
+			&facesRemaining
+		);
+		PIX_ERR_THROW_IFNOT(err, "", 0);
+		PIX_ERR_ASSERT("", facesRemaining >= 0 && facesRemaining < faceCount);
+	} while(facesRemaining);
+	PIX_ERR_CATCH(0, err, ;);
+	pixuctHTableDestroy(&idxTable);
+	return err;
+}

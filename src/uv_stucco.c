@@ -11,6 +11,7 @@ SPDX-License-Identifier: Apache-2.0
 #include <pixenals_alloc_utils.h>
 #include <pixenals_thread_utils.h>
 #include <pixenals_error_utils.h>
+#include <cluster.h>
 
 #include <io.h>
 #include <attrib_utils.h>
@@ -645,11 +646,24 @@ StucErr stucMapFileLoadIntern(
 	triCacheBuild(&pCtx->alloc, pMap);
 	buildFaceBBoxes(&pCtx->alloc, pMap);
 
+#ifdef STUC_QUADTREE_ENABLE
 	//the quadtree is created before USGs are assigned to verts,
 	//as the tree's used to speed up the process
 	printf("File loaded. Creating quad tree\n");
 	err = stucCreateQuadTree(pCtx, &pMap->quadTree, pMap->pMesh, pMap->pFaceBBoxes);
 	PIX_ERR_THROW_IFNOT(err, "failed to create quadtree", 0);
+#endif
+	{
+		ClustMesh clustMesh = {
+			.pUserData = pMapMesh,
+			.faceCount = pMapMesh->core.faceCount,
+			.fpFaceRange = stucClustFaceRange,
+			.fpVert = stucClustVert,
+			.fpPos = stucClustPos
+		};
+		err = clustTreeInit(&pCtx->alloc, &clustMesh, &pMap->clustTree);
+		PIX_ERR_THROW_IFNOT(err, "", 0);
+	}
 
 	if (usgArr.count) {
 		pMap->usgArr.count = usgArr.count;
@@ -975,7 +989,8 @@ StucErr stucMapFileLoad(StucMapLoad *pState) {
 }
 
 StucErr stucMapFileUnload(StucContext pCtx, StucMap pMap) {
-	stucDestroyQuadTree(pCtx, &pMap->quadTree);
+	//stucDestroyQuadTree(pCtx, &pMap->quadTree);
+	clustTreeDestroy(&pMap->clustTree);
 	if (pMap->pMesh) {
 		stucMeshDestroy(pCtx, (StucMesh *)&pMap->pMesh->core);
 		pCtx->alloc.fpFree((Mesh *)pMap->pMesh);
@@ -1938,6 +1953,7 @@ StucErr mapMapArrToMesh(
 			}
 			MapFile squares = { .pMesh = pMap->usgArr.pSquares };
 			buildFaceBBoxes(&pCtx->alloc, &squares);
+#ifdef STUC_QUADTREE_ENABLE
 			err = stucCreateQuadTree(
 				pCtx,
 				&squares.quadTree,
@@ -1945,6 +1961,17 @@ StucErr mapMapArrToMesh(
 				squares.pFaceBBoxes
 			);
 			PIX_ERR_THROW_IFNOT(err, "failed to create usg quadtree", 0);
+#endif
+			ClustMesh clustMesh = {
+				.pUserData = squares.pMesh,
+				.faceCount = squares.pMesh->core.faceCount,
+				.fpFaceRange = stucClustFaceRange,
+				.fpVert = stucClustVert,
+				.fpPos = stucClustPos
+			};
+			err = clustTreeInit(&pCtx->alloc, &clustMesh, &squares.clustTree);
+			PIX_ERR_THROW_IFNOT(err, "", 0);
+
 			StucMesh squaresOut = { 0 };
 			err = mapToMeshInternal(
 				pCtx,
