@@ -11,7 +11,7 @@ SPDX-License-Identifier: Apache-2.0
 #include <pixenals_alloc_utils.h>
 #include <pixenals_thread_utils.h>
 #include <pixenals_error_utils.h>
-#include <cluster.h>
+#include <cluster_tree_2d.h>
 
 #include <io.h>
 #include <attrib_utils.h>
@@ -654,14 +654,14 @@ StucErr stucMapFileLoadIntern(
 	PIX_ERR_THROW_IFNOT(err, "failed to create quadtree", 0);
 #endif
 	{
-		ClustMesh clustMesh = {
+		ClutreMesh clustMesh = {
 			.pUserData = pMapMesh,
 			.faceCount = pMapMesh->core.faceCount,
 			.fpFaceRange = stucClustFaceRange,
 			.fpVert = stucClustVert,
 			.fpPos = stucClustPos
 		};
-		err = clustTreeInit(&pCtx->alloc, &clustMesh, &pMap->clustTree);
+		err = clutreTreeInit(&pCtx->alloc, &clustMesh, &pMap->clustTree);
 		PIX_ERR_THROW_IFNOT(err, "", 0);
 	}
 
@@ -990,7 +990,7 @@ StucErr stucMapFileLoad(StucMapLoad *pState) {
 
 StucErr stucMapFileUnload(StucContext pCtx, StucMap pMap) {
 	//stucDestroyQuadTree(pCtx, &pMap->quadTree);
-	clustTreeDestroy(&pMap->clustTree);
+	clutreTreeDestroy(&pMap->clustTree);
 	if (pMap->pMesh) {
 		stucMeshDestroy(pCtx, (StucMesh *)&pMap->pMesh->core);
 		pCtx->alloc.fpFree((Mesh *)pMap->pMesh);
@@ -1221,10 +1221,47 @@ bool checkIfNoFacesHaveMaskIdx(const Mesh *pMesh, I8 maskIdx) {
 	return true;
 }
 
+typedef struct StucIsland {
+	BorderArr borders;
+	PixtyRange faces;
+} StucIsland;
+
+typedef struct StucSubIsland {
+	StucIsland core;
+} StucSubIsland;
+
+typedef struct StucSubIslandArr {
+	StucSubIsland *pArr;
+	I32 *pFaces;
+	I32 size;
+	I32 count;
+	I32 faceCount;
+} StucSubIslandArr;
+
+typedef struct StucInIsland {
+	StucIsland core;
+	StucSubIslandArr sub;
+} StucInIsland;
+
+typedef struct StucInIslandArr {
+	StucInIsland *pArr;
+	I32 *pFaces;
+	I32 size;
+	I32 count;
+	I32 faceCount;
+} StucInIslandArr;
+
+typedef struct ClustForIslandsJobArgs {
+	JobArgs jobArgs;
+
+	JobArgsFoot foot;
+} ClustForIslandsJobArgs;
+
 static
 StucErr mapToMeshInternal(
 	StucContext pCtx,
 	I32 threadId,
+	const StucInIslandArr *pInIslands,
 	const StucMap pMap,
 	Mesh *pMeshIn,
 	StucMesh *pOutMesh,
@@ -1923,6 +1960,311 @@ StucErr stucQueueMapToMesh(
 }
 
 static
+I32 getEdge(const void *pMeshRaw, FaceCorner corner) {
+	return stucGetMeshEdge(pMeshRaw, corner);
+}
+
+static
+EdgeCorners getEdgeCorners(const void *pMeshRaw, I32 edge) {
+	const Mesh *pMesh = pMeshRaw;
+	PIX_ERR_ASSERT("", edge >= 0 && edge < pMesh->core.edgeCount);
+	return (EdgeCorners){.corners = {
+		{.face = pMesh->pEdgeFaces[edge].d[0], .corner = pMesh->pEdgeCorners[edge].d[0]},
+		{.face = pMesh->pEdgeFaces[edge].d[1], .corner = pMesh->pEdgeCorners[edge].d[1]}
+	}};
+}
+
+static
+bool splitPredicate(const void *pMeshRaw, I32 edge) {
+	return stucCouldInEdgeIntersectMapFace(pMeshRaw, edge);
+}
+
+static
+bool subSplitPredicate(const void *pMeshRaw, I32 edge) {
+	return stucGetIfPreserveEdge(pMeshRaw, edge);
+}
+
+static
+StucErr islandFacesInit(
+	const PixalcFPtrs *pAlloc,
+	void *pIslandsRaw,
+	I32 count,
+	I32 **ppOut
+) {
+	StucErr err = PIX_ERR_SUCCESS;
+	StucInIslandArr *pIslands = pIslandsRaw;
+	pIslands->pFaces = pAlloc->fpMalloc(count, sizeof(I32));
+	*ppOut = pIslands->pFaces;
+	return err;
+}
+
+static
+StucErr borderInit(const PixalcFPtrs *pAlloc, void *pIslandsRaw, I32 island, I32 *pIdx) {
+	StucErr err = PIX_ERR_SUCCESS;
+	StucInIslandArr *pIslandArr = pIslandsRaw;
+	StucInIsland *pIsland = pIslandArr->pArr + island;
+	I32 newIdx = 0;
+	PIXALC_DYN_ARR_ADD(Border, pAlloc, &pIsland->core.borders, newIdx);
+	*pIdx = newIdx;
+	return err;
+}
+
+static
+StucErr borderAddEdge(
+	const PixalcFPtrs *pAlloc,
+	void *pIslandsRaw,
+	I32 island,
+	I32 adjIsland,
+	I32 border,
+	FaceCorner corner
+) {
+	StucErr err = PIX_ERR_SUCCESS;
+	StucInIslandArr *pIslandArr = pIslandsRaw;
+	StucInIsland *pIsland = pIslandArr->pArr + island;
+	Border *pBorder = pIsland->core.borders.pArr + border;
+	I32 newIdx = 0;
+	PIXALC_DYN_ARR_ADD(FaceCorner, pAlloc, &pBorder->arr, newIdx);
+	pBorder->arr.pArr[newIdx] = (BorderEdge){.corner = corner, .adjIsland = adjIsland};
+	return err;
+}
+
+static
+StucErr islandAdd(const PixalcFPtrs *pAlloc, void *pIslandsRaw, I32 *pIdx) {
+	StucErr err = PIX_ERR_SUCCESS;
+	StucInIslandArr *pIslands = pIslandsRaw;
+	I32 newIdx = 0;
+	PIXALC_DYN_ARR_ADD(StucInIsland, pAlloc, pIslands, newIdx);
+	*pIdx = newIdx;
+	return err;
+}
+
+static
+StucErr islandRangeSet(void *pIslandsRaw, I32 island, PixtyRange range) {
+	StucErr err = PIX_ERR_SUCCESS;
+	StucInIslandArr *pIslands = pIslandsRaw;
+	pIslands->pArr[island].core.faces = range;
+	return err;
+}
+
+static
+StucErr subIslandFacesInit(
+	const PixalcFPtrs *pAlloc,
+	void *pIslandsRaw,
+	I32 count,
+	I32 **ppOut
+) {
+	StucErr err = PIX_ERR_SUCCESS;
+	StucSubIslandArr *pIslands = pIslandsRaw;
+	pIslands->pFaces = pAlloc->fpMalloc(count, sizeof(I32));
+	*ppOut = pIslands->pFaces;
+	return err;
+}
+
+static
+StucErr subBorderInit(const PixalcFPtrs *pAlloc, void *pIslandsRaw, I32 island, I32 *pIdx) {
+	StucErr err = PIX_ERR_SUCCESS;
+	StucSubIslandArr *pIslandArr = pIslandsRaw;
+	StucSubIsland *pIsland = pIslandArr->pArr + island;
+	I32 newIdx = 0;
+	PIXALC_DYN_ARR_ADD(Border, pAlloc, &pIsland->core.borders, newIdx);
+	*pIdx = newIdx;
+	return err;
+}
+
+static
+StucErr subBorderAddEdge(
+	const PixalcFPtrs *pAlloc,
+	void *pIslandsRaw,
+	I32 island,
+	I32 adjIsland,
+	I32 border,
+	FaceCorner corner
+) {
+	StucErr err = PIX_ERR_SUCCESS;
+	StucSubIslandArr *pIslandArr = pIslandsRaw;
+	StucSubIsland *pIsland = pIslandArr->pArr + island;
+	Border *pBorder = pIsland->core.borders.pArr + border;
+	I32 newIdx = 0;
+	PIXALC_DYN_ARR_ADD(FaceCorner, pAlloc, &pBorder->arr, newIdx);
+	pBorder->arr.pArr[newIdx] = (BorderEdge){.corner = corner, .adjIsland = adjIsland};
+	return err;
+}
+
+static
+StucErr subIslandAdd(const PixalcFPtrs *pAlloc, void *pIslandsRaw, I32 *pIdx) {
+	StucErr err = PIX_ERR_SUCCESS;
+	StucSubIslandArr *pIslands = pIslandsRaw;
+	I32 newIdx = 0;
+	PIXALC_DYN_ARR_ADD(StucSubIsland, pAlloc, pIslands, newIdx);
+	*pIdx = newIdx;
+	return err;
+}
+
+static
+StucErr subIslandRangeSet(void *pIslandsRaw, I32 island, PixtyRange range) {
+	StucErr err = PIX_ERR_SUCCESS;
+	StucSubIslandArr *pIslands = pIslandsRaw;
+	pIslands->pArr[island].core.faces = range;
+	return err;
+}
+
+typedef struct SubIslandJobArgs {
+	JobArgs core;
+	StucInIslandArr *pIslands;
+	JobArgsFoot foot;
+} SubIslandJobArgs;
+
+typedef struct SubIslandJobShared {
+	StucContext pCtx;
+	const Mesh *pInMesh;
+} SubIslandJobShared;
+
+static
+I32 subIslandsJobGetRange(StucContext pCtx, const void *pShared, void *pInitInfoVoid) {
+	return ((StucInIslandArr *)pInitInfoVoid)->count;
+}
+
+static
+void subIslandsJobInit(StucContext pCtx, void *pShared, void *pInitInfoVoid, void *pEntryVoid) {
+	((SubIslandJobArgs *)pEntryVoid)->pIslands = ((StucInIslandArr *)pInitInfoVoid);
+}
+
+static
+StucErr islandSplitToSub(void *pArgsRaw) {
+	StucErr err = PIX_ERR_SUCCESS;
+	SubIslandJobArgs *pArgs = pArgsRaw;
+	const Mesh *pInMesh = ((const SubIslandJobShared *)pArgs->core.pShared)->pInMesh;
+	StucContext pCtx = pArgs->core.pCtx;
+	PixtyRange range = pArgs->core.range;
+	I32 rangeSize = range.end - range.start;
+	StucSubIslandArr *pBuf = pCtx->alloc.fpCalloc(rangeSize, sizeof(StucSubIslandArr));
+	StucSplitMem splitMem = {0};
+	StucSplitMesh splitMesh = {
+		.pUserData = pInMesh,
+		.fpFaceRange = stucClustFaceRange,
+		.fpEdge = getEdge,
+		.fpEdgeCorners = getEdgeCorners,
+		.fpAdjCorner = callGetAdjCorner
+	};
+	StucIslands splitIslands = {
+		.fpBorderInit = borderInit,
+		.fpBorderAddEdge = borderAddEdge,
+		.fpFacesInit = islandFacesInit,
+		.fpIslandAdd = islandAdd,
+		.fpRangeSet = islandRangeSet
+	};
+	I32 rangeSize = range.end - range.start;
+	for (I32 i = 0; i < rangeSize; ++i) {
+		const StucInIsland *pIsland = pArgs->pIslands->pArr + range.start + i;
+		splitMesh.faceCount = pIsland->core.faces.end - pIsland->core.faces.start;
+		splitIslands.pUserData = pBuf + i;
+		err = stucSplitToIslands(
+			&pCtx->alloc,
+			&splitMem,
+			&splitMesh,
+			&splitIslands,
+			subSplitPredicate
+		);
+		PIX_ERR_THROW_IFNOT(err, "", 0);
+	}
+	for (I32 i = 0; i < rangeSize; ++i) {
+		pArgs->pIslands->pArr[range.start + i].sub = pBuf[i];
+	}
+	PIX_ERR_CATCH(0, err, ;);
+	stucSplitMemDestroy(&pCtx->alloc, &splitMem);
+	pCtx->alloc.fpFree(pBuf);
+	return err;
+}
+
+static
+StucErr splitInMeshToIslands(
+	StucContext pCtx,
+	I32 threadId,
+	const Mesh *pMeshIn,
+	StucInIslandArr *pIslands
+) {
+	StucErr err = PIX_ERR_SUCCESS;
+	StucSplitMesh splitMesh = {
+		.pUserData = pMeshIn,
+		.faceCount = pMeshIn->core.faceCount,
+		.fpFaceRange = stucClustFaceRange,
+		.fpEdge = getEdge,
+		.fpEdgeCorners = getEdgeCorners,
+		.fpAdjCorner = callGetAdjCorner
+	};
+	StucIslands splitIslands = {
+		.pUserData = pIslands,
+		.fpBorderInit = borderInit,
+		.fpBorderAddEdge = borderAddEdge,
+		.fpFacesInit = islandFacesInit,
+		.fpIslandAdd = islandAdd,
+		.fpRangeSet = islandRangeSet
+	};
+	StucSplitMem splitMem = {0};
+	err = stucSplitToIslands(
+		&pCtx->alloc,
+		&splitMem,
+		&splitMesh,
+		&splitIslands,
+		splitPredicate
+	);
+	stucSplitMemDestroy(&pCtx->alloc, &splitMem);
+	PIX_ERR_RETURN_IFNOT(err, "");
+
+	SubIslandJobShared shared = {.pCtx = pCtx, .pInMesh = pMeshIn};
+	SubIslandJobArgs args[PIXTH_MAX_SUB_MAPPING_JOBS] = {0};
+	I32 jobCount = 0;
+	stucMakeJobArgs(
+		pCtx,
+		&shared,
+		&jobCount,
+		args, sizeof(SubIslandJobArgs),
+		pIslands,
+		subIslandsJobGetRange, subIslandsJobInit
+	);
+	err = stucDoJobInParallel(
+		pCtx,
+		threadId,
+		jobCount,
+		args,
+		sizeof(SubIslandJobArgs),
+		islandSplitToSub
+	);
+	PIX_ERR_RETURN_IFNOT(err, "");
+	return err;
+}
+
+static
+void stucInIslandsDestroy(StucContext pCtx, StucInIslandArr *pArr) {
+	if (pArr->pFaces) {
+		pCtx->alloc.fpFree(pArr->pFaces);
+	}
+	if (!pArr->pArr) {
+		*pArr = (StucInIslandArr){0};
+		return;
+	}
+	for (I32 i = 0; i < pArr->count; ++i) {
+		if (pArr->pArr[i].core.borders.pArr) {
+			pCtx->alloc.fpFree(pArr->pArr[i].core.borders.pArr);
+		}
+		StucSubIslandArr *pSub = &pArr->pArr[i].sub;
+		for (I32 j = 0; j < pSub->count; ++j) {
+			if (pSub->pArr[j].core.borders.pArr) {
+				pCtx->alloc.fpFree(pSub->pArr[j].core.borders.pArr);
+			}
+		}
+		if (pSub->pFaces) {
+			pCtx->alloc.fpFree(pSub->pFaces);
+		}
+		if (pSub->pArr) {
+			pCtx->alloc.fpFree(pSub->pArr);
+		}
+	}
+	pCtx->alloc.fpFree(pArr->pArr);
+	*pArr = (StucInIslandArr){0};
+}
+
+static
 StucErr mapMapArrToMesh(
 	StucContext pCtx,
 	I32 threadId,
@@ -1936,6 +2278,10 @@ StucErr mapMapArrToMesh(
 	bool keepExistingIdxAttribs
 ) {
 	StucErr err = PIX_ERR_SUCCESS;
+	StucInIslandArr inIslands = {0};
+	err = splitInMeshToIslands(pCtx, threadId, pMeshIn, &inIslands);
+	PIX_ERR_RETURN_IFNOT(err, "");
+
 	Mesh *pOutBufArr = pCtx->alloc.fpCalloc(pMapArr->count, sizeof(Mesh));
 	StucObjArr outObjWrapArr = {0};
 	outObjWrapArr.size = outObjWrapArr.count = pMapArr->count;
@@ -1962,20 +2308,21 @@ StucErr mapMapArrToMesh(
 			);
 			PIX_ERR_THROW_IFNOT(err, "failed to create usg quadtree", 0);
 #endif
-			ClustMesh clustMesh = {
+			ClutreMesh clustMesh = {
 				.pUserData = squares.pMesh,
 				.faceCount = squares.pMesh->core.faceCount,
 				.fpFaceRange = stucClustFaceRange,
 				.fpVert = stucClustVert,
 				.fpPos = stucClustPos
 			};
-			err = clustTreeInit(&pCtx->alloc, &clustMesh, &squares.clustTree);
+			err = clutreTreeInit(&pCtx->alloc, &clustMesh, &squares.clustTree);
 			PIX_ERR_THROW_IFNOT(err, "", 0);
 
 			StucMesh squaresOut = { 0 };
 			err = mapToMeshInternal(
 				pCtx,
 				threadId,
+				&inIslands,
 				&squares,
 				pMeshIn,
 				&squaresOut,
@@ -2009,6 +2356,7 @@ StucErr mapMapArrToMesh(
 		err = mapToMeshInternal(
 			pCtx,
 			threadId,
+			&inIslands,
 			pMap,
 			pMeshIn,
 			&pOutBufArr[i].core,
@@ -2045,6 +2393,7 @@ StucErr mapMapArrToMesh(
 	PIX_ERR_CATCH(0, err,
 		stucMeshDestroy(pCtx, pMeshOut);
 	);
+	stucInIslandsDestroy(pCtx, &inIslands);
 	//meshes are stored on an arr buf, which we can't call stucObjArrDestroy
 	for (I32 i = 0; i < pMapArr->count; ++i) {
 		stucMeshDestroy(pCtx, &pOutBufArr[i].core);
@@ -2229,13 +2578,11 @@ StucErr stucMapToMesh(
 		&builtEdges
 	);
 	PIX_ERR_THROW_IFNOT(err, "", 0);
-
 	PIX_ERR_THROW_IFNOT_COND(
 		err,
 		pMapArr && pMapArr->count && pMapArr->pArr,
 		"", 0
 	);
-
 	err = mapMapArrToMesh(
 		pCtx,
 		threadId,

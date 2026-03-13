@@ -9,6 +9,7 @@ SPDX-License-Identifier: Apache-2.0
 
 #include <pixenals_thread_utils.h>
 #include <pixenals_math_utils.h>
+#include <pixenals_structs.h>
 
 #include <uv_stucco_intern.h>
 
@@ -18,8 +19,19 @@ typedef struct ClustFaceCorner {
 	I32 corner;
 } ClustFaceCorner;
 
+typedef struct BorderEdge {
+	FaceCorner corner;
+	I32 adjIsland;
+} BorderEdge;
+
+typedef struct BorderEdgeArr {
+	BorderEdge *pArr;
+	I32 size;
+	I32 count;
+} BorderEdgeArr;
+
 typedef struct Border {
-	ClustFaceCorner start;
+	BorderEdgeArr arr;
 	I32 len;
 } Border;
 
@@ -797,6 +809,13 @@ void stucAllocSetCustom(PixalcFPtrs *pAlloc, PixalcFPtrs *pCustomAlloc);
 void stucAllocSetDefault(PixalcFPtrs *pAlloc);
 
 static inline
+I32 stucCouldInEdgeIntersectMapFace(const Mesh *pMesh, I32 edge) {
+	bool preserve = stucGetIfPreserveEdge(pMesh, edge);
+	bool ret = stucGetIfSeamEdge(pMesh, edge) || stucGetIfMatBorderEdge(pMesh, edge);
+	return preserve && !ret ? 2 : preserve || ret;
+}
+
+static inline
 PixtyV2_F32 stucClustPos(const void *pMeshRaw, I32 vert) {
 	const Mesh *pMesh = pMeshRaw;
 	PIX_ERR_ASSERT("", pMesh->pPos && vert >= 0 && vert < pMesh->core.vertCount);
@@ -820,6 +839,7 @@ PixtyRange stucClustFaceRange(const void *pMeshRaw, I32 face) {
 	};
 }
 
+#if false
 void clustBuildFaceIdxTable(void *pTableRaw, const PixtyI32Arr *pFaces);
 SearchResult clustFaceIdxTableGet(PixuctHTable *pTable, int32_t face, void **ppEntry);
 ClustBorderEdgeTableEntry *clustBorderEdgeAddOrGet(
@@ -1163,3 +1183,98 @@ PixErr clustSplitIslands(
 	pixuctHTableDestroy(&idxTable);
 	return err;
 }
+#endif
+
+typedef struct StucIdxTable {
+	U32 idx : 31;
+	U32 valid : 1;
+} StucIdxTable;
+
+typedef struct StucIdxTableArr {
+	StucIdxTable *pArr;
+	I32 size;
+	I32 count;
+} StucIdxTableArr;
+
+struct StucBorderNode;
+
+typedef struct StucBorderLink {
+	StucBorderNode *pNode;
+} StucBorderLink;
+
+typedef struct StucBorderNode {
+	FaceCorner corners[2];
+	I32 idx;
+	StucIdxTable seen[2];
+	bool intern;
+} StucBorderNode;
+
+typedef struct StucBorderNodeArr {
+	StucBorderNode *pArr;
+	I32 size;
+	I32 count;
+} StucBorderNodeArr;
+
+typedef struct StucBufIsland {
+	struct StucBufIsland *pNext;
+	//PixtyI32Arr faces;
+	I32 idx;
+} StucBufIsland;
+
+typedef struct EdgeCorners {
+	FaceCorner corners[2];
+} EdgeCorners;
+
+typedef struct FaceBuf {
+	PixtyI32Arr faces;
+	I32 island;
+} FaceBuf;
+
+typedef struct FaceBufArr {
+	FaceBuf *pArr;
+	I32 size;
+	I32 count;
+} FaceBufArr;
+
+typedef struct StucSplitMem {
+	FaceBufArr faceBuf;
+	StucIdxRedirArr redirArr;
+	StucIdxTableArr faceTable;
+	StucIdxTableArr edgeTable;
+	StucBorderNodeArr edges;
+} StucSplitMem;
+
+typedef struct StucSplitMesh {
+	const void *pUserData;
+	PixtyRange (*fpFaceRange)(const void *, I32);
+	I32 (*fpEdge)(const void *, FaceCorner);
+	EdgeCorners (*fpEdgeCorners)(const void *, I32);
+	FaceCorner (*fpAdjCorner)(const void *pMeshRaw, FaceCorner corner);
+	I32 faceCount;
+} StucSplitMesh;
+
+typedef struct StucIslands {
+	void *pUserData;
+	StucErr (*fpIslandAdd)(const PixalcFPtrs *, void *, I32 *);
+	StucErr (*fpRangeSet)(void *, I32, PixtyRange);
+	StucErr (*fpFacesInit)(const PixalcFPtrs *, void *, I32, I32 **);
+	StucErr (*fpBorderInit)(const PixalcFPtrs *, void *, I32, I32 *);
+	StucErr (*fpBorderAddEdge)(const PixalcFPtrs *, void *, I32, I32, I32, FaceCorner);
+} StucIslands;
+
+StucErr stucSplitToIslands(
+	const PixalcFPtrs *pAlloc,
+	const StucSplitMesh *pMesh,
+	StucIslands *pIslands,
+	bool (*fpSplitPredicate)(const void *, I32)
+);
+
+//TODO move this out
+static
+FaceCorner callGetAdjCorner(const void *pMeshRaw, FaceCorner corner) {
+	FaceCorner adj = {0};
+	stucGetAdjCorner(pMeshRaw, corner, &adj);
+	return adj;
+}
+
+void stucSplitMemDestroy(const PixalcFPtrs *pAlloc, StucSplitMem *pMem);

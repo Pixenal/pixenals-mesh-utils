@@ -650,6 +650,7 @@ void stucAllocSetDefault(PixalcFPtrs *pAlloc) {
 	pAlloc->fpRealloc = realloc;
 }
 
+#if false
 static
 void initPieceFaceIdxEntry(
 	void *pUserData,
@@ -746,4 +747,349 @@ ClustBorderEdgeTableEntry *clustBorderEdgeAddOrGet(
 		!(add ^ (result == PIX_SEARCH_ADDED))
 	);
 	return pEntry;
+}
+#endif
+
+typedef struct StucIdxRedir {
+	U32 idx : 31;
+	U32 redir : 1;
+} StucIdxRedir;
+
+typedef struct StucIdxRedirArr {
+	StucIdxRedir *pArr;
+	I32 size;
+	I32 count;
+} StucIdxRedirArr;
+
+static
+void islandIdxInit(
+	const PixalcFPtrs *pAlloc,
+	StucIdxTable *pFaceTable,
+	StucIdxRedirArr *pArr,
+	I32 face
+) {
+	I32 newIdx = 0;
+	PIXALC_DYN_ARR_ADD(StucIdxRedir, pAlloc, pArr, newIdx);
+	pArr->pArr[newIdx] = (StucIdxRedir){.idx = newIdx};
+	pFaceTable[face].idx = newIdx;
+	pFaceTable[face].valid = true;
+}
+
+static
+StucBorderNode *stucBorderNodeGet(
+	const StucSplitMesh *pMesh,
+	const StucIdxTable *pTable,
+	PixalcLinAlloc *pEdgeAlloc,
+	I32 vert
+) {
+	return pTable[vert].valid ? pixalcLinAllocIdx(pEdgeAlloc, pTable[vert].idx) : NULL;
+}
+
+static
+StucBorderNode *stucBorderNodeInit(
+	const PixalcFPtrs *pAlloc,
+	StucBorderNodeArr *pEdges,
+	const EdgeCorners *pCorners
+) {
+	I32 idx = 0;
+	PIXALC_DYN_ARR_ADD(StucBorderNode, pAlloc, pEdges, idx);
+	pEdges->pArr[idx] = (StucBorderNode) {
+		.idx = idx,
+		.corners[0] = pCorners->corners[0],
+		.corners[1] = pCorners->corners[1]
+	};
+	return pEdges->pArr + idx;
+}
+
+#define STUC_IDX_REDIR_THRES 8
+
+static
+StucIdxRedir *getBuf(const StucIdxTable *pFaceTable, StucIdxRedirArr *pArr, I32 face) {
+	StucIdxRedir *pId = NULL;
+	I32 idx = pFaceTable[face].idx;
+	I32 i = 0;
+	do {
+		PIX_ERR_ASSERT("", idx < pArr->count && i < pArr->count);
+		pId = pArr->pArr + idx;
+		idx = pId->idx;
+	} while(++i, pId->redir);
+	if (i > STUC_IDX_REDIR_THRES) {
+		I32 finalIdx = idx;
+		idx = pFaceTable[face].idx;
+		do {
+			pId = pArr->pArr + idx;
+			idx = pId->idx;
+			pId->idx = finalIdx;
+		} while(pId->redir);
+	}
+	return pId;
+}
+
+/*
+static
+bool borderLinkAdd(StucBorderNode *pNodeA, StucBorderNode *pNodeB, bool next) {
+	StucBorderLink *pLink = next ? &pNodeA->next : &pNodeA->prev;
+	if (pLink->pNode) {
+		pLink->pNode = pNodeB;
+	}
+	return true;
+}
+*/
+
+static
+void getEdgeIslands(
+	const StucSplitMem *pMem,
+	const StucBorderNode *pEdge,
+	I32 *pIslands
+) {
+	I32 face = getBuf(&pMem->faceTable, &pMem->redirArr, pEdge->corners[0].face)->idx;
+	pIslands[0] = pMem->faceBuf.pArr[face].island;
+	face = getBuf(&pMem->faceTable, &pMem->redirArr, pEdge->corners[1].face)->idx;
+	pIslands[1] = pMem->faceBuf.pArr[face].island;
+}
+
+static
+bool isEdgeIntern(
+	const StucSplitMem *pMem,
+	StucBorderNode *pEdge,
+	I32 *pIslands
+) {
+	if (pEdge->intern) {
+		return true;
+	}
+	I32 islands[2] = {0};
+	getEdgeIslands(pMem, pEdge, islands);
+	pEdge->intern = islands[0] == islands[1];
+	if (pIslands) {
+		pIslands[0] = islands[0];
+		pIslands[1] = islands[1];
+	}
+	return pEdge->intern;
+}
+
+static
+bool seenThisEdge(const StucBorderNode *pEdge, I32 island) {
+	return
+		pEdge->seen[0].valid && pEdge->seen[0].idx == island ||
+		pEdge->seen[1].valid && pEdge->seen[1].idx == island;
+}
+
+static
+void markEdgeSeen(StucBorderNode *pEdge, I32 island) {
+	PIX_ERR_ASSERT("", !pEdge->seen[0].valid || !pEdge->seen[1].valid);
+	StucIdxTable *pSeen = pEdge->seen[0].valid ? pEdge->seen + 1 : pEdge->seen;
+	*pSeen = (StucIdxTable){.idx = island, .valid = true};
+}
+
+static
+StucErr walkAndAddBorder(
+	const PixalcFPtrs *pAlloc,
+	StucSplitMem *pMem,
+	const StucSplitMesh *pMesh,
+	StucIslands *pIslands,
+	StucBorderNode *pStart,
+	I32 *pIslandIdx,
+	I32 idx
+) {
+	StucErr err = PIX_ERR_SUCCESS;
+	I32 islandIdx = pIslandIdx[idx];
+	if (seenThisEdge(pStart, islandIdx)) {
+		return;
+	}
+	StucBorderNode *pNode = pStart;
+	I32 borderIdx = 0;
+	err = pIslands->fpBorderInit(pAlloc, pIslands->pUserData, islandIdx, &borderIdx);
+	PIX_ERR_RETURN_IFNOT(err, "");
+	FaceCorner corner = pStart->corners[idx];
+	PixtyRange face = pMesh->fpFaceRange(pMesh->pUserData, corner.face);
+	I32 edge = pMesh->fpEdge(pMesh->pUserData, corner);
+	do {
+		PIX_ERR_ASSERT("", !seenThisEdge(pNode, islandIdx));
+		markEdgeSeen(pNode, islandIdx);
+		pIslands->fpBorderAddEdge(
+			pAlloc,
+			pIslands->pUserData,
+			islandIdx,
+			pIslandIdx[!idx],
+			borderIdx,
+			corner
+		);
+		PIX_ERR_RETURN_IFNOT(err, "");
+		corner.corner = (corner.corner + 1) % (face.end - face.start);
+		edge = pMesh->fpEdge(pMesh->pUserData, corner);
+		if (pMem->edgeTable.pArr[edge].valid) {
+			pNode = pMem->edges.pArr + pMem->edgeTable.pArr[edge].idx;
+			continue;
+		}
+		do {
+			corner = pMesh->fpAdjCorner(pMesh->pUserData, corner);
+			face = pMesh->fpFaceRange(pMesh->pUserData, corner.face);
+			edge = pMesh->fpEdge(pMesh->pUserData, corner);
+			pNode = pMem->edgeTable.pArr[edge].valid ?
+				pMem->edges.pArr + pMem->edgeTable.pArr[edge].idx : NULL;
+		} while(!pNode || isEdgeIntern(pMem, pNode, NULL));
+	} while(pNode != pStart);
+	return err;
+}
+
+static
+void edgeTableAdd(const PixalcFPtrs *pAlloc, StucIdxTableArr *pTable, I32 edge, I32 idx) {
+	I32 oldSize = pTable->size;
+	PIXALC_DYN_ARR_RESIZE(StucIdxTable, pAlloc, pTable, edge);
+	if (oldSize < edge) {
+		memset(pTable->pArr + oldSize, 0, sizeof(StucIdxTable) * (edge - oldSize));
+	}
+	pTable->pArr[edge] = (StucIdxTable){.idx = idx, .valid = true};
+}
+
+static
+StucErr findAdjForCorner(
+	const PixalcFPtrs *pAlloc,
+	StucSplitMem *pMem,
+	const StucSplitMesh *pMesh,
+	bool (*fpSplitPredicate)(const void *, I32),
+	FaceCorner corner
+) {
+	StucErr err = PIX_ERR_SUCCESS;
+	I32 edge = pMesh->fpEdge(pMesh->pUserData, corner);
+	if (edge < pMem->edgeTable.count && pMem->edgeTable.pArr[edge].valid) {
+		return err;
+	}
+	EdgeCorners corners = pMesh->fpEdgeCorners(pMesh->pUserData, edge);
+	I32 faces[2] = {corners.corners[0].face, corners.corners[1].face};
+	bool borderEdge = faces[0] == -1 || faces[1] == -1;
+	if (borderEdge || fpSplitPredicate(pMesh->pUserData, edge)) {
+		if (faces[0] != -1 && !pMem->faceTable.pArr[faces[0]].valid) {
+			islandIdxInit(pAlloc, &pMem->faceTable, &pMem->redirArr, faces[0]);
+		}
+		if (faces[1] != -1 && !pMem->faceTable.pArr[faces[1]].valid) {
+			islandIdxInit(pAlloc, &pMem->faceTable, &pMem->redirArr, faces[1]);
+		}
+		StucBorderNode *pNode = stucBorderNodeInit(pAlloc, &pMem->edges, &corners);
+		edgeTableAdd(pAlloc, &pMem->edgeTable, edge, pNode->idx);
+		return err;
+	}
+	bool joinTo;
+	if (!pMem->faceTable.pArr[faces[0]].valid && !pMem->faceTable.pArr[faces[1]].valid) {
+		joinTo = 0;
+		islandIdxInit(pAlloc, &pMem->faceTable, &pMem->redirArr, faces[0]);
+	}
+	else {
+		joinTo = pMem->faceTable.pArr[faces[1]].valid;
+	}
+	StucIdxRedir *pIdTo = getBuf(&pMem->faceTable, &pMem->redirArr, faces[joinTo]);
+	StucIdxRedir *pIdFrom = getBuf(&pMem->faceTable, &pMem->redirArr, faces[!joinTo]);
+	pIdFrom->idx = pIdTo->idx;
+	pIdFrom->redir = true;
+	return err;
+}
+
+static
+void stucSplitMemInit(const PixalcFPtrs *pAlloc, StucSplitMem *pMem, I32 faceCount) {
+	PIXALC_DYN_ARR_RESIZE(StucIdxTable, pAlloc, &pMem->faceTable, faceCount);
+	memset(pMem->faceTable.pArr, 0, sizeof(StucIdxTable) * faceCount);
+	pMem->faceBuf.count = 0;
+	pMem->redirArr.count = 0;
+	pMem->faceTable.count = 0;
+	pMem->edgeTable.count = 0;
+	pMem->edges.count = 0;
+}
+
+//TODO reuse memory across multiple calls for tables, buffers
+StucErr stucSplitToIslands(
+	const PixalcFPtrs *pAlloc,
+	StucSplitMem *pMem,
+	const StucSplitMesh *pMesh,
+	StucIslands *pIslands,
+	bool (*fpSplitPredicate)(const void *, I32)
+) {
+	StucErr err = PIX_ERR_SUCCESS;
+	stucSplitMemInit(pAlloc, pMem, pMesh->faceCount);
+	for (I32 i = 0; i < pMesh->faceCount; ++i) {
+		PixtyRange face = pMesh->fpFaceRange(pMesh->pUserData, i);
+		I32 faceSize = face.end - face.start;
+		for (I32 j = 0; j < faceSize; ++j) {
+			FaceCorner corner = {.face = i, .corner = j};
+			err = findAdjForCorner(pAlloc, pMem, pMesh, fpSplitPredicate, corner);
+			PIX_ERR_THROW_IFNOT(err, "", 0);
+		}
+	}
+	PIX_ERR_THROW_IFNOT_COND(err, pMem->redirArr.count, "failed to split mesh", 0);
+	PIXALC_DYN_ARR_RESIZE(FaceBuf, pAlloc, &pMem->faceBuf, pMem->redirArr.count);
+	for (I32 i = 0; i < pMem->redirArr.count; ++i) {
+		pMem->faceBuf.pArr[i].faces.count = 0;
+	}
+	for (I32 i = 0; i < pMesh->faceCount; ++i) {
+		PIX_ERR_THROW_IFNOT_COND(err, pMem->faceTable.pArr[i].valid, "", 0);
+		StucIdxRedir *pId = getBuf(&pMem->faceTable, &pMem->redirArr, i);
+		FaceBuf *pBuf = pMem->faceBuf.pArr + pId->idx;
+		I32 newIdx = 0;
+		PIXALC_DYN_ARR_ADD(I32, pAlloc, &pBuf->faces, newIdx);
+		pBuf->faces.pArr[newIdx] = i;
+	}
+	I32 *pFaces = NULL;
+	err = pIslands->fpFacesInit(pAlloc, pIslands->pUserData, pMesh->faceCount, &pFaces);
+	PIX_ERR_THROW_IFNOT_COND(err, pFaces, "", 0);
+	I32 offset = 0;
+	I32 islandCount = 0;
+	for (I32 i = 0; i < pMem->redirArr.count; ++i) {
+		if (!pMem->faceBuf.pArr[i].faces.count) {
+			continue;
+		}
+		I32 newIdx = 0;
+		err = pIslands->fpIslandAdd(pAlloc, pIslands->pUserData, &newIdx);
+		PIX_ERR_THROW_IFNOT(err, "", 0);
+		pMem->faceBuf.pArr[i].island = newIdx;
+		PixtyRange range = {.start = offset};
+		memcpy(
+			pFaces + offset,
+			pMem->faceBuf.pArr[i].faces.pArr,
+			sizeof(I32) * pMem->faceBuf.pArr[i].faces.count
+		);
+		offset += pMem->faceBuf.pArr[i].faces.count;
+		range.end = offset;
+		err = pIslands->fpRangeSet(pIslands->pUserData, newIdx, range);
+		PIX_ERR_THROW_IFNOT(err, "", 0);
+		++islandCount;
+	}
+	PIX_ERR_ASSERT("", islandCount >= 0 && offset == pMesh->faceCount);
+	PIX_ERR_ASSERT("", pMem->edges.count > 0);
+	for (I32 i = 0; i < pMem->edges.count; ++i) {
+		StucBorderNode *pStart = pMem->edges.pArr + i;
+		I32 islands[2] = {0};
+		if (isEdgeIntern(pMem, pStart, islands)) {
+			continue;
+		}
+		for (I32 i = 0; i < 2; ++i) {
+			FaceCorner corner = pStart->corners[i];
+			err = walkAndAddBorder(pAlloc, pMem, pMesh, pIslands, pStart, islands, i);
+			PIX_ERR_THROW_IFNOT(err, "", 0);
+		}
+	}
+	PIX_ERR_CATCH(0, err, ;);
+	return err;
+}
+
+void stucSplitMemDestroy(const PixalcFPtrs *pAlloc, StucSplitMem *pMem) {
+	if (pMem->faceBuf.pArr) {
+		for (I32 i = 0; i < pMem->faceBuf.size; ++i) {
+			if (pMem->faceBuf.pArr[i].faces.pArr) {
+				pAlloc->fpFree(pMem->faceBuf.pArr[i].faces.pArr);
+			}
+		}
+		pAlloc->fpFree(pMem->faceBuf.pArr);
+	}
+	if (pMem->redirArr.pArr) {
+		pAlloc->fpFree(pMem->redirArr.pArr);
+	}
+	if (pMem->faceTable.pArr) {
+		pAlloc->fpFree(pMem->faceTable.pArr);
+	}
+	if (pMem->edgeTable.pArr) {
+		pAlloc->fpFree(pMem->edgeTable.pArr);
+	}
+	if (pMem->edges.pArr) {
+		pAlloc->fpFree(pMem->edges.pArr);
+	}
+	*pMem = (StucSplitMem){0};
 }
