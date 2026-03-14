@@ -1221,41 +1221,125 @@ bool checkIfNoFacesHaveMaskIdx(const Mesh *pMesh, I8 maskIdx) {
 	return true;
 }
 
-typedef struct StucIsland {
-	BorderArr borders;
-	PixtyRange faces;
-} StucIsland;
-
-typedef struct StucSubIsland {
-	StucIsland core;
-} StucSubIsland;
-
-typedef struct StucSubIslandArr {
-	StucSubIsland *pArr;
-	I32 *pFaces;
-	I32 size;
-	I32 count;
-	I32 faceCount;
-} StucSubIslandArr;
-
-typedef struct StucInIsland {
-	StucIsland core;
-	StucSubIslandArr sub;
-} StucInIsland;
-
-typedef struct StucInIslandArr {
-	StucInIsland *pArr;
-	I32 *pFaces;
-	I32 size;
-	I32 count;
-	I32 faceCount;
-} StucInIslandArr;
-
-typedef struct ClustForIslandsJobArgs {
-	JobArgs jobArgs;
-
+typedef struct ClustForIslandJobArgs {
+	JobArgs core;
+	bool empty;
 	JobArgsFoot foot;
-} ClustForIslandsJobArgs;
+} ClustForIslandJobArgs;
+
+static
+I32 clustForIslandJobsGetRange(StucContext pCtx, const void *pShared, void *pInitInfo) {
+	return ((MapToMeshBasic *)pShared)->pInIslands->count;
+}
+
+typedef struct BorderInfo {
+	const Mesh *pMesh;
+	const Border *pBorder;
+} BorderInfo;
+
+static
+PixtyV2_F32 stucBorderPos(const void *pBorderRaw, I32 idx) {
+	const BorderInfo *pInfo = pBorderRaw;
+	FaceCorner corner = pInfo->pBorder->arr.pArr[idx].corner;
+	FaceRange faceRange = stucGetFaceRange(&pInfo->pMesh->core, corner.face);
+	PIX_ERR_ASSERT("", corner.corner >= 0 && corner.corner < faceRange.size);
+	I32 vert = pInfo->pMesh->core.pCorners[faceRange.start + corner.corner];
+	return *(PixtyV2_F32 *)&pInfo->pMesh->pPos[vert];
+}
+
+static
+PixErr stucIslandClustAdd(
+	const PixalcFPtrs *pAlloc,
+	void *pArrRaw,
+	int32_t idx,
+	ClutreIntersect status,
+	V2_I32 tile
+) {
+	StucErr err = PIX_ERR_SUCCESS;
+	IslandClustArr *pArr = pArrRaw;
+	PIX_ERR_ASSERT(
+		"",
+		tile.d[0] > (I32)INT16_MIN && tile.d[0] < (I32)INT16_MAX &&
+		tile.d[1] > (I32)INT16_MIN && tile.d[1] < (I32)INT16_MAX
+	);
+	V2_I32 size = {
+		pArr->start.end.d[0] - pArr->start.start.d[0],
+		pArr->start.end.d[1] - pArr->start.start.d[1]
+	};
+	V2_I32 tileNorm = {
+		tile.d[0] - pArr->start.start.d[0],
+		tile.d[1] - pArr->start.start.d[1]
+	};
+	PIX_ERR_ASSERT(
+		"",
+		tileNorm.d[0] >= 0 && tileNorm.d[0] < size.d[0] &&
+		tileNorm.d[1] >= 0 && tileNorm.d[1] < size.d[1]
+	);
+	I32 arrIdx = tileNorm.d[1] * size.d[0] + tileNorm.d[0];
+	PIX_ERR_ASSERT("", arrIdx >= 0 && arrIdx < pArr->start.arr.size);
+	pArr->start.arr.pArr[arrIdx] = (ClutreValidIdx){.idx = idx, .valid = true};
+	return err;
+}
+
+static
+StucErr clustForIsland(void *pArgsRaw) {
+	StucErr err = PIX_ERR_SUCCESS;
+	ClustForIslandJobArgs *pArgs = pArgsRaw;
+	I32 rangeSize = pArgs->core.range.end - pArgs->core.range.start;
+	const MapToMeshBasic *pBasic = pArgs->core.pShared;
+	const PixalcFPtrs *pAlloc = &pBasic->pCtx->alloc;
+	InPieceArr inPieceArr = {0};
+	IslandClustArr clustArr = {0};
+	for (I32 i = 0; i < rangeSize; ++i) {
+		PIX_ERR_ASSERT("", i < pBasic->pInIslands->count);
+		const StucInIsland *pIsland = pBasic->pInIslands->pArr + i;
+		const Border *pBorder = pIsland->core.borders.pArr + pIsland->core.borders.outer;
+		ClutreFace clustFace = {
+			.pUserData = pBorder,
+			.fpPos = stucBorderPos,
+			.size = pBorder->arr.count
+		};
+		clustArr.start.start = (V2_I32){
+			(I32)pIsland->bb.min.d[0],
+			(I32)pIsland->bb.min.d[1]
+		};
+		clustArr.start.end = (V2_I32){
+			(I32)pIsland->bb.max.d[0] + 1,
+			(I32)pIsland->bb.max.d[1] + 1
+		};
+		I32 arrSize =
+			clustArr.start.end.d[0] - clustArr.start.start.d[0] *
+			clustArr.start.end.d[1] - clustArr.start.start.d[1];
+		PIXALC_DYN_ARR_RESIZE(ClutreValidIdx, pAlloc, &clustArr.start.arr, arrSize);
+		//TODO rename structs/ vars like this access or interface or something
+		ClutreArr clustArrInfo = {.pUserData = &clustArr, .fpAdd = stucIslandClustAdd};
+		err = clutreSampleForFace(
+			&pBasic->pMap->clustTree,
+			NULL,
+			&clustFace,
+			&clustArrInfo,
+			true
+		);
+		PIX_ERR_THROW_IFNOT(err, "", 0);
+
+		I32 findEncasedJobCount = 0;
+		FindEncasedFacesJobArgs findEncasedJobArgs[PIXTH_MAX_SUB_MAPPING_JOBS] = {0};
+		err = stucInPieceArrInit(
+			pBasic,
+			pArgs->core.threadId,
+			&clustArr,
+			&inPieceArr,
+			&findEncasedJobCount, findEncasedJobArgs,
+			&pArgs->empty
+		);
+		PIX_ERR_THROW_IFNOT(err, "", 0);
+	}
+	PIX_ERR_CATCH(0, err, ;);
+	if (clustArr.start.arr.pArr) {
+		pBasic->pCtx->alloc.fpFree(clustArr.start.arr.pArr);
+	}
+	return err;
+}
 
 static
 StucErr mapToMeshInternal(
@@ -1279,6 +1363,7 @@ StucErr mapToMeshInternal(
 		.pCtx = pCtx,
 		.pMap = pMap,
 		.pInMesh = pMeshIn,
+		.pInIslands = pInIslands,
 		.pOptArr = pOptArr,
 		.wScale = wScale,
 		.receiveLen = receiveLen,
@@ -1296,194 +1381,202 @@ StucErr mapToMeshInternal(
 		);
 	}
 	bool empty = false;
-	InPieceArr inPieceArr = {0};
-	I32 findEncasedJobCount = 0;
-	FindEncasedFacesJobArgs findEncasedJobArgs[PIXTH_MAX_SUB_MAPPING_JOBS] = {0};
-	err = stucInPieceArrInit(
+
+	I32 clustForIslandJobCount = 0;
+	ClustForIslandJobArgs *clustForIslandJobArgs[PIXTH_MAX_SUB_MAPPING_JOBS] = {0};
+	stucMakeJobArgs(
+		pCtx,
+		&basic,
+		&clustForIslandJobCount, &clustForIslandJobArgs, sizeof(ClustForIslandJobArgs),
+		NULL,
+		clustForIslandJobsGetRange, NULL
+	);
+	err = stucDoJobInParallel(
+		pCtx,
+		threadId,
+		clustForIslandJobCount, clustForIslandJobArgs, sizeof(ClustForIslandJobArgs),
+		clustForIsland
+	);
+	PIX_ERR_RETURN_IFNOT(err, "");
+
+	if (empty) {
+		return err;
+	}
+	//printf("B\n");
+	BufMeshArr bufMeshes = {0};
+	BufMeshArr bufMeshesClip = {0};
+	InPieceArr inPiecesSplit = {.pBufMeshes = &bufMeshes};
+	InPieceArr inPiecesSplitClip = {.pBufMeshes = &bufMeshesClip};
+	SplitInPiecesAllocArr splitAlloc = {
+		.pArr = (SplitInPiecesAlloc[PIXTH_MAX_SUB_MAPPING_JOBS]){0}
+	};
+	BufOutRangeTable bufOutTable = {0};
+	OutBufIdxArr outBufIdxArr = {0};
+	err = stucInPieceArrSplit(
 		&basic,
 		threadId,
 		&inPieceArr,
-		&findEncasedJobCount, findEncasedJobArgs,
-		&empty
+		&inPiecesSplit, &inPiecesSplitClip,
+		&splitAlloc
+	);
+	for (I32 i = 0; i < findEncasedJobCount; ++i) {
+		PixalcLinAlloc *pEncasedAlloc =
+			pixuctHTableAllocGet(&findEncasedJobArgs[i].encasedFaces, 0);
+		PixalcLinAllocIter iter = {0};
+		pixalcLinAllocIterInit(pEncasedAlloc, (Range) {0, INT32_MAX}, &iter);
+		for (; !pixalcLinAllocIterAtEnd(&iter); pixalcLinAllocIterInc(&iter)) {
+			EncasedMapFace *pEntry = pixalcLinAllocGetItem(&iter);
+			if (pEntry->inFaces.pArr) {
+				basic.pCtx->alloc.fpFree(pEntry->inFaces.pArr);
+				pEntry->inFaces.pArr = NULL;
+			}
+		}
+		pixuctHTableDestroy(&findEncasedJobArgs[i].encasedFaces);
+	}
+	PIX_ERR_RETURN_IFNOT(err, "");
+	//printf("C\n");
+	
+	err = stucInPieceArrInitBufMeshes(
+		&basic,
+		threadId,
+		&inPiecesSplitClip,
+		stucClipMapFace
 	);
 	PIX_ERR_RETURN_IFNOT(err, "");
-	//printf("B\n");
-	if (!empty) {
-		BufMeshArr bufMeshes = {0};
-		BufMeshArr bufMeshesClip = {0};
-		InPieceArr inPiecesSplit = {.pBufMeshes = &bufMeshes};
-		InPieceArr inPiecesSplitClip = {.pBufMeshes = &bufMeshesClip};
-		SplitInPiecesAllocArr splitAlloc = {
-			.pArr = (SplitInPiecesAlloc[PIXTH_MAX_SUB_MAPPING_JOBS]){0}
-		};
-		BufOutRangeTable bufOutTable = {0};
-		OutBufIdxArr outBufIdxArr = {0};
-		err = stucInPieceArrSplit(
-			&basic,
-			threadId,
-			&inPieceArr,
-			&inPiecesSplit, &inPiecesSplitClip,
-			&splitAlloc
-		);
-		for (I32 i = 0; i < findEncasedJobCount; ++i) {
-			PixalcLinAlloc *pEncasedAlloc =
-				pixuctHTableAllocGet(&findEncasedJobArgs[i].encasedFaces, 0);
-			PixalcLinAllocIter iter = {0};
-			pixalcLinAllocIterInit(pEncasedAlloc, (Range) {0, INT32_MAX}, &iter);
-			for (; !pixalcLinAllocIterAtEnd(&iter); pixalcLinAllocIterInc(&iter)) {
-				EncasedMapFace *pEntry = pixalcLinAllocGetItem(&iter);
-				if (pEntry->inFaces.pArr) {
-					basic.pCtx->alloc.fpFree(pEntry->inFaces.pArr);
-					pEntry->inFaces.pArr = NULL;
-				}
-			}
-			pixuctHTableDestroy(&findEncasedJobArgs[i].encasedFaces);
-		}
-		PIX_ERR_RETURN_IFNOT(err, "");
-		//printf("C\n");
-		
-		err = stucInPieceArrInitBufMeshes(
-			&basic,
-			threadId,
-			&inPiecesSplitClip,
-			stucClipMapFace
-		);
-		PIX_ERR_RETURN_IFNOT(err, "");
-		err = stucInPieceArrInitBufMeshes(
-			&basic,
-			threadId,
-			&inPiecesSplit,
-			stucAddMapFaceToBufMesh
-		);
-		PIX_ERR_RETURN_IFNOT(err, "");
-		//printf("D\n");
+	err = stucInPieceArrInitBufMeshes(
+		&basic,
+		threadId,
+		&inPiecesSplit,
+		stucAddMapFaceToBufMesh
+	);
+	PIX_ERR_RETURN_IFNOT(err, "");
+	//printf("D\n");
 
-		PixuctHTable mergeTable = {0};
-		stucVertMergeTableInit(&basic, &inPiecesSplit, &inPiecesSplitClip, &mergeTable);
-		stucMergeVerts(&basic, &inPiecesSplit, false, &mergeTable);
-		stucMergeVerts(&basic, &inPiecesSplitClip, true, &mergeTable);
-		//printf("E\n");
+	PixuctHTable mergeTable = {0};
+	stucVertMergeTableInit(&basic, &inPiecesSplit, &inPiecesSplitClip, &mergeTable);
+	stucMergeVerts(&basic, &inPiecesSplit, false, &mergeTable);
+	stucMergeVerts(&basic, &inPiecesSplitClip, true, &mergeTable);
+	//printf("E\n");
 
-		I32 snappedVerts = 0;
-		err = stucSnapIntersectVerts(
-			&basic,
-			threadId,
-			&inPiecesSplit, &inPiecesSplitClip,
-			&mergeTable,
-			&snappedVerts
-		);
-		PIX_ERR_RETURN_IFNOT(err, "");
-		//printf("F\n");
+	I32 snappedVerts = 0;
+	err = stucSnapIntersectVerts(
+		&basic,
+		threadId,
+		&inPiecesSplit, &inPiecesSplitClip,
+		&mergeTable,
+		&snappedVerts
+	);
+	PIX_ERR_RETURN_IFNOT(err, "");
+	//printf("F\n");
 
-		stucInitOutMesh(&basic, &mergeTable, snappedVerts);
-		stucAddVertsToOutMesh(&basic, &mergeTable, 0);
-		stucAddVertsToOutMesh(&basic, &mergeTable, 1);//intersect verts
-		bufOutTable.size =
-			inPiecesSplit.pBufMeshes->count + inPiecesSplitClip.pBufMeshes->count;
-		bufOutTable.pArr = pCtx->alloc.fpCalloc(bufOutTable.size, sizeof(BufOutRange));
-		stucAddFacesAndCornersToOutMesh(
-			&basic,
-			&inPiecesSplit,
-			&mergeTable,
-			&outBufIdxArr,
-			&bufOutTable,
-			false
-		);
-		stucAddFacesAndCornersToOutMesh(
-			&basic,
-			&inPiecesSplitClip,
-			&mergeTable,
-			&outBufIdxArr,
-			&bufOutTable,
-			true
-		);
-		if (!basic.outMesh.core.faceCount) {
-			goto cleanUp;
-		}
-		stucMeshSetLastFace(pCtx, &basic.outMesh);
-		//printf("G\n");
-
-		err = stucBuildTangentsForInPieces(
-			pCtx,
-			threadId,
-			pMeshIn,
-			&inPiecesSplit, &inPiecesSplitClip,
-			&mergeTable
-		);
-		PIX_ERR_RETURN_IFNOT(err, "");
-		//printf("H\n");
-		
-		err = stucXFormAndInterpVerts(
-			&basic,
-			threadId,
-			&inPiecesSplit,
-			&inPiecesSplitClip,
-			&mergeTable,
-			0
-		);
-		PIX_ERR_RETURN_IFNOT(err, "");
-		//intersect verts
-		err = stucXFormAndInterpVerts(
-			&basic,
-			threadId,
-			&inPiecesSplit,
-			&inPiecesSplitClip,
-			&mergeTable,
-			1
-		);
-		PIX_ERR_RETURN_IFNOT(err, "");
-		err = stucInterpAttribs(
-			&basic,
-			threadId,
-			&inPiecesSplit, &inPiecesSplitClip,
-			&mergeTable,
-			&bufOutTable,
-			&outBufIdxArr,
-			STUC_DOMAIN_FACE, stucInterpFaceAttribs
-		);
-		PIX_ERR_RETURN_IFNOT(err, "");
-		//vert merge lin-idx is replaced with out-vert idx in corner-interp job,
-		// so faces must be interpolated before corners
-		err = stucInterpAttribs(
-			&basic,
-			threadId,
-			&inPiecesSplit, &inPiecesSplitClip,
-			&mergeTable,
-			&bufOutTable,
-			&outBufIdxArr,
-			STUC_DOMAIN_CORNER, stucInterpCornerAttribs
-		);
-		PIX_ERR_RETURN_IFNOT(err, "");
-		//printf("I\n");
-
-		stucReallocMeshToFit(pCtx, &basic.outMesh);
-		*pOutMesh = basic.outMesh.core;
-		//printf("J\n");
-	cleanUp:
-		if (outBufIdxArr.pArr) {
-			pCtx->alloc.fpFree(outBufIdxArr.pArr);
-		}
-		if (bufOutTable.pArr) {
-			pCtx->alloc.fpFree(bufOutTable.pArr);
-		}
-		for (I32 i = 0; i < splitAlloc.count; ++i) {
-			if (splitAlloc.pArr[i].encased.valid) {
-				pixalcLinAllocDestroy(&splitAlloc.pArr[i].encased);
-			}
-			if (splitAlloc.pArr[i].inFace.valid) {
-				pixalcLinAllocDestroy(&splitAlloc.pArr[i].inFace);
-			}
-			if (splitAlloc.pArr[i].border.valid) {
-				pixalcLinAllocDestroy(&splitAlloc.pArr[i].border);
-			}
-		}
-		pixuctHTableDestroy(&mergeTable);
-		inPieceArrDestroy(pCtx, &inPiecesSplit);
-		inPieceArrDestroy(pCtx, &inPiecesSplitClip);
-		stucBufMeshArrDestroy(pCtx, &bufMeshes);
-		stucBufMeshArrDestroy(pCtx, &bufMeshesClip);
-		//printf("K\n");
+	stucInitOutMesh(&basic, &mergeTable, snappedVerts);
+	stucAddVertsToOutMesh(&basic, &mergeTable, 0);
+	stucAddVertsToOutMesh(&basic, &mergeTable, 1);//intersect verts
+	bufOutTable.size =
+		inPiecesSplit.pBufMeshes->count + inPiecesSplitClip.pBufMeshes->count;
+	bufOutTable.pArr = pCtx->alloc.fpCalloc(bufOutTable.size, sizeof(BufOutRange));
+	stucAddFacesAndCornersToOutMesh(
+		&basic,
+		&inPiecesSplit,
+		&mergeTable,
+		&outBufIdxArr,
+		&bufOutTable,
+		false
+	);
+	stucAddFacesAndCornersToOutMesh(
+		&basic,
+		&inPiecesSplitClip,
+		&mergeTable,
+		&outBufIdxArr,
+		&bufOutTable,
+		true
+	);
+	if (!basic.outMesh.core.faceCount) {
+		goto cleanUp;
 	}
+	stucMeshSetLastFace(pCtx, &basic.outMesh);
+	//printf("G\n");
+
+	err = stucBuildTangentsForInPieces(
+		pCtx,
+		threadId,
+		pMeshIn,
+		&inPiecesSplit, &inPiecesSplitClip,
+		&mergeTable
+	);
+	PIX_ERR_RETURN_IFNOT(err, "");
+	//printf("H\n");
+	
+	err = stucXFormAndInterpVerts(
+		&basic,
+		threadId,
+		&inPiecesSplit,
+		&inPiecesSplitClip,
+		&mergeTable,
+		0
+	);
+	PIX_ERR_RETURN_IFNOT(err, "");
+	//intersect verts
+	err = stucXFormAndInterpVerts(
+		&basic,
+		threadId,
+		&inPiecesSplit,
+		&inPiecesSplitClip,
+		&mergeTable,
+		1
+	);
+	PIX_ERR_RETURN_IFNOT(err, "");
+	err = stucInterpAttribs(
+		&basic,
+		threadId,
+		&inPiecesSplit, &inPiecesSplitClip,
+		&mergeTable,
+		&bufOutTable,
+		&outBufIdxArr,
+		STUC_DOMAIN_FACE, stucInterpFaceAttribs
+	);
+	PIX_ERR_RETURN_IFNOT(err, "");
+	//vert merge lin-idx is replaced with out-vert idx in corner-interp job,
+	// so faces must be interpolated before corners
+	err = stucInterpAttribs(
+		&basic,
+		threadId,
+		&inPiecesSplit, &inPiecesSplitClip,
+		&mergeTable,
+		&bufOutTable,
+		&outBufIdxArr,
+		STUC_DOMAIN_CORNER, stucInterpCornerAttribs
+	);
+	PIX_ERR_RETURN_IFNOT(err, "");
+	//printf("I\n");
+
+	stucReallocMeshToFit(pCtx, &basic.outMesh);
+	*pOutMesh = basic.outMesh.core;
+	//printf("J\n");
+cleanUp:
+	if (outBufIdxArr.pArr) {
+		pCtx->alloc.fpFree(outBufIdxArr.pArr);
+	}
+	if (bufOutTable.pArr) {
+		pCtx->alloc.fpFree(bufOutTable.pArr);
+	}
+	for (I32 i = 0; i < splitAlloc.count; ++i) {
+		if (splitAlloc.pArr[i].encased.valid) {
+			pixalcLinAllocDestroy(&splitAlloc.pArr[i].encased);
+		}
+		if (splitAlloc.pArr[i].inFace.valid) {
+			pixalcLinAllocDestroy(&splitAlloc.pArr[i].inFace);
+		}
+		if (splitAlloc.pArr[i].border.valid) {
+			pixalcLinAllocDestroy(&splitAlloc.pArr[i].border);
+		}
+	}
+	pixuctHTableDestroy(&mergeTable);
+	inPieceArrDestroy(pCtx, &inPiecesSplit);
+	inPieceArrDestroy(pCtx, &inPiecesSplitClip);
+	stucBufMeshArrDestroy(pCtx, &bufMeshes);
+	stucBufMeshArrDestroy(pCtx, &bufMeshesClip);
+	//printf("K\n");
 	PIX_ERR_CATCH(0, err, ;);
 	return err;
 }
@@ -2010,6 +2103,20 @@ StucErr borderInit(const PixalcFPtrs *pAlloc, void *pIslandsRaw, I32 island, I32
 }
 
 static
+StucErr borderMarkAsOuter(
+	void *pIslandsRaw,
+	I32 island,
+	I32 border,
+	const ClutreBb *pBb
+) {
+	StucErr err = PIX_ERR_SUCCESS;
+	StucInIslandArr *pIslandArr = pIslandsRaw;
+	pIslandArr->pArr[island].core.borders.outer = border;
+	pIslandArr->pArr[island].bb = *pBb;
+	return err;
+}
+
+static
 StucErr borderAddEdge(
 	const PixalcFPtrs *pAlloc,
 	void *pIslandsRaw,
@@ -2143,6 +2250,8 @@ StucErr islandSplitToSub(void *pArgsRaw) {
 		.pUserData = pInMesh,
 		.fpFaceRange = stucClustFaceRange,
 		.fpEdge = getEdge,
+		.fpVert = stucClustVert,
+		.fpPos = stucClustPos,
 		.fpEdgeCorners = getEdgeCorners,
 		.fpAdjCorner = callGetAdjCorner
 	};
@@ -2189,6 +2298,8 @@ StucErr splitInMeshToIslands(
 		.faceCount = pMeshIn->core.faceCount,
 		.fpFaceRange = stucClustFaceRange,
 		.fpEdge = getEdge,
+		.fpVert = stucClustVert,
+		.fpPos = stucClustPos,
 		.fpEdgeCorners = getEdgeCorners,
 		.fpAdjCorner = callGetAdjCorner
 	};
@@ -2198,7 +2309,8 @@ StucErr splitInMeshToIslands(
 		.fpBorderAddEdge = borderAddEdge,
 		.fpFacesInit = islandFacesInit,
 		.fpIslandAdd = islandAdd,
-		.fpRangeSet = islandRangeSet
+		.fpRangeSet = islandRangeSet,
+		.fpBorderMarkAsOuter = borderMarkAsOuter
 	};
 	StucSplitMem splitMem = {0};
 	err = stucSplitToIslands(

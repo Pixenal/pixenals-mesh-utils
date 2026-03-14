@@ -750,17 +750,6 @@ ClustBorderEdgeTableEntry *clustBorderEdgeAddOrGet(
 }
 #endif
 
-typedef struct StucIdxRedir {
-	U32 idx : 31;
-	U32 redir : 1;
-} StucIdxRedir;
-
-typedef struct StucIdxRedirArr {
-	StucIdxRedir *pArr;
-	I32 size;
-	I32 count;
-} StucIdxRedirArr;
-
 static
 void islandIdxInit(
 	const PixalcFPtrs *pAlloc,
@@ -882,6 +871,25 @@ void markEdgeSeen(StucBorderNode *pEdge, I32 island) {
 }
 
 static
+void stucBorderBbCmp(
+	const StucSplitMesh *pMesh,
+	StucBorderBb *pBb,
+	I32 corner,
+	I32 border
+) {
+	I32 vert = pMesh->fpVert(pMesh->pUserData, corner);
+	PixtyV2_F32 pos = pMesh->fpPos(pMesh->pUserData, vert);
+	StucBorderBb old = *pBb;
+	pBb->min.d[0] = pos.d[0] < pBb->min.d[0] ? pos.d[0] : pBb->min.d[0];
+	pBb->min.d[1] = pos.d[1] < pBb->min.d[1] ? pos.d[1] : pBb->min.d[1];
+	pBb->max.d[0] = pos.d[0] > pBb->max.d[0] ? pos.d[0] : pBb->max.d[0];
+	pBb->max.d[1] = pos.d[1] > pBb->max.d[1] ? pos.d[1] : pBb->max.d[1];
+	if (!memcmp(&old, pBb, sizeof(StucBorderBb))) {
+		pBb->border = border;
+	}
+}
+
+static
 StucErr walkAndAddBorder(
 	const PixalcFPtrs *pAlloc,
 	StucSplitMem *pMem,
@@ -915,6 +923,13 @@ StucErr walkAndAddBorder(
 			corner
 		);
 		PIX_ERR_RETURN_IFNOT(err, "");
+		stucBorderBbCmp(
+			pMesh,
+			pMem->bb.pArr + islandIdx,
+			face.start + corner.corner,
+			borderIdx
+		);
+
 		corner.corner = (corner.corner + 1) % (face.end - face.start);
 		edge = pMesh->fpEdge(pMesh->pUserData, corner);
 		if (pMem->edgeTable.pArr[edge].valid) {
@@ -993,6 +1008,7 @@ void stucSplitMemInit(const PixalcFPtrs *pAlloc, StucSplitMem *pMem, I32 faceCou
 	pMem->faceTable.count = 0;
 	pMem->edgeTable.count = 0;
 	pMem->edges.count = 0;
+	pMem->bb.count = 0;
 }
 
 //TODO reuse memory across multiple calls for tables, buffers
@@ -1053,6 +1069,14 @@ StucErr stucSplitToIslands(
 		++islandCount;
 	}
 	PIX_ERR_ASSERT("", islandCount >= 0 && offset == pMesh->faceCount);
+	PIXALC_DYN_ARR_RESIZE(StucBorderBb, pAlloc, &pMem->bb, islandCount);
+	for (I32 i = 0; i < islandCount; ++i) {
+		pMem->bb.pArr[i] = (StucBorderBb){
+			.min = {FLT_MAX, FLT_MAX},
+			.max = {-FLT_MAX, -FLT_MAX},
+			.border = -1
+		};
+	}
 	PIX_ERR_ASSERT("", pMem->edges.count > 0);
 	for (I32 i = 0; i < pMem->edges.count; ++i) {
 		StucBorderNode *pStart = pMem->edges.pArr + i;
@@ -1062,8 +1086,20 @@ StucErr stucSplitToIslands(
 		}
 		for (I32 i = 0; i < 2; ++i) {
 			FaceCorner corner = pStart->corners[i];
-			err = walkAndAddBorder(pAlloc, pMem, pMesh, pIslands, pStart, islands, i);
+			err =
+				walkAndAddBorder(pAlloc, pMem, pMesh, pIslands, pStart, islands, i);
 			PIX_ERR_THROW_IFNOT(err, "", 0);
+		}
+	}
+	for (I32 i = 0; i < islandCount; ++i) {
+		PIX_ERR_ASSERT("", pMem->bb.pArr[i].border != -1);
+		if (pIslands->fpBorderMarkAsOuter) {
+			err = pIslands->fpBorderMarkAsOuter(
+				pIslands->pUserData,
+				i,
+				pMem->bb.pArr[i].border,
+				&pMem->bb
+			);
 		}
 	}
 	PIX_ERR_CATCH(0, err, ;);

@@ -19,28 +19,6 @@ typedef struct ClustFaceCorner {
 	I32 corner;
 } ClustFaceCorner;
 
-typedef struct BorderEdge {
-	FaceCorner corner;
-	I32 adjIsland;
-} BorderEdge;
-
-typedef struct BorderEdgeArr {
-	BorderEdge *pArr;
-	I32 size;
-	I32 count;
-} BorderEdgeArr;
-
-typedef struct Border {
-	BorderEdgeArr arr;
-	I32 len;
-} Border;
-
-typedef struct BorderArr {
-	Border *pArr;
-	I32 size;
-	I32 count;
-} BorderArr;
-
 typedef struct ClustBorderBuf {
 	BorderArr arr;
 } ClustBorderBuf;
@@ -783,7 +761,7 @@ StucErr stucDoJobInParallel(
 );
 
 typedef struct InPieceKey {
-	I32 mapFace;
+	I32 cluster;
 	V2_I16 tile;
 } InPieceKey;
 
@@ -1236,18 +1214,44 @@ typedef struct FaceBufArr {
 	I32 count;
 } FaceBufArr;
 
+typedef struct StucIdxRedir {
+	U32 idx : 31;
+	U32 redir : 1;
+} StucIdxRedir;
+
+typedef struct StucIdxRedirArr {
+	StucIdxRedir *pArr;
+	I32 size;
+	I32 count;
+} StucIdxRedirArr;
+
+typedef struct StucBorderBb {
+	PixtyV2_F32 min;
+	PixtyV2_F32 max;
+	I32 border;
+} StucBorderBb;
+
+typedef struct StucBorderBbArr {
+	StucBorderBb *pArr;
+	I32 size;
+	I32 count;
+} StucBorderBbArr;
+
 typedef struct StucSplitMem {
 	FaceBufArr faceBuf;
 	StucIdxRedirArr redirArr;
 	StucIdxTableArr faceTable;
 	StucIdxTableArr edgeTable;
 	StucBorderNodeArr edges;
+	StucBorderBbArr bb;
 } StucSplitMem;
 
 typedef struct StucSplitMesh {
 	const void *pUserData;
 	PixtyRange (*fpFaceRange)(const void *, I32);
 	I32 (*fpEdge)(const void *, FaceCorner);
+	I32 (*fpVert)(const void *, I32);
+	PixtyV2_F32 (*fpPos)(const void *, I32);
 	EdgeCorners (*fpEdgeCorners)(const void *, I32);
 	FaceCorner (*fpAdjCorner)(const void *pMeshRaw, FaceCorner corner);
 	I32 faceCount;
@@ -1260,6 +1264,7 @@ typedef struct StucIslands {
 	StucErr (*fpFacesInit)(const PixalcFPtrs *, void *, I32, I32 **);
 	StucErr (*fpBorderInit)(const PixalcFPtrs *, void *, I32, I32 *);
 	StucErr (*fpBorderAddEdge)(const PixalcFPtrs *, void *, I32, I32, I32, FaceCorner);
+	StucErr (*fpBorderMarkAsOuter)(void *, I32, I32, const ClutreBb *);
 } StucIslands;
 
 StucErr stucSplitToIslands(
