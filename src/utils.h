@@ -763,6 +763,7 @@ StucErr stucDoJobInParallel(
 typedef struct InPieceKey {
 	I32 cluster;
 	V2_I16 tile;
+	bool clip;
 } InPieceKey;
 
 static inline
@@ -1259,16 +1260,17 @@ typedef struct StucSplitMesh {
 
 typedef struct StucIslands {
 	void *pUserData;
-	StucErr (*fpIslandAdd)(const PixalcFPtrs *, void *, I32 *);
+	StucErr (*fpIslandAdd)(const PixalcFPtrs *, void *, I32, I32 *);
 	StucErr (*fpRangeSet)(void *, I32, PixtyRange);
 	StucErr (*fpFacesInit)(const PixalcFPtrs *, void *, I32, I32 **);
 	StucErr (*fpBorderInit)(const PixalcFPtrs *, void *, I32, I32 *);
-	StucErr (*fpBorderAddEdge)(const PixalcFPtrs *, void *, I32, I32, I32, FaceCorner);
+	StucErr (*fpBorderAddEdge)(const PixalcFPtrs *, void *, I32, I32, I32, FaceCorner, I32);
 	StucErr (*fpBorderMarkAsOuter)(void *, I32, I32, const ClutreBb *);
 } StucIslands;
 
 StucErr stucSplitToIslands(
 	const PixalcFPtrs *pAlloc,
+	StucSplitMem *pMem,
 	const StucSplitMesh *pMesh,
 	StucIslands *pIslands,
 	bool (*fpSplitPredicate)(const void *, I32)

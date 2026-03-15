@@ -920,7 +920,8 @@ StucErr walkAndAddBorder(
 			islandIdx,
 			pIslandIdx[!idx],
 			borderIdx,
-			corner
+			corner,
+			edge
 		);
 		PIX_ERR_RETURN_IFNOT(err, "");
 		stucBorderBbCmp(
@@ -963,7 +964,8 @@ StucErr findAdjForCorner(
 	StucSplitMem *pMem,
 	const StucSplitMesh *pMesh,
 	bool (*fpSplitPredicate)(const void *, I32),
-	FaceCorner corner
+	FaceCorner corner,
+	I32 *pSplitTotal
 ) {
 	StucErr err = PIX_ERR_SUCCESS;
 	I32 edge = pMesh->fpEdge(pMesh->pUserData, corner);
@@ -974,6 +976,7 @@ StucErr findAdjForCorner(
 	I32 faces[2] = {corners.corners[0].face, corners.corners[1].face};
 	bool borderEdge = faces[0] == -1 || faces[1] == -1;
 	if (borderEdge || fpSplitPredicate(pMesh->pUserData, edge)) {
+		++*pSplitTotal;
 		if (faces[0] != -1 && !pMem->faceTable.pArr[faces[0]].valid) {
 			islandIdxInit(pAlloc, &pMem->faceTable, &pMem->redirArr, faces[0]);
 		}
@@ -1021,12 +1024,20 @@ StucErr stucSplitToIslands(
 ) {
 	StucErr err = PIX_ERR_SUCCESS;
 	stucSplitMemInit(pAlloc, pMem, pMesh->faceCount);
+	I32 splitTotal = 0;
 	for (I32 i = 0; i < pMesh->faceCount; ++i) {
 		PixtyRange face = pMesh->fpFaceRange(pMesh->pUserData, i);
 		I32 faceSize = face.end - face.start;
 		for (I32 j = 0; j < faceSize; ++j) {
 			FaceCorner corner = {.face = i, .corner = j};
-			err = findAdjForCorner(pAlloc, pMem, pMesh, fpSplitPredicate, corner);
+			err = findAdjForCorner(
+				pAlloc,
+				pMem,
+				pMesh,
+				fpSplitPredicate,
+				corner,
+				&splitTotal
+			);
 			PIX_ERR_THROW_IFNOT(err, "", 0);
 		}
 	}
@@ -1053,7 +1064,7 @@ StucErr stucSplitToIslands(
 			continue;
 		}
 		I32 newIdx = 0;
-		err = pIslands->fpIslandAdd(pAlloc, pIslands->pUserData, &newIdx);
+		err = pIslands->fpIslandAdd(pAlloc, pIslands->pUserData, splitTotal, &newIdx);
 		PIX_ERR_THROW_IFNOT(err, "", 0);
 		pMem->faceBuf.pArr[i].island = newIdx;
 		PixtyRange range = {.start = offset};
