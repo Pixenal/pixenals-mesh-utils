@@ -1262,6 +1262,42 @@ PixErr stucIslandClustAdd(
 		tile.d[0] > (I32)INT16_MIN && tile.d[0] < (I32)INT16_MAX &&
 		tile.d[1] > (I32)INT16_MIN && tile.d[1] < (I32)INT16_MAX
 	);
+	PIX_ERR_ASSERT("", status > 0 && status < 4);
+	V2_I16 tile16 = {tile.d[0], tile.d[1]};
+	I32 newIdx = 0;
+	PIXALC_DYN_ARR_ADD(ClustIdx, pAlloc, pArr, newIdx);
+	pArr->pArr[newIdx] = (ClustIdx){.idx = (U32)idx, .type = (U32)status};
+	if (!pArr->tiles.count ||
+		!_(pArr->tiles.pArr[pArr->tiles.count - 1].tile V2I16EQL tile16)
+	) {
+		I32 tileIdx = 0;
+		PIXALC_DYN_ARR_ADD(TileRange, pAlloc, &pArr->tiles, tileIdx);
+		pArr->tiles.pArr[tileIdx] = (TileRange){
+			.tile = tile16,
+			.range = {.start = newIdx, .end = newIdx}
+		};
+	}
+	else {
+		pArr->tiles.pArr[pArr->tiles.count - 1].range.end = pArr->count;
+	}
+	return err;
+}
+
+static
+PixErr stucIslandClustAddStart(
+	const PixalcFPtrs *pAlloc,
+	void *pArrRaw,
+	int32_t idx,
+	ClutreIntersect status,
+	V2_I32 tile
+) {
+	StucErr err = PIX_ERR_SUCCESS;
+	IslandClustArr *pArr = pArrRaw;
+	PIX_ERR_ASSERT(
+		"",
+		tile.d[0] > (I32)INT16_MIN && tile.d[0] < (I32)INT16_MAX &&
+		tile.d[1] > (I32)INT16_MIN && tile.d[1] < (I32)INT16_MAX
+	);
 	V2_I32 size = {
 		pArr->start.end.d[0] - pArr->start.start.d[0],
 		pArr->start.end.d[1] - pArr->start.start.d[1]
@@ -1319,7 +1355,10 @@ StucErr clustForIsland(void *pArgsRaw) {
 			clustArr.start.end.d[1] - clustArr.start.start.d[1];
 		PIXALC_DYN_ARR_RESIZE(ClutreValidIdx, pAlloc, &clustArr.start.arr, arrSize);
 		//TODO rename structs/ vars like this access or interface or something
-		ClutreArr clustArrInfo = {.pUserData = &clustArr, .fpAdd = stucIslandClustAdd};
+		ClutreArr clustArrInfo = {
+			.pUserData = &clustArr,
+			.fpAdd = stucIslandClustAddStart
+		};
 		err = clutreSampleForFace(
 			&pBasic->pMap->clustTree,
 			NULL,
@@ -1328,7 +1367,17 @@ StucErr clustForIsland(void *pArgsRaw) {
 			true
 		);
 		PIX_ERR_THROW_IFNOT(err, "", 0);
+		clustArrInfo.fpAdd = stucIslandClustAdd;
+		err = clutreSampleForFace(
+			&pBasic->pMap->clustTree,
+			NULL,
+			&clustFace,
+			&clustArrInfo,
+			false
+		);
+		PIX_ERR_THROW_IFNOT(err, "", 0);
 
+		clustArr.pIsland = pIsland;
 		I32 findEncasedJobCount = 0;
 		err = stucInPieceArrInit(
 			pBasic,
@@ -1343,10 +1392,16 @@ StucErr clustForIsland(void *pArgsRaw) {
 			maxJobs = findEncasedJobCount;
 		}
 		PIX_ERR_THROW_IFNOT(err, "", 0);
+		InFaceMemArr inFaceArr = {.count = findEncasedJobCount};
+		for (I32 j = 0; j < findEncasedJobCount; ++j) {
+			inFaceArr.arr[j] = findEncasedJobArgs[j].inFaces;
+		}
 
 		err = stucInPieceArrInitBufMeshes(
 			pBasic,
 			pArgs->core.threadId,
+			&clustArr,
+			&inFaceArr,
 			&inPieceClipArr,
 			stucClipMapFace
 		);
@@ -1354,6 +1409,8 @@ StucErr clustForIsland(void *pArgsRaw) {
 		err = stucInPieceArrInitBufMeshes(
 			pBasic,
 			pArgs->core.threadId,
+			&clustArr,
+			&inFaceArr,
 			&inPieceArr,
 			stucAddMapFaceToBufMesh
 		);
@@ -2124,13 +2181,6 @@ StucErr borderMarkAsOuter(
 	return err;
 }
 
-typedef struct StucBorderTable {
-	PixuctHTableEntryCore core;
-	I32 border;
-	I32 idx;
-	I32 edge;
-} StucBorderTable;
-
 typedef struct BorderKey {
 	I32 border;
 	I32 edge;
@@ -2139,7 +2189,7 @@ typedef struct BorderKey {
 
 static
 PixuctKey borderMakeKey(const void *pKeyRaw) {
-	return (PixuctKey){.pKey = pKeyRaw, .size = sizeof(BorderKey)};
+	return (PixuctKey){.pKey = &((BorderKey *)pKeyRaw)->edge, .size = sizeof(I32)};
 }
 
 static
@@ -2165,10 +2215,7 @@ bool borderCmpEntry(
 ) {
 	const StucBorderTable *pEntry = (void *)pEntryCore;
 	const BorderKey *pKey = pKeyRaw;
-	return
-		pKey->border == pEntry->border &&
-		pKey->edge == pEntry->edge &&
-		pKey->idx == pEntry->idx;
+	return pKey->edge == pEntry->edge;
 }
 
 
