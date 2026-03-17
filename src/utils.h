@@ -1164,29 +1164,29 @@ PixErr clustSplitIslands(
 }
 #endif
 
-typedef struct StucIdxTable {
+typedef struct StucSplitIdxTable {
 	U32 idx : 31;
 	U32 valid : 1;
-} StucIdxTable;
+} StucSplitIdxTable;
 
-typedef struct StucIdxTableArr {
-	StucIdxTable *pArr;
+typedef struct StucSplitIdxTableArr {
+	StucSplitIdxTable *pArr;
 	I32 size;
 	I32 count;
-} StucIdxTableArr;
+} StucSplitIdxTableArr;
 
 struct StucBorderNode;
-
-typedef struct StucBorderLink {
-	StucBorderNode *pNode;
-} StucBorderLink;
 
 typedef struct StucBorderNode {
 	FaceCorner corners[2];
 	I32 idx;
-	StucIdxTable seen[2];
+	StucSplitIdxTable seen[2];
 	bool intern;
 } StucBorderNode;
+
+typedef struct StucBorderLink {
+	StucBorderNode *pNode;
+} StucBorderLink;
 
 typedef struct StucBorderNodeArr {
 	StucBorderNode *pArr;
@@ -1241,8 +1241,8 @@ typedef struct StucBorderBbArr {
 typedef struct StucSplitMem {
 	FaceBufArr faceBuf;
 	StucIdxRedirArr redirArr;
-	StucIdxTableArr faceTable;
-	StucIdxTableArr edgeTable;
+	StucSplitIdxTableArr faceTable;
+	StucSplitIdxTableArr edgeTable;
 	StucBorderNodeArr edges;
 	StucBorderBbArr bb;
 } StucSplitMem;

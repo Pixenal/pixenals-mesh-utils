@@ -753,7 +753,7 @@ ClustBorderEdgeTableEntry *clustBorderEdgeAddOrGet(
 static
 void islandIdxInit(
 	const PixalcFPtrs *pAlloc,
-	StucIdxTable *pFaceTable,
+	StucSplitIdxTable *pFaceTable,
 	StucIdxRedirArr *pArr,
 	I32 face
 ) {
@@ -767,7 +767,7 @@ void islandIdxInit(
 static
 StucBorderNode *stucBorderNodeGet(
 	const StucSplitMesh *pMesh,
-	const StucIdxTable *pTable,
+	const StucSplitIdxTable *pTable,
 	PixalcLinAlloc *pEdgeAlloc,
 	I32 vert
 ) {
@@ -793,7 +793,7 @@ StucBorderNode *stucBorderNodeInit(
 #define STUC_IDX_REDIR_THRES 8
 
 static
-StucIdxRedir *getBuf(const StucIdxTable *pFaceTable, StucIdxRedirArr *pArr, I32 face) {
+StucIdxRedir *getBuf(const StucSplitIdxTable *pFaceTable, StucIdxRedirArr *pArr, I32 face) {
 	StucIdxRedir *pId = NULL;
 	I32 idx = pFaceTable[face].idx;
 	I32 i = 0;
@@ -866,8 +866,8 @@ bool seenThisEdge(const StucBorderNode *pEdge, I32 island) {
 static
 void markEdgeSeen(StucBorderNode *pEdge, I32 island) {
 	PIX_ERR_ASSERT("", !pEdge->seen[0].valid || !pEdge->seen[1].valid);
-	StucIdxTable *pSeen = pEdge->seen[0].valid ? pEdge->seen + 1 : pEdge->seen;
-	*pSeen = (StucIdxTable){.idx = island, .valid = true};
+	StucSplitIdxTable *pSeen = pEdge->seen[0].valid ? pEdge->seen + 1 : pEdge->seen;
+	*pSeen = (StucSplitIdxTable){.idx = island, .valid = true};
 }
 
 static
@@ -949,13 +949,13 @@ StucErr walkAndAddBorder(
 }
 
 static
-void edgeTableAdd(const PixalcFPtrs *pAlloc, StucIdxTableArr *pTable, I32 edge, I32 idx) {
+void edgeTableAdd(const PixalcFPtrs *pAlloc, StucSplitIdxTableArr *pTable, I32 edge, I32 idx) {
 	I32 oldSize = pTable->size;
-	PIXALC_DYN_ARR_RESIZE(StucIdxTable, pAlloc, pTable, edge);
+	PIXALC_DYN_ARR_RESIZE(StucSplitIdxTable, pAlloc, pTable, edge);
 	if (oldSize < edge) {
-		memset(pTable->pArr + oldSize, 0, sizeof(StucIdxTable) * (edge - oldSize));
+		memset(pTable->pArr + oldSize, 0, sizeof(StucSplitIdxTable) * (edge - oldSize));
 	}
-	pTable->pArr[edge] = (StucIdxTable){.idx = idx, .valid = true};
+	pTable->pArr[edge] = (StucSplitIdxTable){.idx = idx, .valid = true};
 }
 
 static
@@ -1004,8 +1004,8 @@ StucErr findAdjForCorner(
 
 static
 void stucSplitMemInit(const PixalcFPtrs *pAlloc, StucSplitMem *pMem, I32 faceCount) {
-	PIXALC_DYN_ARR_RESIZE(StucIdxTable, pAlloc, &pMem->faceTable, faceCount);
-	memset(pMem->faceTable.pArr, 0, sizeof(StucIdxTable) * faceCount);
+	PIXALC_DYN_ARR_RESIZE(StucSplitIdxTable, pAlloc, &pMem->faceTable, faceCount);
+	memset(pMem->faceTable.pArr, 0, sizeof(StucSplitIdxTable) * faceCount);
 	pMem->faceBuf.count = 0;
 	pMem->redirArr.count = 0;
 	pMem->faceTable.count = 0;
