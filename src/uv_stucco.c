@@ -2163,11 +2163,6 @@ bool splitPredicate(const void *pMeshRaw, I32 edge) {
 }
 
 static
-bool subSplitPredicate(const void *pMeshRaw, I32 edge) {
-	return stucGetIfPreserveEdge(pMeshRaw, edge);
-}
-
-static
 StucErr islandFacesInit(
 	const PixalcFPtrs *pAlloc,
 	void *pIslandsRaw,
@@ -2398,6 +2393,104 @@ void subIslandsJobInit(
 	((SubIslandJobArgs *)pEntryVoid)->pIslands = ((StucInIslandArr *)pInitInfoVoid);
 }
 
+typedef struct SubMesh {
+	const Mesh *pMesh;
+	const StucInIslandArr *pIslands;
+	Range range;
+	I32 island;
+} SubMesh;
+
+static
+bool isFaceInIsland(const StucInIsland *pIsland, I32 face) {
+	return face >= pIsland->core.faces.start && face < pIsland->core.faces.end;
+}
+
+static
+PixtyRange subFaceRange(const void *pMeshRaw, I32 faceRaw) {
+	const SubMesh *pMesh = pMeshRaw;
+	I32 face = pMesh->pIslands->pFaces[pMesh->range.start + faceRaw];
+	PIX_ERR_ASSERT("", face >= 0 && face < pMesh->pMesh->core.faceCount);
+	return (PixtyRange) {
+		.start = pMesh->pMesh->core.pFaces[face],
+		.end = pMesh->pMesh->core.pFaces[face + 1]
+	};
+}
+
+static
+I32 subGetEdge(const void *pMeshRaw, FaceCorner corner) {
+	const SubMesh *pMesh = pMeshRaw;
+	I32 face = pMesh->pIslands->pFaces[pMesh->range.start + corner.face];
+	return stucGetMeshEdge(
+		&pMesh->pMesh->core,
+		(FaceCorner){.face = face, .corner = corner.corner}
+	);
+}
+
+static
+PixtyV2_F32 subUv(const void *pMeshRaw, I32 corner) {
+	return stucClustUv(((const SubMesh *)pMeshRaw)->pMesh, corner);
+}
+
+static
+I32 faceToIslandRange(Range range, I32 face) {
+	if (face == -1) {
+		return face;
+	}
+	I32 faceOffset = face - range.start;
+	PIX_ERR_ASSERT("", faceOffset >= 0);
+	return faceOffset;
+}
+
+static
+EdgeCorners subGetEdgeCorners(const void *pMeshRaw, I32 edge) {
+	const SubMesh *pMesh = pMeshRaw;
+	EdgeCorners corners = getEdgeCorners(pMesh->pMesh, edge);
+	PIX_ERR_ASSERT(
+		"edge is floating or invalid",
+		corners.corners[0].face != corners.corners[1].face
+	);
+	corners.corners[0].face = corners.corners[0].face == -1 ?
+		-1 : pMesh->pIslands->pFaceTable[corners.corners[0].face];
+	corners.corners[1].face = corners.corners[1].face == -1 ?
+		-1 : pMesh->pIslands->pFaceTable[corners.corners[1].face];
+	if (!(corners.corners[0].face == -1) && !(corners.corners[1].face == -1)) {
+		bool in[2] = {
+			isFaceInIsland(pMesh->pIslands->pArr + pMesh->island, corners.corners[0].face),
+			isFaceInIsland(pMesh->pIslands->pArr + pMesh->island, corners.corners[1].face)
+		};
+		PIX_ERR_ASSERT("edge isn't part of island", in[0] || in[1]);
+		if (!in[0] || !in[1]) {
+			corners.corners[in[0]] = (FaceCorner){.face = -1, .corner = -1};
+		}
+	}
+	corners.corners[0].face = faceToIslandRange(pMesh->range, corners.corners[0].face);
+	corners.corners[1].face = faceToIslandRange(pMesh->range, corners.corners[1].face);
+	return corners;
+}
+
+static
+FaceCorner subCallGetAdjCorner(const void *pMeshRaw, FaceCorner corner) {
+	const SubMesh *pMesh = pMeshRaw;
+	FaceCorner adj = {0};
+	I32 face = pMesh->pIslands->pFaces[pMesh->range.start + corner.face];
+	stucGetAdjCorner(
+		pMesh->pMesh,
+		(FaceCorner){.face = face, .corner = corner.corner},
+		&adj
+	);
+	adj.face = pMesh->pIslands->pFaceTable[adj.face];
+	if (!isFaceInIsland(pMesh->pIslands->pArr + pMesh->island, adj.face)) {
+		return (FaceCorner){.face = -1, .corner = -1};
+	}
+	adj.face = faceToIslandRange(pMesh->range, adj.face);
+	return adj;
+}
+
+static
+bool subSplitPredicate(const void *pMeshRaw, I32 edge) {
+	return stucGetIfPreserveEdge(((const SubMesh *)pMeshRaw)->pMesh, edge);
+}
+
 static
 StucErr islandSplitToSub(void *pArgsRaw) {
 	StucErr err = PIX_ERR_SUCCESS;
@@ -2408,13 +2501,14 @@ StucErr islandSplitToSub(void *pArgsRaw) {
 	I32 rangeSize = range.end - range.start;
 	StucSubIslandArr *pBuf = pCtx->alloc.fpCalloc(rangeSize, sizeof(StucSubIslandArr));
 	StucSplitMem splitMem = {0};
+	SubMesh subMesh = {.pMesh = pInMesh, .pIslands = pArgs->pIslands};
 	StucSplitMesh splitMesh = {
-		.pUserData = pInMesh,
-		.fpFaceRange = stucClustFaceRange,
-		.fpEdge = getEdge,
-		.fpPos = stucClustUv,
-		.fpEdgeCorners = getEdgeCorners,
-		.fpAdjCorner = callGetAdjCorner
+		.pUserData = &subMesh,
+		.fpFaceRange = subFaceRange,
+		.fpEdge = subGetEdge,
+		.fpPos = subUv,
+		.fpEdgeCorners = subGetEdgeCorners,
+		.fpAdjCorner = subCallGetAdjCorner
 	};
 	StucIslands splitIslands = {
 		.fpBorderInit = borderInit,
@@ -2427,6 +2521,8 @@ StucErr islandSplitToSub(void *pArgsRaw) {
 		const StucInIsland *pIsland = pArgs->pIslands->pArr + range.start + i;
 		splitMesh.faceCount = pIsland->core.faces.end - pIsland->core.faces.start;
 		splitIslands.pUserData = pBuf + i;
+		subMesh.range = pIsland->core.faces;
+		subMesh.island = range.start + i;
 		err = stucSplitToIslands(
 			&pCtx->alloc,
 			&splitMem,
@@ -2480,8 +2576,13 @@ StucErr splitInMeshToIslands(
 		splitPredicate
 	);
 	stucSplitMemDestroy(&pCtx->alloc, &splitMem);
-	PIX_ERR_RETURN_IFNOT(err, "");
-
+	PIX_ERR_THROW_IFNOT(err, "", 0);
+	pIslands->pFaceTable = pCtx->alloc.fpMalloc(sizeof(I32) * pMeshIn->core.faceCount);
+	for (I32 i = 0; i < pMeshIn->core.faceCount; ++i) {
+		I32 face = pIslands->pFaces[i];
+		PIX_ERR_ASSERT("", face >= 0 && face < pMeshIn->core.faceCount);
+		pIslands->pFaceTable[face] = i;
+	}
 	SubIslandJobShared shared = {.pCtx = pCtx, .pInMesh = pMeshIn};
 	SubIslandJobArgs args[PIXTH_MAX_SUB_MAPPING_JOBS] = {0};
 	I32 jobCount = 0;
@@ -2501,7 +2602,12 @@ StucErr splitInMeshToIslands(
 		sizeof(SubIslandJobArgs),
 		islandSplitToSub
 	);
-	PIX_ERR_RETURN_IFNOT(err, "");
+	PIX_ERR_THROW_IFNOT(err, "", 0);
+	PIX_ERR_CATCH(0, err, ;);
+	if (pIslands->pFaceTable) {
+		pCtx->alloc.fpFree(pIslands->pFaceTable);
+		pIslands->pFaceTable = NULL;
+	}
 	return err;
 }
 

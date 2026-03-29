@@ -953,7 +953,9 @@ StucErr walkAndAddBorder(
 
 		corner.corner = (corner.corner + 1) % (face.end - face.start);
 		edge = pMesh->fpEdge(pMesh->pUserData, corner);
-		if (pMem->edgeTable.pArr[edge].valid) {
+		if (edge < pMem->edgeTable.size && pMem->edgeTable.pArr[edge].valid ||
+			pMesh->fpAdjCorner(pMesh->pUserData, corner).face == -1
+		) {
 			pNode = pMem->edges.pArr + pMem->edgeTable.pArr[edge].idx;
 			continue;
 		}
@@ -1037,7 +1039,12 @@ StucErr findAdjForCorner(
 static
 void stucSplitMemInit(const PixalcFPtrs *pAlloc, StucSplitMem *pMem, I32 faceCount) {
 	PIXALC_DYN_ARR_RESIZE(StucSplitIdxTable, pAlloc, &pMem->faceTable, faceCount);
-	memset(pMem->faceTable.pArr, 0, sizeof(StucSplitIdxTable) * faceCount);
+	if (pMem->faceTable.pArr) {
+		memset(pMem->faceTable.pArr, 0, sizeof(StucSplitIdxTable) * faceCount);
+	}
+	if (pMem->edgeTable.pArr) {
+		memset(pMem->edgeTable.pArr, 0, sizeof(StucSplitIdxTable) * pMem->edgeTable.size);
+	}
 	pMem->faceBuf.count = 0;
 	pMem->redirArr.count = 0;
 	pMem->faceTable.count = 0;
