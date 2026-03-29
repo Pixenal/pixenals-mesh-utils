@@ -795,6 +795,13 @@ I32 stucCouldInEdgeIntersectMapFace(const Mesh *pMesh, I32 edge) {
 }
 
 static inline
+PixtyV2_F32 stucClustUv(const void *pMeshRaw, I32 corner) {
+	const Mesh *pMesh = pMeshRaw;
+	PIX_ERR_ASSERT("", pMesh->pUvs && corner >= 0 && corner < pMesh->core.cornerCount);
+	return pMesh->pUvs[corner];
+}
+
+static inline
 PixtyV2_F32 stucClustPos(const void *pMeshRaw, I32 vert) {
 	const Mesh *pMesh = pMeshRaw;
 	PIX_ERR_ASSERT("", pMesh->pPos && vert >= 0 && vert < pMesh->core.vertCount);
@@ -1247,11 +1254,11 @@ typedef struct StucSplitMem {
 	StucBorderBbArr bb;
 } StucSplitMem;
 
+//TODO replace all func ptrs in param lists with typedefs? maybe?
 typedef struct StucSplitMesh {
 	const void *pUserData;
 	PixtyRange (*fpFaceRange)(const void *, I32);
 	I32 (*fpEdge)(const void *, FaceCorner);
-	I32 (*fpVert)(const void *, I32);
 	PixtyV2_F32 (*fpPos)(const void *, I32);
 	EdgeCorners (*fpEdgeCorners)(const void *, I32);
 	FaceCorner (*fpAdjCorner)(const void *pMeshRaw, FaceCorner corner);

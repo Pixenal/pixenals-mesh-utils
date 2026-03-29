@@ -1234,7 +1234,7 @@ typedef struct ClustForIslandJobArgs {
 } ClustForIslandJobArgs;
 
 static
-I32 clustForIslandJobsGetRange(StucContext pCtx, const void *pShared, void *pInitInfo) {
+I32 clustForIslandJobsGetRange(const StucContext pCtx, const void *pShared, void *pInitInfo) {
 	return ((MapToMeshBasic *)pShared)->pInIslands->count;
 }
 
@@ -1248,9 +1248,11 @@ PixtyV2_F32 stucBorderPos(const void *pBorderRaw, I32 idx) {
 	const BorderInfo *pInfo = pBorderRaw;
 	FaceCorner corner = pInfo->pBorder->arr.pArr[idx].corner;
 	FaceRange faceRange = stucGetFaceRange(&pInfo->pMesh->core, corner.face);
-	PIX_ERR_ASSERT("", corner.corner >= 0 && corner.corner < faceRange.size);
-	I32 vert = pInfo->pMesh->core.pCorners[faceRange.start + corner.corner];
-	return *(PixtyV2_F32 *)&pInfo->pMesh->pPos[vert];
+	PIX_ERR_ASSERT(
+		"",
+		pInfo->pMesh->pUvs && corner.corner >= 0 && corner.corner < faceRange.size
+	);
+	return pInfo->pMesh->pUvs[faceRange.start + corner.corner];
 }
 
 static
@@ -2184,8 +2186,19 @@ StucErr borderInit(const PixalcFPtrs *pAlloc, void *pIslandsRaw, I32 island, I32
 	StucErr err = PIX_ERR_SUCCESS;
 	StucInIslandArr *pIslandArr = pIslandsRaw;
 	StucInIsland *pIsland = pIslandArr->pArr + island;
+	I32 oldSize = pIsland->core.borders.size;
 	I32 newIdx = 0;
 	PIXALC_DYN_ARR_ADD(Border, pAlloc, &pIsland->core.borders, newIdx);
+	if (newIdx >= oldSize) {
+		memset(
+			pIsland->core.borders.pArr + oldSize,
+			0,
+			sizeof(Border) * (pIsland->core.borders.size - oldSize)
+		);
+	}
+	else {
+		pIsland->core.borders.pArr[newIdx].arr.count = 0;
+	}
 	*pIdx = newIdx;
 	return err;
 }
@@ -2257,7 +2270,7 @@ StucErr borderAddEdge(
 	StucInIsland *pIsland = pIslandArr->pArr + island;
 	Border *pBorder = pIsland->core.borders.pArr + border;
 	I32 newIdx = 0;
-	PIXALC_DYN_ARR_ADD(FaceCorner, pAlloc, &pBorder->arr, newIdx);
+	PIXALC_DYN_ARR_ADD(BorderEdge, pAlloc, &pBorder->arr, newIdx);
 	pBorder->arr.pArr[newIdx] = (BorderEdge){.corner = corner, .adjIsland = adjIsland};
 	SearchResult result = pixuctHTableGet(
 		&pIsland->borderTable,
@@ -2371,12 +2384,17 @@ typedef struct SubIslandJobShared {
 } SubIslandJobShared;
 
 static
-I32 subIslandsJobGetRange(StucContext pCtx, const void *pShared, void *pInitInfoVoid) {
+I32 subIslandsJobGetRange(const StucContext pCtx, const void *pShared, void *pInitInfoVoid) {
 	return ((StucInIslandArr *)pInitInfoVoid)->count;
 }
 
 static
-void subIslandsJobInit(StucContext pCtx, void *pShared, void *pInitInfoVoid, void *pEntryVoid) {
+void subIslandsJobInit(
+	const StucContext pCtx,
+	const void *pShared,
+	void *pInitInfoVoid,
+	void *pEntryVoid
+) {
 	((SubIslandJobArgs *)pEntryVoid)->pIslands = ((StucInIslandArr *)pInitInfoVoid);
 }
 
@@ -2394,8 +2412,7 @@ StucErr islandSplitToSub(void *pArgsRaw) {
 		.pUserData = pInMesh,
 		.fpFaceRange = stucClustFaceRange,
 		.fpEdge = getEdge,
-		.fpVert = stucClustVert,
-		.fpPos = stucClustPos,
+		.fpPos = stucClustUv,
 		.fpEdgeCorners = getEdgeCorners,
 		.fpAdjCorner = callGetAdjCorner
 	};
@@ -2441,8 +2458,7 @@ StucErr splitInMeshToIslands(
 		.faceCount = pMeshIn->core.faceCount,
 		.fpFaceRange = stucClustFaceRange,
 		.fpEdge = getEdge,
-		.fpVert = stucClustVert,
-		.fpPos = stucClustPos,
+		.fpPos = stucClustUv,
 		.fpEdgeCorners = getEdgeCorners,
 		.fpAdjCorner = callGetAdjCorner
 	};

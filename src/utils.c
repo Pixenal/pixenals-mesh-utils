@@ -753,15 +753,15 @@ ClustBorderEdgeTableEntry *clustBorderEdgeAddOrGet(
 static
 void islandIdxInit(
 	const PixalcFPtrs *pAlloc,
-	StucSplitIdxTable *pFaceTable,
+	StucSplitIdxTableArr *pFaceTable,
 	StucIdxRedirArr *pArr,
 	I32 face
 ) {
 	I32 newIdx = 0;
 	PIXALC_DYN_ARR_ADD(StucIdxRedir, pAlloc, pArr, newIdx);
 	pArr->pArr[newIdx] = (StucIdxRedir){.idx = newIdx};
-	pFaceTable[face].idx = newIdx;
-	pFaceTable[face].valid = true;
+	pFaceTable->pArr[face].idx = newIdx;
+	pFaceTable->pArr[face].valid = true;
 }
 
 static
@@ -793,9 +793,9 @@ StucBorderNode *stucBorderNodeInit(
 #define STUC_IDX_REDIR_THRES 8
 
 static
-StucIdxRedir *getBuf(const StucSplitIdxTable *pFaceTable, StucIdxRedirArr *pArr, I32 face) {
+StucIdxRedir *getBuf(const StucSplitIdxTableArr *pFaceTable, StucIdxRedirArr *pArr, I32 face) {
 	StucIdxRedir *pId = NULL;
-	I32 idx = pFaceTable[face].idx;
+	I32 idx = pFaceTable->pArr[face].idx;
 	I32 i = 0;
 	do {
 		PIX_ERR_ASSERT("", idx < pArr->count && i < pArr->count);
@@ -804,7 +804,7 @@ StucIdxRedir *getBuf(const StucSplitIdxTable *pFaceTable, StucIdxRedirArr *pArr,
 	} while(++i, pId->redir);
 	if (i > STUC_IDX_REDIR_THRES) {
 		I32 finalIdx = idx;
-		idx = pFaceTable[face].idx;
+		idx = pFaceTable->pArr[face].idx;
 		do {
 			pId = pArr->pArr + idx;
 			idx = pId->idx;
@@ -826,20 +826,35 @@ bool borderLinkAdd(StucBorderNode *pNodeA, StucBorderNode *pNodeB, bool next) {
 */
 
 static
+I32 getEdgeIslandSingle(
+	StucSplitMem *pMem,
+	const StucBorderNode *pEdge,
+	I32 side
+) {
+	FaceCorner corner = pEdge->corners[side];
+	if (corner.face == -1) {
+		return -1;
+	}
+	else {
+		I32 face = getBuf(&pMem->faceTable, &pMem->redirArr, corner.face)->idx;
+		return pMem->faceBuf.pArr[face].island;
+	}
+}
+
+static
 void getEdgeIslands(
-	const StucSplitMem *pMem,
+	StucSplitMem *pMem,
 	const StucBorderNode *pEdge,
 	I32 *pIslands
 ) {
-	I32 face = getBuf(&pMem->faceTable, &pMem->redirArr, pEdge->corners[0].face)->idx;
-	pIslands[0] = pMem->faceBuf.pArr[face].island;
-	face = getBuf(&pMem->faceTable, &pMem->redirArr, pEdge->corners[1].face)->idx;
-	pIslands[1] = pMem->faceBuf.pArr[face].island;
+	pIslands[0] = getEdgeIslandSingle(pMem, pEdge, 0);
+	pIslands[1] = getEdgeIslandSingle(pMem, pEdge, 1);
+	PIX_ERR_ASSERT("floating edge", pIslands[0] != -1 || pIslands[1] != -1);
 }
 
 static
 bool isEdgeIntern(
-	const StucSplitMem *pMem,
+	StucSplitMem *pMem,
 	StucBorderNode *pEdge,
 	I32 *pIslands
 ) {
@@ -864,10 +879,15 @@ bool seenThisEdge(const StucBorderNode *pEdge, I32 island) {
 }
 
 static
-void markEdgeSeen(StucBorderNode *pEdge, I32 island) {
+void markEdgeSeen(StucBorderNode *pEdge, FaceCorner corner, I32 island) {
 	PIX_ERR_ASSERT("", !pEdge->seen[0].valid || !pEdge->seen[1].valid);
-	StucSplitIdxTable *pSeen = pEdge->seen[0].valid ? pEdge->seen + 1 : pEdge->seen;
-	*pSeen = (StucSplitIdxTable){.idx = island, .valid = true};
+	bool side = corner.face == pEdge->corners[1].face;
+	PIX_ERR_ASSERT(
+		"",
+		pEdge->corners[side].face == corner.face &&
+		pEdge->corners[0].face != pEdge->corners[1].face
+	);
+	pEdge->seen[side] = (StucSplitIdxTable){.idx = island, .valid = true};
 }
 
 static
@@ -877,8 +897,7 @@ void stucBorderBbCmp(
 	I32 corner,
 	I32 border
 ) {
-	I32 vert = pMesh->fpVert(pMesh->pUserData, corner);
-	PixtyV2_F32 pos = pMesh->fpPos(pMesh->pUserData, vert);
+	PixtyV2_F32 pos = pMesh->fpPos(pMesh->pUserData, corner);
 	StucBorderBb old = *pBb;
 	pBb->min.d[0] = pos.d[0] < pBb->min.d[0] ? pos.d[0] : pBb->min.d[0];
 	pBb->min.d[1] = pos.d[1] < pBb->min.d[1] ? pos.d[1] : pBb->min.d[1];
@@ -901,8 +920,9 @@ StucErr walkAndAddBorder(
 ) {
 	StucErr err = PIX_ERR_SUCCESS;
 	I32 islandIdx = pIslandIdx[idx];
+	PIX_ERR_ASSERT("", islandIdx >= 0);
 	if (seenThisEdge(pStart, islandIdx)) {
-		return;
+		return err;
 	}
 	StucBorderNode *pNode = pStart;
 	I32 borderIdx = 0;
@@ -913,7 +933,7 @@ StucErr walkAndAddBorder(
 	I32 edge = pMesh->fpEdge(pMesh->pUserData, corner);
 	do {
 		PIX_ERR_ASSERT("", !seenThisEdge(pNode, islandIdx));
-		markEdgeSeen(pNode, islandIdx);
+		markEdgeSeen(pNode, corner, islandIdx);
 		pIslands->fpBorderAddEdge(
 			pAlloc,
 			pIslands->pUserData,
@@ -940,6 +960,7 @@ StucErr walkAndAddBorder(
 		do {
 			corner = pMesh->fpAdjCorner(pMesh->pUserData, corner);
 			face = pMesh->fpFaceRange(pMesh->pUserData, corner.face);
+			corner.corner = (corner.corner + 1) % (face.end - face.start);
 			edge = pMesh->fpEdge(pMesh->pUserData, corner);
 			pNode = pMem->edgeTable.pArr[edge].valid ?
 				pMem->edges.pArr + pMem->edgeTable.pArr[edge].idx : NULL;
@@ -951,9 +972,13 @@ StucErr walkAndAddBorder(
 static
 void edgeTableAdd(const PixalcFPtrs *pAlloc, StucSplitIdxTableArr *pTable, I32 edge, I32 idx) {
 	I32 oldSize = pTable->size;
-	PIXALC_DYN_ARR_RESIZE(StucSplitIdxTable, pAlloc, pTable, edge);
+	PIXALC_DYN_ARR_RESIZE(StucSplitIdxTable, pAlloc, pTable, edge + 1);
 	if (oldSize < edge) {
-		memset(pTable->pArr + oldSize, 0, sizeof(StucSplitIdxTable) * (edge - oldSize));
+		memset(
+			pTable->pArr + oldSize,
+			0,
+			sizeof(StucSplitIdxTable) * (pTable->size - oldSize)
+		);
 	}
 	pTable->pArr[edge] = (StucSplitIdxTable){.idx = idx, .valid = true};
 }
@@ -983,22 +1008,29 @@ StucErr findAdjForCorner(
 		if (faces[1] != -1 && !pMem->faceTable.pArr[faces[1]].valid) {
 			islandIdxInit(pAlloc, &pMem->faceTable, &pMem->redirArr, faces[1]);
 		}
-		StucBorderNode *pNode = stucBorderNodeInit(pAlloc, &pMem->edges, &corners);
-		edgeTableAdd(pAlloc, &pMem->edgeTable, edge, pNode->idx);
+		if (edge >= pMem->edgeTable.size || !pMem->edgeTable.pArr[edge].valid) {
+			StucBorderNode *pNode = stucBorderNodeInit(pAlloc, &pMem->edges, &corners);
+			edgeTableAdd(pAlloc, &pMem->edgeTable, edge, pNode->idx);
+		}
 		return err;
 	}
 	bool joinTo;
 	if (!pMem->faceTable.pArr[faces[0]].valid && !pMem->faceTable.pArr[faces[1]].valid) {
 		joinTo = 0;
-		islandIdxInit(pAlloc, &pMem->faceTable, &pMem->redirArr, faces[0]);
+		islandIdxInit(pAlloc, &pMem->faceTable, &pMem->redirArr, faces[joinTo]);
 	}
 	else {
 		joinTo = pMem->faceTable.pArr[faces[1]].valid;
 	}
+	if (!pMem->faceTable.pArr[faces[!joinTo]].valid) {
+		islandIdxInit(pAlloc, &pMem->faceTable, &pMem->redirArr, faces[!joinTo]);
+	}
 	StucIdxRedir *pIdTo = getBuf(&pMem->faceTable, &pMem->redirArr, faces[joinTo]);
 	StucIdxRedir *pIdFrom = getBuf(&pMem->faceTable, &pMem->redirArr, faces[!joinTo]);
-	pIdFrom->idx = pIdTo->idx;
-	pIdFrom->redir = true;
+	if (pIdTo != pIdFrom) {
+		pIdFrom->idx = pIdTo->idx;
+		pIdFrom->redir = true;
+	}
 	return err;
 }
 
@@ -1042,7 +1074,17 @@ StucErr stucSplitToIslands(
 		}
 	}
 	PIX_ERR_THROW_IFNOT_COND(err, pMem->redirArr.count, "failed to split mesh", 0);
-	PIXALC_DYN_ARR_RESIZE(FaceBuf, pAlloc, &pMem->faceBuf, pMem->redirArr.count);
+	{
+		I32 oldSize = pMem->faceBuf.size;
+		PIXALC_DYN_ARR_RESIZE(FaceBuf, pAlloc, &pMem->faceBuf, pMem->redirArr.count);
+		if (pMem->faceBuf.size > oldSize) {
+			memset(
+				pMem->faceBuf.pArr + oldSize,
+				0,
+				sizeof(FaceBuf) * (pMem->faceBuf.size - oldSize)
+			);
+		}
+	}
 	for (I32 i = 0; i < pMem->redirArr.count; ++i) {
 		pMem->faceBuf.pArr[i].faces.count = 0;
 	}
@@ -1095,10 +1137,11 @@ StucErr stucSplitToIslands(
 		if (isEdgeIntern(pMem, pStart, islands)) {
 			continue;
 		}
-		for (I32 i = 0; i < 2; ++i) {
-			FaceCorner corner = pStart->corners[i];
-			err =
-				walkAndAddBorder(pAlloc, pMem, pMesh, pIslands, pStart, islands, i);
+		for (I32 j = 0; j < 2; ++j) {
+			if (islands[j] == -1) {
+				continue;
+			}
+			err = walkAndAddBorder(pAlloc, pMem, pMesh, pIslands, pStart, islands, j);
 			PIX_ERR_THROW_IFNOT(err, "", 0);
 		}
 	}
@@ -1109,7 +1152,7 @@ StucErr stucSplitToIslands(
 				pIslands->pUserData,
 				i,
 				pMem->bb.pArr[i].border,
-				&pMem->bb
+				&(ClutreBb){.min = pMem->bb.pArr[i].min, .max = pMem->bb.pArr[i].max}
 			);
 		}
 	}
