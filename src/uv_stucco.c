@@ -1343,10 +1343,12 @@ StucErr clustForIsland(void *pArgsRaw) {
 	IslandClustArr clustArr = {0};
 	for (I32 i = 0; i < rangeSize; ++i) {
 		PIX_ERR_ASSERT("", i < pBasic->pInIslands->count);
-		const StucInIsland *pIsland = pBasic->pInIslands->pArr + i;
+		const StucInIsland *pIsland =
+			pBasic->pInIslands->pArr + pArgs->core.range.start + i;
 		const Border *pBorder = pIsland->core.borders.pArr + pIsland->core.borders.outer;
+		BorderInfo borderInfo = {.pMesh = pBasic->pInMesh, .pBorder = pBorder};
 		ClutreFace clustFace = {
-			.pUserData = pBorder,
+			.pUserData = &borderInfo,
 			.fpPos = stucBorderPos,
 			.size = pBorder->arr.count
 		};
@@ -1378,7 +1380,7 @@ StucErr clustForIsland(void *pArgsRaw) {
 		clustArrInfo.fpAdd = stucIslandClustAdd;
 		err = clutreSampleForFace(
 			&pBasic->pMap->clustTree,
-			NULL,
+			&clustArr.start,
 			&clustFace,
 			&clustArrInfo,
 			false
