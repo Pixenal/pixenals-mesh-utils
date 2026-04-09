@@ -1434,6 +1434,12 @@ StucErr clustForIsland(void *pArgsRaw) {
 			stucAddMapFaceToBufMesh
 		);
 		PIX_ERR_RETURN_IFNOT(err, "");
+		if (pInPieceArr->pArr) {
+			pInPieceArr->pArr->pList = NULL;
+		}
+		if (pInPieceClipArr->pArr) {
+			pInPieceClipArr->pArr->pList = NULL;
+		}
 	}
 	PIX_ERR_CATCH(0, err, ;);
 	if (clustArr.start.arr.pArr) {
@@ -1471,6 +1477,57 @@ I32 inPieceArrMeshCount(const InPieceArr *pArr) {
 		pArr = pArr->pNext;
 	} while(pArr);
 	return count;
+}
+
+static collapseInPieceArr(
+	const PixalcFPtrs *pAlloc,
+	InPieceArr *pDest,
+	InPieceArr *pSrcStart
+) {
+	InPieceArr *pSrc = pSrcStart;
+	I32 count = pDest->count;
+	I32 bufMeshCount = pDest->bufMeshes.count;
+	do {
+		if (pSrc == pDest) {
+			continue;
+		}
+		count += pSrc->count;
+		bufMeshCount += pSrc->bufMeshes.count;
+	} while((pSrc = pSrc->pNext));
+	if (count > pDest->count) {
+		PIXALC_DYN_ARR_RESIZE(InPiece, pAlloc, pDest, count);
+	}
+	if (bufMeshCount > pDest->bufMeshes.count) {
+		PIXALC_DYN_ARR_RESIZE(BufMesh, pAlloc, &pDest->bufMeshes, bufMeshCount);
+	}
+	pSrc = pSrcStart;
+	do {
+		if (pSrc == pDest) {
+			continue;
+		}
+		if (pSrc->count) {
+			memcpy(
+				pDest->pArr + pDest->count,
+				pSrc->pArr,
+				pSrc->count * sizeof(InPiece)
+			);
+			pDest->count += pSrc->count;
+		}
+		if (pSrc->bufMeshes.count) {
+			memcpy(
+				pDest->bufMeshes.pArr + pDest->bufMeshes.count,
+				pSrc->bufMeshes.pArr,
+				pSrc->bufMeshes.count * sizeof(BufMesh)
+			);
+			pDest->bufMeshes.count += pSrc->bufMeshes.count;
+		}
+		if (pSrc->pArr) {
+			pAlloc->fpFree(pSrc->pArr);
+		}
+		if (pSrc->bufMeshes.pArr) {
+			pAlloc->fpFree(pSrc->bufMeshes.pArr);
+		}
+	} while((pSrc = pSrc->pNext));
 }
 
 static
@@ -1538,14 +1595,28 @@ StucErr mapToMeshInternal(
 	if (empty) {
 		return err;
 	}
-	for (I32 i = 1; i < clustForIslandJobCount; ++i) {
-		InPieceArr *pArr = clustForIslandJobArgs[i - 1].pInPieceArr;
+	InPieceArr *pInPieces = clustForIslandJobArgs[0].pInPieceArr;
+	InPieceArr *pInPiecesClip = clustForIslandJobArgs[0].pInPieceClipArr;
+	for (I32 i = 0; i < clustForIslandJobCount; ++i) {
+		collapseInPieceArr(
+			&pCtx->alloc,
+			pInPieces,
+			clustForIslandJobArgs[i].pInPieceArr
+		);
+		collapseInPieceArr(
+			&pCtx->alloc,
+			pInPiecesClip,
+			clustForIslandJobArgs[i].pInPieceClipArr
+		);
+		if (i) {
+			pCtx->alloc.fpFree(clustForIslandJobArgs[i].pInPieceMem);
+		}
+		/*
 		inPieceArrLast(pArr)->pNext = clustForIslandJobArgs[i].pInPieceArr;
 		pArr = clustForIslandJobArgs[i - 1].pInPieceClipArr;
 		inPieceArrLast(pArr)->pNext = clustForIslandJobArgs[i].pInPieceClipArr;
+		*/
 	}
-	InPieceArr *pInPieces = clustForIslandJobArgs[0].pInPieceArr;
-	InPieceArr *pInPiecesClip = clustForIslandJobArgs[0].pInPieceClipArr;
 	//printf("B\n");
 #if false
 	BufMeshArr bufMeshes = {0};
@@ -1573,6 +1644,9 @@ StucErr mapToMeshInternal(
 	stucMergeVerts(&basic, pInPiecesClip, true, &mergeTable);
 	//printf("E\n");
 
+	//TODO implement vert snapping
+	//(also func doesn't currently account for InPieceArr->pNext)
+	/*
 	I32 snappedVerts = 0;
 	err = stucSnapIntersectVerts(
 		&basic,
@@ -1583,8 +1657,9 @@ StucErr mapToMeshInternal(
 	);
 	PIX_ERR_RETURN_IFNOT(err, "");
 	//printf("F\n");
+	*/
 
-	stucInitOutMesh(&basic, &mergeTable, snappedVerts);
+	stucInitOutMesh(&basic, &mergeTable/*, snappedVerts*/);
 	stucAddVertsToOutMesh(&basic, &mergeTable, 0);
 	stucAddVertsToOutMesh(&basic, &mergeTable, 1);//intersect verts
 	BufOutRangeTable bufOutTable = {
@@ -1691,8 +1766,8 @@ cleanUp:
 	}
 #endif
 	pixuctHTableDestroy(&mergeTable);
-	for (I32 i = 0; clustForIslandJobCount; ++i) {
-		ClustForIslandJobArgs *pArgs = clustForIslandJobArgs + i;
+	{
+		ClustForIslandJobArgs *pArgs = clustForIslandJobArgs;
 		if (pArgs->pInPieceMem) {
 			I32 rangeSize = pArgs->core.range.end - pArgs->core.range.start;
 			for (I32 j = 0; j < rangeSize; ++j) {
@@ -2194,7 +2269,8 @@ EdgeCorners getEdgeCorners(const void *pMeshRaw, I32 edge) {
 
 static
 bool splitPredicate(const void *pMeshRaw, I32 edge) {
-	return stucCouldInEdgeIntersectMapFace(pMeshRaw, edge);
+	I32 ret = stucCouldInEdgeIntersectMapFace(pMeshRaw, edge);
+	return ret == 2 ? false : ret;
 }
 
 static

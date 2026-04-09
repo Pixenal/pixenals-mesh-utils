@@ -975,7 +975,7 @@ static
 void edgeTableAdd(const PixalcFPtrs *pAlloc, StucSplitIdxTableArr *pTable, I32 edge, I32 idx) {
 	I32 oldSize = pTable->size;
 	PIXALC_DYN_ARR_RESIZE(StucSplitIdxTable, pAlloc, pTable, edge + 1);
-	if (oldSize < edge) {
+	if (oldSize <= edge) {
 		memset(
 			pTable->pArr + oldSize,
 			0,
