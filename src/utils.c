@@ -898,12 +898,11 @@ void stucBorderBbCmp(
 	I32 border
 ) {
 	PixtyV2_F32 pos = pMesh->fpPos(pMesh->pUserData, corner);
-	StucBorderBb old = *pBb;
 	pBb->min.d[0] = pos.d[0] < pBb->min.d[0] ? pos.d[0] : pBb->min.d[0];
 	pBb->min.d[1] = pos.d[1] < pBb->min.d[1] ? pos.d[1] : pBb->min.d[1];
 	pBb->max.d[0] = pos.d[0] > pBb->max.d[0] ? pos.d[0] : pBb->max.d[0];
 	pBb->max.d[1] = pos.d[1] > pBb->max.d[1] ? pos.d[1] : pBb->max.d[1];
-	if (!memcmp(&old, pBb, sizeof(StucBorderBb))) {
+	if (pBb->border == -1) {
 		pBb->border = border;
 	}
 }

@@ -1306,8 +1306,8 @@ PixErr stucIslandClustAddStart(
 		tile.d[1] > (I32)INT16_MIN && tile.d[1] < (I32)INT16_MAX
 	);
 	V2_I32 size = {
-		pArr->start.end.d[0] - pArr->start.start.d[0],
-		pArr->start.end.d[1] - pArr->start.start.d[1]
+		pArr->start.end.d[0] - pArr->start.start.d[0] + 1,
+		pArr->start.end.d[1] - pArr->start.start.d[1] + 1
 	};
 	V2_I32 tileNorm = {
 		tile.d[0] - pArr->start.start.d[0],
@@ -1362,17 +1362,25 @@ StucErr clustForIsland(void *pArgsRaw) {
 		clustArr.tiles.count = 0;
 		clustArr.pIsland = NULL;
 		clustArr.start.start = (V2_I32){
-			(I32)pIsland->bb.min.d[0],
-			(I32)pIsland->bb.min.d[1]
+			(I32)floorf(pIsland->bb.min.d[0]),
+			(I32)floorf(pIsland->bb.min.d[1])
 		};
 		clustArr.start.end = (V2_I32){
-			(I32)pIsland->bb.max.d[0] + 1,
-			(I32)pIsland->bb.max.d[1] + 1
+			(I32)floorf(pIsland->bb.max.d[0] + 1),
+			(I32)floorf(pIsland->bb.max.d[1] + 1)
 		};
-		I32 arrSize =
-			clustArr.start.end.d[0] - clustArr.start.start.d[0] *
-			clustArr.start.end.d[1] - clustArr.start.start.d[1];
-		PIXALC_DYN_ARR_RESIZE(ClutreValidIdx, pAlloc, &clustArr.start.arr, arrSize);
+		I32 arrSize = clutreStartArrSize(&clustArr.start);
+		{
+			I32 oldSize = clustArr.start.arr.size;
+			PIXALC_DYN_ARR_RESIZE(ClutreValidIdx, pAlloc, &clustArr.start.arr, arrSize);
+			if (oldSize < clustArr.start.arr.size) {
+				memset(
+					clustArr.start.arr.pArr + oldSize,
+					0,
+					sizeof(ClutreValidIdx) * (clustArr.start.arr.size - oldSize)
+				);
+			}
+		}
 		//TODO rename structs/ vars like this access or interface or something
 		ClutreArr clustArrInfo = {
 			.pUserData = &clustArr,
@@ -1665,7 +1673,7 @@ StucErr mapToMeshInternal(
 	BufOutRangeTable bufOutTable = {
 		.size = inPieceArrMeshCount(pInPieces) + inPieceArrMeshCount(pInPiecesClip),
 	};
-	bufOutTable.pArr = pCtx->alloc.fpCalloc(bufOutTable.size, sizeof(BufOutRange));
+	bufOutTable.pArr = pCtx->alloc.fpMalloc(bufOutTable.size * sizeof(BufOutRange));
 	OutBufIdxArr outBufIdxArr = {0};
 	stucAddFacesAndCornersToOutMesh(
 		&basic,
@@ -1770,9 +1778,8 @@ cleanUp:
 		ClustForIslandJobArgs *pArgs = clustForIslandJobArgs;
 		if (pArgs->pInPieceMem) {
 			I32 rangeSize = pArgs->core.range.end - pArgs->core.range.start;
-			for (I32 j = 0; j < rangeSize; ++j) {
-				inPieceArrDestroy(pCtx, pArgs->pInPieceMem + j);
-			}
+			inPieceArrDestroy(pCtx, pInPieces);
+			inPieceArrDestroy(pCtx, pInPiecesClip);
 			pCtx->alloc.fpFree(pArgs->pInPieceMem);
 		}
 	}
@@ -2270,7 +2277,8 @@ EdgeCorners getEdgeCorners(const void *pMeshRaw, I32 edge) {
 static
 bool splitPredicate(const void *pMeshRaw, I32 edge) {
 	I32 ret = stucCouldInEdgeIntersectMapFace(pMeshRaw, edge);
-	return ret == 2 ? false : ret;
+	//return ret == 2 ? false : ret;
+	return ret;
 }
 
 static
