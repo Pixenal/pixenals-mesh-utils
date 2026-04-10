@@ -956,7 +956,9 @@ StucErr walkAndAddBorder(
 			pMesh->fpAdjCorner(pMesh->pUserData, corner).face == -1
 		) {
 			pNode = pMem->edges.pArr + pMem->edgeTable.pArr[edge].idx;
-			continue;
+			if (!isEdgeIntern(pMem, pNode, NULL)) {
+				continue;
+			}
 		}
 		do {
 			corner = pMesh->fpAdjCorner(pMesh->pUserData, corner);

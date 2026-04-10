@@ -1493,18 +1493,20 @@ static collapseInPieceArr(
 	InPieceArr *pSrcStart
 ) {
 	InPieceArr *pSrc = pSrcStart;
-	I32 count = pDest->count;
+	//I32 count = pDest->count;
 	I32 bufMeshCount = pDest->bufMeshes.count;
 	do {
 		if (pSrc == pDest) {
 			continue;
 		}
-		count += pSrc->count;
+		//count += pSrc->count;
 		bufMeshCount += pSrc->bufMeshes.count;
 	} while((pSrc = pSrc->pNext));
+	/*
 	if (count > pDest->count) {
 		PIXALC_DYN_ARR_RESIZE(InPiece, pAlloc, pDest, count);
 	}
+	*/
 	if (bufMeshCount > pDest->bufMeshes.count) {
 		PIXALC_DYN_ARR_RESIZE(BufMesh, pAlloc, &pDest->bufMeshes, bufMeshCount);
 	}
@@ -1513,6 +1515,7 @@ static collapseInPieceArr(
 		if (pSrc == pDest) {
 			continue;
 		}
+		/*
 		if (pSrc->count) {
 			memcpy(
 				pDest->pArr + pDest->count,
@@ -1521,6 +1524,7 @@ static collapseInPieceArr(
 			);
 			pDest->count += pSrc->count;
 		}
+		*/
 		if (pSrc->bufMeshes.count) {
 			memcpy(
 				pDest->bufMeshes.pArr + pDest->bufMeshes.count,
@@ -1625,6 +1629,9 @@ StucErr mapToMeshInternal(
 		inPieceArrLast(pArr)->pNext = clustForIslandJobArgs[i].pInPieceClipArr;
 		*/
 	}
+	//TODO free inpieces in island job
+	pCtx->alloc.fpFree(pInPieces->pArr);
+	pInPieces->pArr = NULL;
 	//printf("B\n");
 #if false
 	BufMeshArr bufMeshes = {0};
