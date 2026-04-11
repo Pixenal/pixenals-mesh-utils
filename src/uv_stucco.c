@@ -2667,6 +2667,19 @@ StucErr islandSplitToSub(void *pArgsRaw) {
 	return err;
 }
 
+typedef struct BorderMesh {
+	const BorderEdgeArr *pBorder;
+	const Mesh *pMesh;
+} BorderMesh;
+
+static
+V2_F32 borderPosGet(const void *pArgsRaw, const FaceRange *border, I32 idx) {
+	const BorderMesh *pArgs = pArgsRaw;
+	FaceCorner corner = pArgs->pBorder->pArr[idx].corner;
+	I32 faceStart = pArgs->pMesh->core.pFaces[corner.face];
+	return pArgs->pMesh->pUvs[faceStart + corner.corner];
+}
+
 static
 StucErr splitInMeshToIslands(
 	StucContext pCtx,
@@ -2703,6 +2716,15 @@ StucErr splitInMeshToIslands(
 	);
 	stucSplitMemDestroy(&pCtx->alloc, &splitMem);
 	PIX_ERR_THROW_IFNOT(err, "", 0);
+	for (I32 i = 0; i < pIslands->count; ++i) {
+		I32 outer = pIslands->pArr[i].core.borders.outer;
+		const BorderEdgeArr *pBorder = &pIslands->pArr[i].core.borders.pArr[outer].arr;
+		pIslands->pArr[i].wind = stucCalcFaceWind(
+			&(FaceRange){.size = pBorder->count, .start = 0, .end = pBorder->count},
+			&(BorderMesh){.pBorder = pBorder, .pMesh = pMeshIn},
+			borderPosGet
+		);
+	}
 	pIslands->pFaceTable = pCtx->alloc.fpMalloc(sizeof(I32) * pMeshIn->core.faceCount);
 	for (I32 i = 0; i < pMeshIn->core.faceCount; ++i) {
 		I32 face = pIslands->pFaces[i];

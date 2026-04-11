@@ -154,31 +154,36 @@ V3_F32 stucGetVertPos(const Mesh *pMesh, const FaceRange *pFace, I32 corner) {
 	return pMesh->pPos[pMesh->core.pCorners[pFace->start + corner]];
 }
 static inline
-V2_F32 stucGetVertPosAsV2(const Mesh *pMesh, const FaceRange *pFace, I32 corner) {
+V2_F32 stucGetVertPosAsV2(const void *pMeshRaw, const FaceRange *pFace, I32 corner) {
 	PIX_ERR_ASSERT("", corner >= 0 && corner < pFace->size);
+	const Mesh *pMesh = pMeshRaw;
 	return *(V2_F32 *)&pMesh->pPos[pMesh->core.pCorners[pFace->start + corner]];
 }
 static inline
-V2_F32 stucVertPosXy(const Mesh *pMesh, const FaceRange *pFace, I32 corner) {
+V2_F32 stucVertPosXy(const void *pMeshRaw, const FaceRange *pFace, I32 corner) {
 	PIX_ERR_ASSERT("", corner >= 0 && corner < pFace->size);
+	const Mesh *pMesh = pMeshRaw;
 	V3_F32 pos = pMesh->pPos[pMesh->core.pCorners[pFace->start + corner]];
 	return (V2_F32){pos.d[0], pos.d[1]};
 }
 static inline
-V2_F32 stucVertPosXz(const Mesh *pMesh, const FaceRange *pFace, I32 corner) {
+V2_F32 stucVertPosXz(const void *pMeshRaw, const FaceRange *pFace, I32 corner) {
 	PIX_ERR_ASSERT("", corner >= 0 && corner < pFace->size);
+	const Mesh *pMesh = pMeshRaw;
 	V3_F32 pos = pMesh->pPos[pMesh->core.pCorners[pFace->start + corner]];
 	return (V2_F32){pos.d[0], pos.d[2]};
 }
 static inline
-V2_F32 stucVertPosYz(const Mesh *pMesh, const FaceRange *pFace, I32 corner) {
+V2_F32 stucVertPosYz(const void *pMeshRaw, const FaceRange *pFace, I32 corner) {
 	PIX_ERR_ASSERT("", corner >= 0 && corner < pFace->size);
+	const Mesh *pMesh = pMeshRaw;
 	V3_F32 pos = pMesh->pPos[pMesh->core.pCorners[pFace->start + corner]];
 	return (V2_F32){pos.d[1], pos.d[2]};
 }
 static inline
-V2_F32 stucGetUvPos(const Mesh *pMesh, const FaceRange *pFace, I32 corner) {
+V2_F32 stucGetUvPos(const void *pMeshRaw, const FaceRange *pFace, I32 corner) {
 	PIX_ERR_ASSERT("", corner >= 0 && corner < pFace->size);
+	const Mesh *pMesh = pMeshRaw;
 	return pMesh->pUvs[pFace->start + corner];
 }
 static inline

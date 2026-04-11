@@ -321,8 +321,8 @@ bool isMarkedSkip(I32Arr *pSkip, I32 idx) {
 STUC_FORCE_INLINE
 I32 stucGetNonDegenBoundCorner(
 	const FaceRange *pFace,
-	const Mesh *pMesh,
-	V2_F32 (* fpGetPoint) (const Mesh *, const FaceRange *, I32),
+	const void *pMesh,
+	V2_F32 (* fpGetPoint) (const void *, const FaceRange *, I32),
 	bool useMin,
 	I32Arr *pExternSkip,
 	F32 *pDet
@@ -388,8 +388,8 @@ I32 stucGetNonDegenBoundCorner(
 STUC_FORCE_INLINE
 I32 stucCalcFaceWind(
 	const FaceRange *pFace,
-	const Mesh *pMesh,
-	V2_F32 (* fpGetPoint) (const Mesh *, const FaceRange *, I32)
+	const void *pMesh,
+	V2_F32 (* fpGetPoint) (const void *, const FaceRange *, I32)
 ) {
 	F32 det = .0f;
 	I32 corner = stucGetNonDegenBoundCorner(pFace, pMesh, fpGetPoint, true, NULL, &det);
@@ -498,7 +498,7 @@ V3_F32 stucCalcFaceNormal(
 	I32Arr skip = {.pArr = skipArr};
 	AxisBounds bounds[3] = {0};
 	I32 axis = axisBoundsMake(pFace, pMesh, fpGetPoint, NULL, bounds);
-	V2_F32 (*fpPos)(const Mesh *, const FaceRange *, I32) =
+	V2_F32 (*fpPos)(const void *, const FaceRange *, I32) =
 		axis == 2 ? stucVertPosXy : axis ? stucVertPosXz : stucVertPosYz;
 	do {
 		I32 minIdx = stucGetNonDegenBoundCorner(pFace, pMesh, fpPos, true, &skip, NULL);
