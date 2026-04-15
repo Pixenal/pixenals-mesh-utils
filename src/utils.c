@@ -1003,7 +1003,7 @@ StucErr findAdjForCorner(
 	EdgeCorners corners = pMesh->fpEdgeCorners(pMesh->pUserData, edge);
 	I32 faces[2] = {corners.corners[0].face, corners.corners[1].face};
 	bool borderEdge = faces[0] == -1 || faces[1] == -1;
-	if (borderEdge || fpSplitPredicate(pMesh->pUserData, edge)) {
+	if (borderEdge || fpSplitPredicate && fpSplitPredicate(pMesh->pUserData, edge)) {
 		++*pSplitTotal;
 		if (faces[0] != -1 && !pMem->faceTable.pArr[faces[0]].valid) {
 			islandIdxInit(pAlloc, &pMem->faceTable, &pMem->redirArr, faces[0]);

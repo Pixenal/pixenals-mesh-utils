@@ -19,6 +19,9 @@ SPDX-License-Identifier: Apache-2.0
 #include <interp_and_xform.h>
 #include <merge_and_snap.h>
 
+//TODO add this as an option in ui?
+#define STUC_CLUTRE_MIN_FACES 12
+
 static
 void setDefaultStageReport(StucContext pCtx) {
 	pCtx->stageReport.outOf = 50,
@@ -661,7 +664,7 @@ StucErr stucMapFileLoadIntern(
 			.fpVert = stucClustVert,
 			.fpPos = stucClustPos
 		};
-		err = clutreTreeInit(&pCtx->alloc, &clustMesh, &pMap->clustTree);
+		err = clutreTreeInit(&pCtx->alloc, &clustMesh, &pMap->clustTree, STUC_CLUTRE_MIN_FACES);
 		PIX_ERR_THROW_IFNOT(err, "", 0);
 	}
 
@@ -1324,6 +1327,16 @@ PixErr stucIslandClustAddStart(
 }
 
 static
+bool bufMeshArrIsEmpty(const BufMeshArr *pBufMeshArr) {
+	for (I32 i = 0; i < pBufMeshArr->count; ++i) {
+		if (pBufMeshArr->pArr[i].faces.count) {
+			return false;
+		}
+	}
+	return true;
+}
+
+static
 StucErr clustForIsland(void *pArgsRaw) {
 	StucErr err = PIX_ERR_SUCCESS;
 	ClustForIslandJobArgs *pArgs = pArgsRaw;
@@ -1413,9 +1426,9 @@ StucErr clustForIsland(void *pArgsRaw) {
 			&clustArr,
 			&inPieceArr,
 			&inPieceClipArr,
-			&findEncasedJobCount, pArgs->pFindEncasedJobArgs,
-			&pArgs->empty
+			&findEncasedJobCount, pArgs->pFindEncasedJobArgs
 		);
+		//TODO return early if empty here
 		if (findEncasedJobCount > pArgs->maxJobs) {
 			pArgs->maxJobs = findEncasedJobCount;
 		}
@@ -1444,6 +1457,9 @@ StucErr clustForIsland(void *pArgsRaw) {
 		);
 		PIX_ERR_RETURN_IFNOT(err, "");
 	}
+	pArgs->empty =
+		bufMeshArrIsEmpty(&pArgs->bufMeshArr) &&
+		bufMeshArrIsEmpty(&pArgs->bufMeshClipArr);
 	PIX_ERR_CATCH(0, err, ;);
 	if (clustArr.start.arr.pArr) {
 		pBasic->pCtx->alloc.fpFree(clustArr.start.arr.pArr);
@@ -2195,8 +2211,8 @@ StucErr islandFacesInit(
 ) {
 	StucErr err = PIX_ERR_SUCCESS;
 	StucInIslandArr *pIslands = pIslandsRaw;
-	pIslands->pFaces = pAlloc->fpMalloc(count * sizeof(I32));
-	*ppOut = pIslands->pFaces;
+	PIXALC_DYN_ARR_RESIZE(I32, pAlloc, &pIslands->faces, count);
+	*ppOut = pIslands->faces.pArr;
 	return err;
 }
 
@@ -2432,7 +2448,7 @@ bool isFaceInIsland(const StucInIsland *pIsland, I32 face) {
 static
 PixtyRange subFaceRange(const void *pMeshRaw, I32 faceRaw) {
 	const SubMesh *pMesh = pMeshRaw;
-	I32 face = pMesh->pIslands->pFaces[pMesh->range.start + faceRaw];
+	I32 face = pMesh->pIslands->faces.pArr[pMesh->range.start + faceRaw];
 	PIX_ERR_ASSERT("", face >= 0 && face < pMesh->pMesh->core.faceCount);
 	return (PixtyRange) {
 		.start = pMesh->pMesh->core.pFaces[face],
@@ -2443,7 +2459,7 @@ PixtyRange subFaceRange(const void *pMeshRaw, I32 faceRaw) {
 static
 I32 subGetEdge(const void *pMeshRaw, FaceCorner corner) {
 	const SubMesh *pMesh = pMeshRaw;
-	I32 face = pMesh->pIslands->pFaces[pMesh->range.start + corner.face];
+	I32 face = pMesh->pIslands->faces.pArr[pMesh->range.start + corner.face];
 	return stucGetMeshEdge(
 		&pMesh->pMesh->core,
 		(FaceCorner){.face = face, .corner = corner.corner}
@@ -2496,7 +2512,7 @@ static
 FaceCorner subCallGetAdjCorner(const void *pMeshRaw, FaceCorner corner) {
 	const SubMesh *pMesh = pMeshRaw;
 	FaceCorner adj = {0};
-	I32 face = pMesh->pIslands->pFaces[pMesh->range.start + corner.face];
+	I32 face = pMesh->pIslands->faces.pArr[pMesh->range.start + corner.face];
 	stucGetAdjCorner(
 		pMesh->pMesh,
 		(FaceCorner){.face = face, .corner = corner.corner},
@@ -2625,10 +2641,11 @@ StucErr splitInMeshToIslands(
 	}
 	pIslands->pFaceTable = pCtx->alloc.fpMalloc(sizeof(I32) * pMeshIn->core.faceCount);
 	for (I32 i = 0; i < pMeshIn->core.faceCount; ++i) {
-		I32 face = pIslands->pFaces[i];
+		I32 face = pIslands->faces.pArr[i];
 		PIX_ERR_ASSERT("", face >= 0 && face < pMeshIn->core.faceCount);
 		pIslands->pFaceTable[face] = i;
 	}
+	/*
 	SubIslandJobShared shared = {.pCtx = pCtx, .pInMesh = pMeshIn};
 	SubIslandJobArgs args[PIXTH_MAX_SUB_MAPPING_JOBS] = {0};
 	I32 jobCount = 0;
@@ -2649,6 +2666,7 @@ StucErr splitInMeshToIslands(
 		islandSplitToSub
 	);
 	PIX_ERR_THROW_IFNOT(err, "", 0);
+	*/
 	PIX_ERR_CATCH(0, err, ;);
 	if (pIslands->pFaceTable) {
 		pCtx->alloc.fpFree(pIslands->pFaceTable);
@@ -2659,8 +2677,8 @@ StucErr splitInMeshToIslands(
 
 static
 void stucInIslandsDestroy(StucContext pCtx, StucInIslandArr *pArr) {
-	if (pArr->pFaces) {
-		pCtx->alloc.fpFree(pArr->pFaces);
+	if (pArr->faces.pArr) {
+		pCtx->alloc.fpFree(pArr->faces.pArr);
 	}
 	if (!pArr->pArr) {
 		*pArr = (StucInIslandArr){0};
@@ -2738,7 +2756,7 @@ StucErr mapMapArrToMesh(
 				.fpVert = stucClustVert,
 				.fpPos = stucClustPos
 			};
-			err = clutreTreeInit(&pCtx->alloc, &clustMesh, &squares.clustTree);
+			err = clutreTreeInit(&pCtx->alloc, &clustMesh, &squares.clustTree, STUC_CLUTRE_MIN_FACES);
 			PIX_ERR_THROW_IFNOT(err, "", 0);
 
 			StucMesh squaresOut = { 0 };
