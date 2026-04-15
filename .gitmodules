@@ -1,0 +1,15 @@
+[submodule "extern/pixenals-structs"]
+	path = extern/pixenals-structs
+	url = https://github.com/Pixenal/pixenals-structs.git
+[submodule "extern/pixenals-alloc-utils"]
+	path = extern/pixenals-alloc-utils
+	url = https://github.com/Pixenal/pixenals-alloc-utils.git
+[submodule "extern/pixenals-types"]
+	path = extern/pixenals-types
+	url = https://github.com/Pixenal/pixenals-types.git
+[submodule "extern/pixenals-error-utils"]
+	path = extern/pixenals-error-utils
+	url = https://github.com/Pixenal/pixenals-error-utils.git
+[submodule "extern/pixenals-math-utils"]
+	path = extern/pixenals-math-utils
+	url = https://github.com/Pixenal/pixenals-math-utils.git
