@@ -20,6 +20,11 @@ SPDX-License-Identifier: Apache-2.0
 #endif
 #endif
 
+typedef struct PixmshFaceRange {
+	I32 start;
+	I32 size;
+} PixmshFaceRange;
+
 typedef struct PixmshFaceCorner {
 	int32_t face;
 	int32_t corner;
@@ -31,20 +36,6 @@ typedef struct PixmshBaseTriVerts {
 	float scale[4];
 } PixmshBaseTriVerts;
 
-typedef enum PixmshInsideStatus {
-	STUC_INSIDE_STATUS_NONE,
-	STUC_INSIDE_STATUS_OUTSIDE,
-	STUC_INSIDE_STATUS_INSIDE,
-	STUC_INSIDE_STATUS_ON_LINE,
-	STUC_INSIDE_STATUS_ON_VERT
-} PixmshInsideStatus;
-
-typedef enum PixmshCompare {
-	STUC_COMPARE_LESS,
-	STUC_COMPARE_EQUAL,
-	STUC_COMPARE_GREAT
-} PixmshCompare;
-
 typedef struct PixmshV2Bb {
 	PixtyV2_F32 min;
 	PixtyV2_F32 max;
@@ -52,8 +43,8 @@ typedef struct PixmshV2Bb {
 
 PixmshV2Bb pixmshV2BbGet(
 	const void *pMesh,
-	PixtyV2_F32 (*fpPos)(const void *, PixtyRange, int32_t),
-	PixtyRange face
+	PixtyV2_F32 (*fpPos)(const void *, PixmshFaceRange, int32_t),
+	PixmshFaceRange face
 );
 static inline
 bool pixmshV2BbOverlap(const PixmshV2Bb *pB, const PixmshV2Bb *pA) {
@@ -74,19 +65,12 @@ typedef struct PixmshEar {
 typedef struct PixmshTriangulateState {
 	PixalcLinAlloc earAlloc;
 	PixmshEar *pEarList;
-	const Mesh *pMesh;
-	PixtyV3_F32 (* fpPos)(const void *, PixtyRange, int32_t);
+	const void *pMesh;
+	PixtyV3_F32 (* fpPos)(const void *, PixmshFaceRange, int32_t);
 	int8_t *pRemoved;
-	PixtyRange face;
+	PixmshFaceRange face;
 	PixtyV3_F32 normal;
 } PixmshTriangulateState;
-
-PixmshInsideStatus pixmshIsPointInHalfPlane(
-	PixtyV2_F32 point,
-	PixtyV2_F32 lineA,
-	PixtyV2_F32 halfPlane,
-	bool wind
-);
 
 PIX_FORCE_INLINE
 bool pixmshDoesEarIntersectFace(
@@ -97,8 +81,7 @@ bool pixmshDoesEarIntersectFace(
 ) {
 	PixtyV3_F32 normal = pixmV3F32Normalize(*pTriNormal);
 	float triDistFromOrigin = _(normal V3DOT pTri[0]) * -1.0f;
-	I32 faceSize = pState->face.end - pState->face.start;
-	for (int32_t i = 0; i < faceSize; ++i) {
+	for (int32_t i = 0; i < pState->face.size; ++i) {
 		if (i == pTriIdx[0] || i == pTriIdx[1] || i == pTriIdx[2]) {
 			continue;
 		}
@@ -114,18 +97,16 @@ bool pixmshDoesEarIntersectFace(
 }
 
 static inline
-I32 pixmshGetCornerPrev(I32 corner, PixtyRange face) {
-	I32 faceSize = face.end - face.start;
-	pix_err_assert("", corner >= 0 && corner < faceSize);
-	I32 prev = corner ? corner - 1 : faceSize - 1;
+I32 pixmshGetCornerPrev(I32 corner, PixmshFaceRange face) {
+	PIX_ERR_ASSERT("", corner >= 0 && corner < face.size);
+	I32 prev = corner ? corner - 1 : face.size - 1;
 	return prev;
 }
 
 static inline
-I32 pixmshGetCornerNext(I32 corner, PixtyRange face) {
-	I32 faceSize = face.end - face.start;
-	PIX_ERR_ASSERT("", corner >= 0 && corner < faceSize);
-	I32 next = (corner + 1) % faceSize;
+I32 pixmshGetCornerNext(I32 corner, PixmshFaceRange face) {
+	PIX_ERR_ASSERT("", corner >= 0 && corner < face.size);
+	I32 next = (corner + 1) % face.size;
 	return next;
 }
 
@@ -133,9 +114,9 @@ static inline
 int32_t pixmshGetNextRemaining(
 	const PixmshTriangulateState *pState,
 	int32_t corner,
-	PixtyRange face
+	PixmshFaceRange face
 ) {
-	PIX_ERR_ASSERT("", corner >= 0 && corner < face.end - face.start);
+	PIX_ERR_ASSERT("", corner >= 0 && corner < face.size);
 	int32_t start = corner;
 	while (corner = pixmshGetCornerNext(corner, face), corner != start) {
 		if (!pState->pRemoved[corner]) {
@@ -150,9 +131,9 @@ static inline
 int32_t pixmshGetPrevRemaining(
 	const PixmshTriangulateState *pState,
 	int32_t corner,
-	PixtyRange face
+	PixmshFaceRange face
 ) {
-	PIX_ERR_ASSERT("", corner >= 0 && corner < face.end - face.start);
+	PIX_ERR_ASSERT("", corner >= 0 && corner < face.size);
 	int32_t start = corner;
 	while (corner = pixmshGetCornerPrev(corner, face), corner != start) {
 		if (!pState->pRemoved[corner]) {
@@ -251,7 +232,7 @@ void pixmshRemoveEar(PixmshTriangulateState *pState) {
 }
 
 static inline
-bool pixmshIsMarkedSkip(I32Arr *pSkip, int32_t idx) {
+bool pixmshIsMarkedSkip(PixtyI32Arr *pSkip, int32_t idx) {
 	for (int32_t i = 0; i < pSkip->count; ++i) {
 		if (idx == pSkip->pArr[i]) {
 			return true;
@@ -262,22 +243,21 @@ bool pixmshIsMarkedSkip(I32Arr *pSkip, int32_t idx) {
 
 PIX_FORCE_INLINE
 int32_t pixmshGetNonDegenBoundCorner(
-	const PixtyRange face,
+	const PixmshFaceRange face,
 	const void *pMesh,
-	PixtyV2_F32 (* fpPos) (const void *, const PixtyRange, int32_t),
+	PixtyV2_F32 (* fpPos) (const void *, const PixmshFaceRange, int32_t),
 	bool useMin,
-	I32Arr *pExternSkip,
+	PixtyI32Arr *pExternSkip,
 	float *pDet
 ) {
-	I32 faceSize = face.end - face.start;
-	PIX_ERR_ASSERT("", face.start >= 0 && faceSize >= 3);
+	PIX_ERR_ASSERT("", face.start >= 0 && face.size >= 3);
 	int32_t skipArr[PIXMSH_NGON_MAX_SIZE] = {0};
-	I32Arr skip = {.pArr = skipArr};
+	PixtyI32Arr skip = {.pArr = skipArr};
 	do {
 		int32_t corner = 0;
 		PixtyV2_F32 boundPos = {FLT_MAX, FLT_MAX};
 		boundPos = useMin ? boundPos : _(boundPos V2MULS -1.0f);
-		for (int32_t i = 0; i < faceSize; ++i) {
+		for (int32_t i = 0; i < face.size; ++i) {
 			if (pixmshIsMarkedSkip(&skip, i) ||
 				pExternSkip && pixmshIsMarkedSkip(pExternSkip, i)
 			) {
@@ -305,8 +285,8 @@ int32_t pixmshGetNonDegenBoundCorner(
 			corner = i;
 			boundPos = pos;
 		}
-		int32_t prev = corner == 0 ? faceSize - 1 : corner - 1;
-		int32_t next = (corner + 1) % faceSize;
+		int32_t prev = corner == 0 ? face.size - 1 : corner - 1;
+		int32_t next = (corner + 1) % face.size;
 		PixtyV2_F32 a = fpPos(pMesh, face, prev);
 		PixtyV2_F32 b = fpPos(pMesh, face, corner);
 		PixtyV2_F32 c = fpPos(pMesh, face, next);
@@ -324,7 +304,7 @@ int32_t pixmshGetNonDegenBoundCorner(
 		//abc is degenerate, find another corner
 		skip.pArr[skip.count] = corner;
 		++skip.count;
-	} while(skip.count < faceSize);
+	} while(skip.count < face.size);
 	return -1;
 }
 
@@ -332,9 +312,9 @@ int32_t pixmshGetNonDegenBoundCorner(
 //returns 0 for clockwise, 1 for counterclockwise, & 2 if degenerate
 PIX_FORCE_INLINE
 int32_t pixmshCalcFaceWind(
-	const PixtyRange face,
+	PixmshFaceRange face,
 	const void *pMesh,
-	PixtyV2_F32 (* fpPos) (const void *, const PixtyRange, int32_t)
+	PixtyV2_F32 (* fpPos) (const void *, const PixmshFaceRange, int32_t)
 ) {
 	float det = .0f;
 	int32_t corner = pixmshGetNonDegenBoundCorner(face, pMesh, fpPos, true, NULL, &det);
@@ -344,13 +324,12 @@ int32_t pixmshCalcFaceWind(
 static
 PixtyV3_F32 pixmshGetTriNormal(
 	const void *pMesh,
-	PixtyRange face,
+	PixmshFaceRange face,
 	int32_t corner,
-	PixtyV3_F32 (* fpPos) (const void *, PixtyRange, int32_t)
+	PixtyV3_F32 (* fpPos) (const void *, PixmshFaceRange, int32_t)
 ) {
-	I32 faceSize = face.end - face.start;
-	int32_t prev = corner == 0 ? faceSize - 1 : corner - 1;
-	int32_t next = (corner + 1) % faceSize;
+	int32_t prev = corner == 0 ? face.size - 1 : corner - 1;
+	int32_t next = (corner + 1) % face.size;
 	PixtyV3_F32 a = fpPos(pMesh, face, prev);
 	PixtyV3_F32 b = fpPos(pMesh, face, corner);
 	PixtyV3_F32 c = fpPos(pMesh, face, next);
@@ -386,18 +365,17 @@ void pixmshAxisBoundsCmp(AxisBounds *pBounds, float pos, int32_t idx) {
 //returns the longest axis
 static inline
 int32_t pixmshAxisBoundsMake(
-	PixtyRange face,
+	PixmshFaceRange face,
 	const void *pMesh,
-	PixtyV3_F32 (* fpPos) (const void *, PixtyRange, int32_t),
-	I32Arr *pSkip,
+	PixtyV3_F32 (* fpPos) (const void *, PixmshFaceRange, int32_t),
+	PixtyI32Arr *pSkip,
 	AxisBounds *pBounds
 ) {
 	for (int32_t i = 0; i < 3; ++i) {
 		pBounds[i].max = -FLT_MAX;
 		pBounds[i].min = FLT_MAX;
 	}
-	I32 faceSize = face.end - face.start;
-	for (int32_t i = 0; i < faceSize; ++i) {
+	for (int32_t i = 0; i < face.size; ++i) {
 		if (pSkip && pixmshIsMarkedSkip(pSkip, i)) {
 			continue;
 		}
@@ -423,52 +401,57 @@ void pixmshMarkSkip(PixtyI32Arr *pSkip, int32_t idx) {
 	++pSkip->count;
 }
 
+typedef struct PixmshTriIntf {
+	const void *pMesh;
+	PixtyV3_F32 (* fpPos) (const void *, PixmshFaceRange, int32_t);
+} PixmshTriIntf;
+
 static inline
-PixtyV2_F32 pixmshVertPosXy(const void *pMeshRaw, PixtyRange face, I32 corner) {
-	PIX_ERR_ASSERT("", corner >= 0 && corner < face.end - face.start);
-	PixtyV3_F32 pos = pMesh->pPos[pMesh->core.pCorners[face.start + corner]];
+PixtyV2_F32 pixmshVertPosXy(const PixmshTriIntf *pInterf, PixmshFaceRange face, I32 corner) {
+	PIX_ERR_ASSERT("", corner >= 0 && corner < face.size);
+	PixtyV3_F32 pos = pInterf->fpPos(pInterf->pMesh, face, corner);
 	return (PixtyV2_F32){pos.d[0], pos.d[1]};
 }
 static inline
-PixtyV2_F32 pixmshVertPosXz(const void *pMeshRaw, PixtyRange face, I32 corner) {
-	PIX_ERR_ASSERT("", corner >= 0 && corner < face.end - face.start);
-	PixtyV3_F32 pos = pMesh->pPos[pMesh->core.pCorners[face.start + corner]];
+PixtyV2_F32 pixmshVertPosXz(const PixmshTriIntf *pInterf, PixmshFaceRange face, I32 corner) {
+	PIX_ERR_ASSERT("", corner >= 0 && corner < face.size);
+	PixtyV3_F32 pos = pInterf->fpPos(pInterf->pMesh, face, corner);
 	return (PixtyV2_F32){pos.d[0], pos.d[2]};
 }
 static inline
-PixtyV2_F32 pixmshVertPosYz(const void *pMeshRaw, PixtyRange face, I32 corner) {
-	PIX_ERR_ASSERT("", corner >= 0 && corner < face.end - face.start);
-	PixtyV3_F32 pos = pMesh->pPos[pMesh->core.pCorners[face.start + corner]];
+PixtyV2_F32 pixmshVertPosYz(const PixmshTriIntf *pInterf, PixmshFaceRange face, I32 corner) {
+	PIX_ERR_ASSERT("", corner >= 0 && corner < face.size);
+	PixtyV3_F32 pos = pInterf->fpPos(pInterf->pMesh, face, corner);
 	return (PixtyV2_F32){pos.d[1], pos.d[2]};
 }
 
 static inline
 PixtyV3_F32 pixmshCalcFaceNormal(
-	PixtyRange face,
+	PixmshFaceRange face,
 	const void *pMesh,
-	PixtyV3_F32 (* fpPos) (const void *, PixtyRange, int32_t)
+	PixtyV3_F32 (* fpPos) (const void *, PixmshFaceRange, int32_t)
 ) {
-	I32 faceSize = face.end - face.start;
 	PIX_ERR_ASSERT(
 		"invalid face size",
-		face.start >= 0 && faceSize >= 3 && faceSize <= PIXMSH_NGON_MAX_SIZE
+		face.start >= 0 && face.size >= 3 && face.size <= PIXMSH_NGON_MAX_SIZE
 	);
 	int32_t skipArr[PIXMSH_NGON_MAX_SIZE] = {0};
 	PixtyI32Arr skip = {.pArr = skipArr};
 	AxisBounds bounds[3] = {0};
 	int32_t axis = pixmshAxisBoundsMake(face, pMesh, fpPos, NULL, bounds);
-	PixtyV2_F32 (*fpAxisPos)(const void *, PixtyRange, int32_t) =
+	PixtyV2_F32 (*fpAxisPos)(const void *, PixmshFaceRange, int32_t) =
 		axis == 2 ? pixmshVertPosXy : axis ? pixmshVertPosXz : pixmshVertPosYz;
+	PixmshTriIntf wrap = {.pMesh = pMesh, .fpPos = fpPos};
 	do {
 		int32_t minIdx =
-			pixmshGetNonDegenBoundCorner(face, pMesh, fpAxisPos, true, &skip, NULL);
+			pixmshGetNonDegenBoundCorner(face, &wrap, fpAxisPos, true, &skip, NULL);
 		int32_t maxIdx =
-			pixmshGetNonDegenBoundCorner(face, pMesh, fpPos, false, &skip, NULL);
+			pixmshGetNonDegenBoundCorner(face, &wrap, fpAxisPos, false, &skip, NULL);
 		if (minIdx == -1 || maxIdx == -1) {
 			return (PixtyV3_F32){0};
 		}
-		PixtyV3_F32 minNormal = pixmshGetTriNormal(pMesh, face, minIdx, fpAxisPos);
-		PixtyV3_F32 maxNormal = pixmshGetTriNormal(pMesh, face, maxIdx, fpAxisPos);
+		PixtyV3_F32 minNormal = pixmshGetTriNormal(pMesh, face, minIdx, fpPos);
+		PixtyV3_F32 maxNormal = pixmshGetTriNormal(pMesh, face, maxIdx, fpPos);
 		if (_(minNormal V3DOT maxNormal) <= .0f) {
 			pixmshMarkSkip(&skip, minIdx);
 			pixmshMarkSkip(&skip, maxIdx);
@@ -481,7 +464,7 @@ PixtyV3_F32 pixmshCalcFaceNormal(
 			_(pixmV3F32Normalize(maxNormal) V3ADD pixmV3F32Normalize(minNormal)) V3DIVS
 			2.0f
 		);
-	} while(skip.count < faceSize);
+	} while(skip.count < face.size);
 	return (PixtyV3_F32){0};
 }
 
@@ -489,28 +472,27 @@ PixtyV3_F32 pixmshCalcFaceNormal(
 PIX_FORCE_INLINE
 int32_t pixmshTriangulateFace(
 	const PixalcFPtrs *pAlloc,
-	const PixtyRange face,
+	const PixmshFaceRange face,
 	const void *pMesh,
-	PixtyV3_F32 (* fpPos)(const void *, PixtyRange, int32_t),
+	PixtyV3_F32 (* fpPos)(const void *, PixmshFaceRange, int32_t),
 	uint8_t *pTris
 ) {
 	PIX_ERR_ASSERT("", pTris);
-	I32 faceSize = face.end - face.start;
 	PixmshTriangulateState state = {
 		.pMesh = pMesh,
 		.fpPos = fpPos,
 		.face = face,
-		.pRemoved = pAlloc->fpCalloc(faceSize, 1),
+		.pRemoved = pAlloc->fpCalloc(face.size, 1),
 		.normal = pixmshCalcFaceNormal(face, pMesh, fpPos)
 	};
 	if (_(state.normal V3EQL (PixtyV3_F32){0})) {
 		return 0;
 	}
 
-	pixalcLinAllocInit(pAlloc, &state.earAlloc, sizeof(PixmshEar), faceSize, true);
+	pixalcLinAllocInit(pAlloc, &state.earAlloc, sizeof(PixmshEar), face.size, true);
 
 	//add initial ears
-	for (int32_t i = 0; i < faceSize; ++i) {
+	for (int32_t i = 0; i < face.size; ++i) {
 		pixmshAddEarCandidate(&state, i);
 	}
 	int32_t triCount = 0;
@@ -529,15 +511,75 @@ int32_t pixmshTriangulateFace(
 	}
 	pixalcLinAllocDestroy(&state.earAlloc);
 	pAlloc->fpFree(state.pRemoved);
-	PIX_ERR_ASSERT("", triCount <= faceSize - 2);
+	PIX_ERR_ASSERT("", triCount <= face.size - 2);
 	return triCount;
 }
 
-PixtyM3x3 pixmshBuildFaceTbn(
-	PixtyRange face,
+PIX_FORCE_INLINE
+PixtyV3_F32 pixmshGetBarycentricInTri(
 	const void *pMesh,
-	PixtyV3_F32 (*fpPos)(const void *, PixtyRange, I32),
-	PixtyV2_F32 (*fpUv)(const void *, PixtyRange, I32)
+	PixmshFaceRange face,
+	PixtyV3_F32 (* fpPos)(const void *, PixmshFaceRange, int32_t),
+	const uint8_t *pTriCorners,
+	PixtyV2_F32 vert
+) {
+	PixtyV3_F32 tri[3] = {0};
+	for (int32_t i = 0; i < 3; ++i) {
+		tri[i] = fpPos(pMesh, face, pTriCorners[i]);
+	}
+	return pixmCartesianToBarycentric(
+		tri,
+		&(PixtyV3_F32){.d = {vert.d[0], vert.d[1]}},
+		&(PixtyV3_F32){.d = {.0f, .0f, 1.0f}}
+	);
+}
+
+//Caller must check for nan in return value
+PIX_FORCE_INLINE
+PixtyV3_F32 pixmshGetBarycentricInFace(
+	const void *pMesh,
+	PixmshFaceRange face,
+	PixtyV2_I16 tile,
+	PixtyV3_F32 (* fpPos)(const void *, PixmshFaceRange, int32_t),
+	int8_t *pTriCorners,
+	PixtyV2_F32 vertV2
+) {
+	PIX_ERR_ASSERT("", pixmV2F32IsFinite(vertV2));
+	PIX_ERR_ASSERT("", (face.size == 3 || face.size == 4) && pTriCorners);
+	PixtyV3_F32 vert = {.d = {vertV2.d[0], vertV2.d[1]}};
+	PixtyV3_F32 fTile = {.d = {(F32)tile.d[0], (F32)tile.d[1]}};
+	PixtyV3_F32 triA[3] = {0};
+	for (int32_t i = 0; i < 3; ++i) {
+		triA[i] = _(fpPos(pMesh, face, i) V3SUB fTile);
+	}
+	PixtyV3_F32 up = {.d = {.0f, .0f, 1.0f}};
+	PixtyV3_F32 vertBc = pixmCartesianToBarycentric(triA, &vert, &up);
+	if (face.size == 4 && pixmV3F32IsFinite(vertBc) && vertBc.d[1] < 0) {
+		//base face is a quad, and vert is outside first tri,
+		//so use the second tri
+		
+		PixtyV3_F32 triB[3] = {
+			triA[2],
+			_(fpPos(pMesh, face, 3) V3SUB fTile),
+			triA[0]
+		};
+		vertBc = pixmCartesianToBarycentric(triB, &vert, &up);
+		pTriCorners[0] = 2;
+		pTriCorners[1] = 3;
+	}
+	else {
+		for (int32_t k = 0; k < 3; ++k) {
+			pTriCorners[k] = (int8_t)k;
+		}
+	}
+	return vertBc;
+}
+
+PixtyM3x3 pixmshBuildFaceTbn(
+	PixmshFaceRange face,
+	const void *pMesh,
+	PixtyV3_F32 (*fpPos)(const void *, PixmshFaceRange, int32_t),
+	PixtyV2_F32 (*fpUv)(const void *, PixmshFaceRange, int32_t)
 );
 void pixmshGetTriScale(int32_t size, PixmshBaseTriVerts *pTri);
 
@@ -625,17 +667,17 @@ typedef struct PixmshSplitMem {
 } PixmshSplitMem;
 
 //TODO replace all func ptrs in param lists with typedefs? maybe?
-typedef struct PixmshSplitMesh {
+typedef struct PixmshSplitIntfIn {
 	const void *pUserData;
-	PixtyRange (*fpFaceRange)(const void *, int32_t);
+	PixmshFaceRange (*fpFaceRange)(const void *, int32_t);
 	int32_t (*fpEdge)(const void *, PixmshFaceCorner);
 	PixtyV2_F32 (*fpPos)(const void *, int32_t);
 	PixmshEdgeCorners (*fpEdgeCorners)(const void *, int32_t);
 	PixmshFaceCorner (*fpAdjCorner)(const void *pMeshRaw, PixmshFaceCorner corner);
 	int32_t faceCount;
-} PixmshSplitMesh;
+} PixmshSplitIntfIn;
 
-typedef struct PixmshIslands {
+typedef struct PixmshSplitIntfOut {
 	void *pUserData;
 	PixErr (*fpIslandAdd)(const PixalcFPtrs *, void *, int32_t, int32_t *);
 	PixErr (*fpRangeSet)(void *, int32_t, PixtyRange);
@@ -643,22 +685,14 @@ typedef struct PixmshIslands {
 	PixErr (*fpBorderInit)(const PixalcFPtrs *, void *, int32_t, int32_t *);
 	PixErr (*fpBorderAddEdge)(const PixalcFPtrs *, void *, int32_t, int32_t, int32_t, PixmshFaceCorner, int32_t);
 	PixErr (*fpBorderMarkAsOuter)(void *, int32_t, int32_t, const PixmshV2Bb *);
-} PixmshIslands;
+} PixmshSplitIntfOut;
 
 PixErr pixmshSplitToIslands(
 	const PixalcFPtrs *pAlloc,
 	PixmshSplitMem *pMem,
-	const PixmshSplitMesh *pMesh,
-	PixmshIslands *pIslands,
+	const PixmshSplitIntfIn *pMesh,
+	PixmshSplitIntfOut *pIslands,
 	bool (*fpSplitPredicate)(const void *, int32_t)
 );
-
-//TODO move this out
-static
-PixmshFaceCorner pixmshCallGetAdjCorner(const void *pMeshRaw, PixmshFaceCorner corner) {
-	PixmshFaceCorner adj = {0};
-	pixmshGetAdjCorner(pMeshRaw, corner, &adj);
-	return adj;
-}
 
 void pixmshSplitMemDestroy(const PixalcFPtrs *pAlloc, PixmshSplitMem *pMem);

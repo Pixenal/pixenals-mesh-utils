@@ -20,15 +20,14 @@ typedef int32_t I32;
 
 PixmshV2Bb pixmshV2BbGet(
 	const void *pMesh,
-	PixtyV2_F32 (*fpPos)(const void *, PixtyRange, int32_t),
-	PixtyRange face
+	PixtyV2_F32 (*fpPos)(const void *, PixmshFaceRange, int32_t),
+	PixmshFaceRange face
 ) {
 	PixmshV2Bb bbox = {
 		.min = {.d = {FLT_MAX, FLT_MAX}},
 		.max = {.d = {-FLT_MAX, -FLT_MAX}}
 	};
-	I32 faceSize = face.end - face.start;
-	for (I32 i = 0; i < faceSize; ++i) {
+	for (I32 i = 0; i < face.size; ++i) {
 		PixtyV2_F32 pos = fpPos(pMesh, face, i);
 		if (pos.d[0] < bbox.min.d[0]) {
 			bbox.min.d[0] = pos.d[0];
@@ -50,10 +49,10 @@ PixmshV2Bb pixmshV2BbGet(
 }
 
 PixtyM3x3 pixmshBuildFaceTbn(
-	PixtyRange face,
+	PixmshFaceRange face,
 	const void *pMesh,
-	PixtyV3_F32 (*fpPos)(const void *, PixtyRange, I32),
-	PixtyV2_F32 (*fpUv)(const void *, PixtyRange, I32)
+	PixtyV3_F32 (*fpPos)(const void *, PixmshFaceRange, I32),
+	PixtyV2_F32 (*fpUv)(const void *, PixmshFaceRange, I32)
 ) {
 	I32 corner = face.start;
 	PixtyV2_F32 uv = fpUv(pMesh, face, corner);
@@ -61,7 +60,7 @@ PixtyM3x3 pixmshBuildFaceTbn(
 	I32 next = face.start + 1;
 	PixtyV2_F32 uvNext = fpUv(pMesh, face, next);
 	PixtyV3_F32 vertNext = fpPos(pMesh, face, next);
-	I32 prev = face.end - 1;
+	I32 prev = face.start + face.size - 1;
 	PixtyV2_F32 uvPrev = fpUv(pMesh, face, prev);
 	PixtyV3_F32 vertPrev = fpPos(pMesh, face, prev);
 	//uv space direction vectors,
@@ -96,22 +95,6 @@ void pixmshGetTriScale(I32 size, PixmshBaseTriVerts *pTri) {
 	}
 }
 
-PixmshInsideStatus pixmshIsPointInHalfPlane(
-	PixtyV2_F32 point,
-	PixtyV2_F32 lineA,
-	PixtyV2_F32 halfPlane,
-	bool wind
-) {
-	PixtyV2_F32 dir = _(point V2SUB lineA);
-	F32 dot = _(halfPlane V2DOT dir);
-	if (dot == .0f) {
-		return STUC_INSIDE_STATUS_ON_LINE;
-	}
-	else {
-		return (dot > .0f) ^ wind ? STUC_INSIDE_STATUS_INSIDE : STUC_INSIDE_STATUS_OUTSIDE;
-	}
-}
-
 static
 void islandIdxInit(
 	const PixalcFPtrs *pAlloc,
@@ -128,7 +111,7 @@ void islandIdxInit(
 
 static
 PixmshBorderNode *pixmshBorderNodeGet(
-	const PixmshSplitMesh *pMesh,
+	const PixmshSplitIntfIn *pMesh,
 	const PixmshSplitIdxTable *pTable,
 	PixalcLinAlloc *pEdgeAlloc,
 	I32 vert
@@ -175,17 +158,6 @@ PixmshIdxRedir *getBuf(const PixmshSplitIdxTableArr *pFaceTable, PixmshIdxRedirA
 	}
 	return pId;
 }
-
-/*
-static
-bool borderLinkAdd(PixmshBorderNode *pNodeA, PixmshBorderNode *pNodeB, bool next) {
-	PixmshBorderLink *pLink = next ? &pNodeA->next : &pNodeA->prev;
-	if (pLink->pNode) {
-		pLink->pNode = pNodeB;
-	}
-	return true;
-}
-*/
 
 static
 I32 getEdgeIslandSingle(
@@ -254,7 +226,7 @@ void markEdgeSeen(PixmshBorderNode *pEdge, PixmshFaceCorner corner, I32 island) 
 
 static
 void pixmshBorderBbCmp(
-	const PixmshSplitMesh *pMesh,
+	const PixmshSplitIntfIn *pMesh,
 	PixmshBorderBb *pBb,
 	I32 corner,
 	I32 border
@@ -273,8 +245,8 @@ static
 PixErr walkAndAddBorder(
 	const PixalcFPtrs *pAlloc,
 	PixmshSplitMem *pMem,
-	const PixmshSplitMesh *pMesh,
-	PixmshIslands *pIslands,
+	const PixmshSplitIntfIn *pMesh,
+	PixmshSplitIntfOut *pIslands,
 	PixmshBorderNode *pStart,
 	I32 *pIslandIdx,
 	I32 idx
@@ -290,7 +262,7 @@ PixErr walkAndAddBorder(
 	err = pIslands->fpBorderInit(pAlloc, pIslands->pUserData, islandIdx, &borderIdx);
 	PIX_ERR_RETURN_IFNOT(err, "");
 	PixmshFaceCorner corner = pStart->corners[idx];
-	PixtyRange face = pMesh->fpFaceRange(pMesh->pUserData, corner.face);
+	PixmshFaceRange face = pMesh->fpFaceRange(pMesh->pUserData, corner.face);
 	I32 edge = pMesh->fpEdge(pMesh->pUserData, corner);
 	do {
 		PIX_ERR_ASSERT("", !seenThisEdge(pNode, islandIdx));
@@ -312,7 +284,7 @@ PixErr walkAndAddBorder(
 			borderIdx
 		);
 
-		corner.corner = (corner.corner + 1) % (face.end - face.start);
+		corner.corner = (corner.corner + 1) % (face.size);
 		edge = pMesh->fpEdge(pMesh->pUserData, corner);
 		if (edge < pMem->edgeTable.size && pMem->edgeTable.pArr[edge].valid ||
 			pMesh->fpAdjCorner(pMesh->pUserData, corner).face == -1
@@ -325,7 +297,7 @@ PixErr walkAndAddBorder(
 		do {
 			corner = pMesh->fpAdjCorner(pMesh->pUserData, corner);
 			face = pMesh->fpFaceRange(pMesh->pUserData, corner.face);
-			corner.corner = (corner.corner + 1) % (face.end - face.start);
+			corner.corner = (corner.corner + 1) % (face.size);
 			edge = pMesh->fpEdge(pMesh->pUserData, corner);
 			pNode = pMem->edgeTable.pArr[edge].valid ?
 				pMem->edges.pArr + pMem->edgeTable.pArr[edge].idx : NULL;
@@ -352,7 +324,7 @@ static
 PixErr findAdjForCorner(
 	const PixalcFPtrs *pAlloc,
 	PixmshSplitMem *pMem,
-	const PixmshSplitMesh *pMesh,
+	const PixmshSplitIntfIn *pMesh,
 	bool (*fpSplitPredicate)(const void *, I32),
 	PixmshFaceCorner corner,
 	I32 *pSplitTotal
@@ -420,17 +392,16 @@ void pixmshSplitMemInit(const PixalcFPtrs *pAlloc, PixmshSplitMem *pMem, I32 fac
 PixErr pixmshSplitToIslands(
 	const PixalcFPtrs *pAlloc,
 	PixmshSplitMem *pMem,
-	const PixmshSplitMesh *pMesh,
-	PixmshIslands *pIslands,
+	const PixmshSplitIntfIn *pMesh,
+	PixmshSplitIntfOut *pIslands,
 	bool (*fpSplitPredicate)(const void *, I32)
 ) {
 	PixErr err = PIX_ERR_SUCCESS;
 	pixmshSplitMemInit(pAlloc, pMem, pMesh->faceCount);
 	I32 splitTotal = 0;
 	for (I32 i = 0; i < pMesh->faceCount; ++i) {
-		PixtyRange face = pMesh->fpFaceRange(pMesh->pUserData, i);
-		I32 faceSize = face.end - face.start;
-		for (I32 j = 0; j < faceSize; ++j) {
+		PixmshFaceRange face = pMesh->fpFaceRange(pMesh->pUserData, i);
+		for (I32 j = 0; j < face.size; ++j) {
 			PixmshFaceCorner corner = {.face = i, .corner = j};
 			err = findAdjForCorner(
 				pAlloc,
