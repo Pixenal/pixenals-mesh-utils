@@ -522,5 +522,8 @@ void pixmshSplitMemDestroy(const PixalcFPtrs *pAlloc, PixmshSplitMem *pMem) {
 	if (pMem->edges.pArr) {
 		pAlloc->fpFree(pMem->edges.pArr);
 	}
+	if (pMem->bb.pArr) {
+		pAlloc->fpFree(pMem->bb.pArr);
+	}
 	*pMem = (PixmshSplitMem){0};
 }
