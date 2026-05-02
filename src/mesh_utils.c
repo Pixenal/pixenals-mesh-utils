@@ -109,6 +109,7 @@ void islandIdxInit(
 	pFaceTable->pArr[face].valid = true;
 }
 
+/*
 static
 PixmshBorderNode *pixmshBorderNodeGet(
 	const PixmshSplitIntfIn *pMesh,
@@ -118,6 +119,7 @@ PixmshBorderNode *pixmshBorderNodeGet(
 ) {
 	return pTable[vert].valid ? pixalcLinAllocIdx(pEdgeAlloc, pTable[vert].idx) : NULL;
 }
+*/
 
 static
 PixmshBorderNode *pixmshBorderNodeInit(

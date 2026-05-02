@@ -412,19 +412,22 @@ typedef struct PixmshTriIntf {
 } PixmshTriIntf;
 
 static inline
-PixtyV2_F32 pixmshVertPosXy(const PixmshTriIntf *pInterf, PixmshFaceRange face, I32 corner) {
+PixtyV2_F32 pixmshVertPosXy(const void *pInterfRaw, PixmshFaceRange face, I32 corner) {
+	const PixmshTriIntf *pInterf = pInterfRaw;
 	PIX_ERR_ASSERT("", corner >= 0 && corner < face.size);
 	PixtyV3_F32 pos = pInterf->fpPos(pInterf->pMesh, face, corner);
 	return (PixtyV2_F32){pos.d[0], pos.d[1]};
 }
 static inline
-PixtyV2_F32 pixmshVertPosXz(const PixmshTriIntf *pInterf, PixmshFaceRange face, I32 corner) {
+PixtyV2_F32 pixmshVertPosXz(const void *pInterfRaw, PixmshFaceRange face, I32 corner) {
+	const PixmshTriIntf *pInterf = pInterfRaw;
 	PIX_ERR_ASSERT("", corner >= 0 && corner < face.size);
 	PixtyV3_F32 pos = pInterf->fpPos(pInterf->pMesh, face, corner);
 	return (PixtyV2_F32){pos.d[0], pos.d[2]};
 }
 static inline
-PixtyV2_F32 pixmshVertPosYz(const PixmshTriIntf *pInterf, PixmshFaceRange face, I32 corner) {
+PixtyV2_F32 pixmshVertPosYz(const void *pInterfRaw, PixmshFaceRange face, I32 corner) {
+	const PixmshTriIntf *pInterf = pInterfRaw;
 	PIX_ERR_ASSERT("", corner >= 0 && corner < face.size);
 	PixtyV3_F32 pos = pInterf->fpPos(pInterf->pMesh, face, corner);
 	return (PixtyV2_F32){pos.d[1], pos.d[2]};
@@ -525,12 +528,12 @@ PixtyV3_F32 pixmshGetBarycentricInTri(
 	const void *pMesh,
 	PixmshFaceRange face,
 	PixtyV3_F32 (* fpPos)(const void *, PixmshFaceRange, int32_t),
-	const uint8_t *pTriCorners,
+	const int8_t *pTriCorners,
 	PixtyV2_F32 vert
 ) {
 	PixtyV3_F32 tri[3] = {0};
 	for (int32_t i = 0; i < 3; ++i) {
-		tri[i] = fpPos(pMesh, face, pTriCorners[i]);
+		tri[i] = fpPos(pMesh, face, (int32_t)pTriCorners[i]);
 	}
 	return pixmCartesianToBarycentric(
 		tri,
