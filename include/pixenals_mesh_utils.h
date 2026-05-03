@@ -490,12 +490,12 @@ int32_t pixmshTriangulateFace(
 		.pMesh = pMesh,
 		.fpPos = fpPos,
 		.face = face,
-		.pRemoved = pAlloc->fpCalloc(face.size, 1),
 		.normal = pixmshCalcFaceNormal(face, pMesh, fpPos)
 	};
 	if (_(state.normal V3EQL (PixtyV3_F32){0})) {
 		return 0;
 	}
+	state.pRemoved = pAlloc->fpCalloc(face.size, 1);
 
 	pixalcLinAllocInit(pAlloc, &state.earAlloc, sizeof(PixmshEar), face.size, true);
 
