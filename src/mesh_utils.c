@@ -301,7 +301,7 @@ PixErr walkAndAddBorder(
 			face = pMesh->fpFaceRange(pMesh->pUserData, corner.face);
 			corner.corner = (corner.corner + 1) % (face.size);
 			edge = pMesh->fpEdge(pMesh->pUserData, corner);
-			pNode = pMem->edgeTable.pArr[edge].valid ?
+			pNode = edge < pMem->edgeTable.size && pMem->edgeTable.pArr[edge].valid ?
 				pMem->edges.pArr + pMem->edgeTable.pArr[edge].idx : NULL;
 		} while(!pNode || isEdgeIntern(pMem, pNode, NULL));
 	} while(pNode != pStart);
