@@ -477,6 +477,8 @@ PixtyV3_F32 pixmshCalcFaceNormal(
 }
 
 //returns tri count (may be less than size - 2 if face is degen)
+//TODO take in PixtyU8Arr and pass final tri-count as .count,
+//this way func can return error
 PIX_FORCE_INLINE
 int32_t pixmshTriangulateFace(
 	const PixalcFPtrs *pAlloc,
