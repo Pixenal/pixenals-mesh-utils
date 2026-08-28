@@ -341,139 +341,36 @@ PixtyV3_F32 pixmshGetTriNormal(
 	return _(_(b V3SUB a) V3CROSS _(c V3SUB a));
 }
 
-typedef struct AxisBounds{
-	int32_t minIdx;
-	int32_t maxIdx;
-	float min;
-	float max;
-	float len;
-} AxisBounds;
-
-static inline
-void pixmshAxisBoundsCalcLen(AxisBounds *pBounds) {
-	pBounds->len = pBounds->max - pBounds->min;
-	PIX_ERR_ASSERT("", pBounds->len >= .0f);
-}
-
-static inline
-void pixmshAxisBoundsCmp(AxisBounds *pBounds, float pos, int32_t idx) {
-	if (pos < pBounds->min) {
-		pBounds->min = pos;
-		pBounds->minIdx = idx;
-	}
-	if (pos > pBounds->max) {
-		pBounds->max = pos;
-		pBounds->maxIdx = idx;
-	}
-}
-
-//returns the longest axis
-static inline
-int32_t pixmshAxisBoundsMake(
-	PixmshFaceRange face,
-	const void *pMesh,
-	PixtyV3_F32 (* fpPos) (const void *, PixmshFaceRange, int32_t),
-	PixtyI32Arr *pSkip,
-	AxisBounds *pBounds
-) {
-	for (int32_t i = 0; i < 3; ++i) {
-		pBounds[i].max = -FLT_MAX;
-		pBounds[i].min = FLT_MAX;
-	}
-	for (int32_t i = 0; i < face.size; ++i) {
-		if (pSkip && pixmshIsMarkedSkip(pSkip, i)) {
-			continue;
-		}
-		PixtyV3_F32 pos = fpPos(pMesh, face, i);
-		pixmshAxisBoundsCmp(pBounds + 0, pos.d[0], i);
-		pixmshAxisBoundsCmp(pBounds + 1, pos.d[1], i);
-		pixmshAxisBoundsCmp(pBounds + 2, pos.d[2], i);
-	}
-	pixmshAxisBoundsCalcLen(pBounds + 0);
-	pixmshAxisBoundsCalcLen(pBounds + 1);
-	pixmshAxisBoundsCalcLen(pBounds + 2);
-	int32_t lowAxis = pBounds[0].len > pBounds[1].len;
-	if (pBounds[2].len < pBounds[1].len && pBounds[2].len < pBounds[0].len) {
-		lowAxis = 2;
-	}
-	return lowAxis;
-}
-
-static inline
-void pixmshMarkSkip(PixtyI32Arr *pSkip, int32_t idx) {
-	PIX_ERR_ASSERT("", pSkip->count < PIXMSH_NGON_MAX_SIZE);
-	pSkip->pArr[pSkip->count] = idx;
-	++pSkip->count;
-}
-
-typedef struct PixmshTriIntf {
-	const void *pMesh;
-	PixtyV3_F32 (* fpPos) (const void *, PixmshFaceRange, int32_t);
-} PixmshTriIntf;
-
-static inline
-PixtyV2_F32 pixmshVertPosXy(const void *pInterfRaw, PixmshFaceRange face, I32 corner) {
-	const PixmshTriIntf *pInterf = pInterfRaw;
-	PIX_ERR_ASSERT("", corner >= 0 && corner < face.size);
-	PixtyV3_F32 pos = pInterf->fpPos(pInterf->pMesh, face, corner);
-	return (PixtyV2_F32){pos.d[0], pos.d[1]};
-}
-static inline
-PixtyV2_F32 pixmshVertPosXz(const void *pInterfRaw, PixmshFaceRange face, I32 corner) {
-	const PixmshTriIntf *pInterf = pInterfRaw;
-	PIX_ERR_ASSERT("", corner >= 0 && corner < face.size);
-	PixtyV3_F32 pos = pInterf->fpPos(pInterf->pMesh, face, corner);
-	return (PixtyV2_F32){pos.d[0], pos.d[2]};
-}
-static inline
-PixtyV2_F32 pixmshVertPosYz(const void *pInterfRaw, PixmshFaceRange face, I32 corner) {
-	const PixmshTriIntf *pInterf = pInterfRaw;
-	PIX_ERR_ASSERT("", corner >= 0 && corner < face.size);
-	PixtyV3_F32 pos = pInterf->fpPos(pInterf->pMesh, face, corner);
-	return (PixtyV2_F32){pos.d[1], pos.d[2]};
-}
-
 static inline
 PixtyV3_F32 pixmshCalcFaceNormal(
 	PixmshFaceRange face,
 	const void *pMesh,
-	PixtyV3_F32 (* fpPos) (const void *, PixmshFaceRange, int32_t)
+	PixtyV3_F32 (* fpPos) (const void *, PixmshFaceRange, int32_t),
+	bool normalize
 ) {
-	PIX_ERR_ASSERT(
-		"invalid face size",
-		face.start >= 0 && face.size >= 3 && face.size <= PIXMSH_NGON_MAX_SIZE
-	);
-	int32_t skipArr[PIXMSH_NGON_MAX_SIZE] = {0};
-	PixtyI32Arr skip = {.pArr = skipArr};
-	AxisBounds bounds[3] = {0};
-	int32_t axis = pixmshAxisBoundsMake(face, pMesh, fpPos, NULL, bounds);
-	PixtyV2_F32 (*fpAxisPos)(const void *, PixmshFaceRange, int32_t) =
-		axis == 2 ? pixmshVertPosXy : axis ? pixmshVertPosXz : pixmshVertPosYz;
-	PixmshTriIntf wrap = {.pMesh = pMesh, .fpPos = fpPos};
-	do {
-		int32_t minIdx =
-			pixmshGetNonDegenBoundCorner(face, &wrap, fpAxisPos, true, &skip, NULL);
-		int32_t maxIdx =
-			pixmshGetNonDegenBoundCorner(face, &wrap, fpAxisPos, false, &skip, NULL);
-		if (minIdx == -1 || maxIdx == -1) {
-			return (PixtyV3_F32){0};
+	PixtyV3_F32 normal = {0};
+	if (face.size == 3) {
+		 normal = pixmshGetTriNormal(pMesh, face, 0, fpPos);
+	}
+	else if (face.size == 4) {
+		PixtyV3_F32 a = pixmshGetTriNormal(pMesh, face, 0, fpPos);
+		PixtyV3_F32 b = pixmshGetTriNormal(pMesh, face, 2, fpPos);
+		normal = _(a V3ADD b);
+	}
+	else {
+		PIX_ERR_ASSERT("invalid face", face.start >= 0 && face.size > 4);
+		//"Newell's method for computing the plane equation of a polygon" Filippo Tampieri 1992:
+		//https://dl.acm.org/doi/10.5555/130745.130783
+		//see also: https://wikis.khronos.org/opengl/Calculating_a_Surface_Normal
+		for (I32 i = 0; i < face.size; ++i) {
+			PixtyV3_F32 pos = fpPos(pMesh, face, i);
+			PixtyV3_F32 posNext = fpPos(pMesh, face, (i + 1) % face.size);
+			normal.d[0] += (pos.d[1] - posNext.d[1]) * (pos.d[2] + posNext.d[2]);
+			normal.d[1] += (pos.d[2] - posNext.d[2]) * (pos.d[0] + posNext.d[0]);
+			normal.d[2] += (pos.d[0] - posNext.d[0]) * (pos.d[1] + posNext.d[1]);
 		}
-		PixtyV3_F32 minNormal = pixmshGetTriNormal(pMesh, face, minIdx, fpPos);
-		PixtyV3_F32 maxNormal = pixmshGetTriNormal(pMesh, face, maxIdx, fpPos);
-		if (_(minNormal V3DOT maxNormal) <= .0f) {
-			pixmshMarkSkip(&skip, minIdx);
-			pixmshMarkSkip(&skip, maxIdx);
-			continue;
-		}
-		if (_(minNormal V3EQL maxNormal)) {
-			return minNormal;
-		}
-		return _(
-			_(pixmV3F32Normalize(maxNormal) V3ADD pixmV3F32Normalize(minNormal)) V3DIVS
-			2.0f
-		);
-	} while(skip.count < face.size);
-	return (PixtyV3_F32){0};
+	}
+	return normalize ? pixmV3F32Normalize(normal) : normal;
 }
 
 //returns tri count (may be less than size - 2 if face is degen)
@@ -492,7 +389,7 @@ int32_t pixmshTriangulateFace(
 		.pMesh = pMesh,
 		.fpPos = fpPos,
 		.face = face,
-		.normal = pixmshCalcFaceNormal(face, pMesh, fpPos)
+		.normal = pixmshCalcFaceNormal(face, pMesh, fpPos, false)
 	};
 	if (_(state.normal V3EQL (PixtyV3_F32){0})) {
 		return 0;
