@@ -46,6 +46,11 @@ typedef struct PixmshV2Bb {
 	PixtyV2_F32 max;
 } PixmshV2Bb;
 
+static inline
+bool pixmshCornerCmp(PixmshFaceCorner a, PixmshFaceCorner b) {
+	return a.face == b.face && a.corner == b.corner;
+}
+
 PixmshV2Bb pixmshV2BbGet(
 	const void *pMesh,
 	PixtyV2_F32 (*fpPos)(const void *, PixmshFaceRange, int32_t),
@@ -564,6 +569,18 @@ typedef struct PixmshBorderBbArr {
 	int32_t count;
 } PixmshBorderBbArr;
 
+typedef struct PixmshSplitEdgeInfo {
+	PixmshBorderNode *pNode;
+	PixmshFaceCorner corner;
+	int32_t edge;
+} PixmshSplitEdgeInfo;
+
+typedef struct PixmshSplitEdgeInfoArr {
+	PixmshSplitEdgeInfo *pArr;
+	int32_t size;
+	int32_t count;
+} PixmshSplitEdgeInfoArr;
+
 typedef struct PixmshSplitMem {
 	PixmshFaceBufArr faceBuf;
 	PixmshIdxRedirArr redirArr;
@@ -571,6 +588,7 @@ typedef struct PixmshSplitMem {
 	PixmshSplitIdxTableArr edgeTable;
 	PixmshBorderNodeArr edges;
 	PixmshBorderBbArr bb;
+	PixmshSplitEdgeInfoArr edgeBuf;
 } PixmshSplitMem;
 
 //TODO replace all func ptrs in param lists with typedefs? maybe?

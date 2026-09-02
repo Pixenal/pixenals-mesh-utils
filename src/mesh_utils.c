@@ -191,6 +191,7 @@ void getEdgeIslands(
 static
 bool isEdgeIntern(
 	PixmshSplitMem *pMem,
+	const PixmshSplitIntfIn *pMesh,
 	PixmshBorderNode *pEdge,
 	I32 *pIslands
 ) {
@@ -199,19 +200,19 @@ bool isEdgeIntern(
 	}
 	I32 islands[2] = {0};
 	getEdgeIslands(pMem, pEdge, islands);
-	pEdge->intern = islands[0] == islands[1];
 	if (pIslands) {
 		pIslands[0] = islands[0];
 		pIslands[1] = islands[1];
 	}
+	pEdge->intern = islands[0] == islands[1];
 	return pEdge->intern;
 }
 
 static
-bool seenThisEdge(const PixmshBorderNode *pEdge, I32 island) {
-	return
-		pEdge->seen[0].valid && pEdge->seen[0].idx == island ||
-		pEdge->seen[1].valid && pEdge->seen[1].idx == island;
+bool seenThisEdge(const PixmshBorderNode *pEdge, PixmshFaceCorner corner, I32 island) {
+	bool side = corner.face == pEdge->corners[1].face;
+	PIX_ERR_ASSERT("", !pEdge->seen[side].valid || island == pEdge->seen[side].idx);
+	return pEdge->seen[side].valid;
 }
 
 static
@@ -244,6 +245,95 @@ void pixmshBorderBbCmp(
 }
 
 static
+PixErr edgeAddToBorder(
+	const PixalcFPtrs *pAlloc,
+	PixmshSplitMem *pMem,
+	const PixmshSplitIntfIn *pMesh,
+	PixmshSplitIntfOut *pIslands,
+	I32 *pIslandIdx,
+	I32 side,
+	I32 borderIdx,
+	PixmshSplitEdgeInfo *pEdge,
+	PixmshFaceRange face
+) {
+	PixErr err = pIslands->fpBorderAddEdge(
+		pAlloc,
+		pIslands->pUserData,
+		pIslandIdx[side],
+		pIslandIdx[!side],
+		borderIdx,
+		pEdge->corner,
+		pEdge->edge
+	);
+	PIX_ERR_RETURN_IFNOT(err, "");
+	pixmshBorderBbCmp(
+		pMesh,
+		pMem->bb.pArr + pIslandIdx[side],
+		face.start + pEdge->corner.corner,
+		borderIdx
+	);
+	return err;
+}
+
+static
+PixErr edgeBufAddToBorder(
+	const PixalcFPtrs *pAlloc,
+	PixmshSplitMem *pMem,
+	const PixmshSplitIntfIn *pMesh,
+	PixmshSplitIntfOut *pIslands,
+	I32 *pIslandIdx,
+	I32 side,
+	I32 borderIdx
+) {
+	PixErr err = PIX_ERR_SUCCESS;
+	for (I32 i = 0; i < pMem->edgeBuf.count; ++i) {
+		PixmshSplitEdgeInfo *pInfo = pMem->edgeBuf.pArr + i;
+		PixmshFaceRange face = pMesh->fpFaceRange(pMesh->pUserData, pInfo->corner.face);
+		err = edgeAddToBorder(
+			pAlloc,
+			pMem,
+			pMesh,
+			pIslands,
+			pIslandIdx,
+			side,
+			borderIdx,
+			pInfo,
+			face
+		);
+		PIX_ERR_RETURN_IFNOT(err, "");
+	}
+	return err;
+}
+
+static
+PixErr adjCornerFind(
+	PixmshSplitMem *pMem,
+	const PixmshSplitIntfIn *pMesh,
+	PixmshSplitEdgeInfo *pEdge,
+	PixmshFaceRange *pFace
+) {
+	PixErr err = PIX_ERR_SUCCESS;
+	do {
+		pEdge->pNode = NULL;
+		pEdge->corner = pMesh->fpAdjCorner(pMesh->pUserData, pEdge->corner);
+		if (pEdge->corner.face == -1) {
+			break;//no adjacent face
+		}
+		*pFace = pMesh->fpFaceRange(pMesh->pUserData, pEdge->corner.face);
+		pEdge->corner.corner = (pEdge->corner.corner + 1) % (pFace->size);
+		pEdge->edge = pMesh->fpEdge(pMesh->pUserData, pEdge->corner);
+		if (pEdge->edge < pMem->edgeTable.size &&
+			pMem->edgeTable.pArr[pEdge->edge].valid
+		) {
+			pEdge->pNode =
+				pMem->edges.pArr + pMem->edgeTable.pArr[pEdge->edge].idx;
+		}
+	} while(!pEdge->pNode);
+	PIX_ERR_RETURN_IFNOT_COND(err, pEdge->pNode, "unable to walk border");
+	return err;
+}
+
+static
 PixErr walkAndAddBorder(
 	const PixalcFPtrs *pAlloc,
 	PixmshSplitMem *pMem,
@@ -251,60 +341,77 @@ PixErr walkAndAddBorder(
 	PixmshSplitIntfOut *pIslands,
 	PixmshBorderNode *pStart,
 	I32 *pIslandIdx,
-	I32 idx
+	I32 side
 ) {
 	PixErr err = PIX_ERR_SUCCESS;
-	I32 islandIdx = pIslandIdx[idx];
+	I32 islandIdx = pIslandIdx[side];
 	PIX_ERR_ASSERT("", islandIdx >= 0);
-	if (seenThisEdge(pStart, islandIdx)) {
+	if (seenThisEdge(pStart, pStart->corners[side], islandIdx)) {
 		return err;
 	}
-	PixmshBorderNode *pNode = pStart;
 	I32 borderIdx = 0;
 	err = pIslands->fpBorderInit(pAlloc, pIslands->pUserData, islandIdx, &borderIdx);
 	PIX_ERR_RETURN_IFNOT(err, "");
-	PixmshFaceCorner corner = pStart->corners[idx];
-	PixmshFaceRange face = pMesh->fpFaceRange(pMesh->pUserData, corner.face);
-	I32 edge = pMesh->fpEdge(pMesh->pUserData, corner);
+	PixmshSplitEdgeInfo edge = {.pNode = pStart, .corner = pStart->corners[side]};
+	edge.edge = pMesh->fpEdge(pMesh->pUserData, edge.corner);
+	PixmshFaceRange face = pMesh->fpFaceRange(pMesh->pUserData, edge.corner.face);
+	I32 i = 0;
 	do {
-		PIX_ERR_ASSERT("", !seenThisEdge(pNode, islandIdx));
-		markEdgeSeen(pNode, corner, islandIdx);
-		pIslands->fpBorderAddEdge(
-			pAlloc,
-			pIslands->pUserData,
-			islandIdx,
-			pIslandIdx[!idx],
-			borderIdx,
-			corner,
-			edge
+		PIX_ERR_ASSERT(
+			"",
+			i < pMem->edgeTable.size &&
+			!seenThisEdge(edge.pNode, edge.corner, islandIdx)
 		);
-		PIX_ERR_RETURN_IFNOT(err, "");
-		pixmshBorderBbCmp(
-			pMesh,
-			pMem->bb.pArr + islandIdx,
-			face.start + corner.corner,
-			borderIdx
-		);
-
-		corner.corner = (corner.corner + 1) % (face.size);
-		edge = pMesh->fpEdge(pMesh->pUserData, corner);
-		if (edge < pMem->edgeTable.size && pMem->edgeTable.pArr[edge].valid ||
-			pMesh->fpAdjCorner(pMesh->pUserData, corner).face == -1
-		) {
-			pNode = pMem->edges.pArr + pMem->edgeTable.pArr[edge].idx;
-			if (!isEdgeIntern(pMem, pNode, NULL)) {
-				continue;
-			}
+		markEdgeSeen(edge.pNode, edge.corner, islandIdx);
+		if (!pMem->edgeBuf.count) {//don't add yet if edge-buf is active
+			err = edgeAddToBorder(
+				pAlloc,
+				pMem,
+				pMesh,
+				pIslands,
+				pIslandIdx,
+				side,
+				borderIdx,
+				&edge,
+				face
+			);
+			PIX_ERR_RETURN_IFNOT(err, "");
 		}
-		do {
-			corner = pMesh->fpAdjCorner(pMesh->pUserData, corner);
-			face = pMesh->fpFaceRange(pMesh->pUserData, corner.face);
-			corner.corner = (corner.corner + 1) % (face.size);
-			edge = pMesh->fpEdge(pMesh->pUserData, corner);
-			pNode = edge < pMem->edgeTable.size && pMem->edgeTable.pArr[edge].valid ?
-				pMem->edges.pArr + pMem->edgeTable.pArr[edge].idx : NULL;
-		} while(!pNode || isEdgeIntern(pMem, pNode, NULL));
-	} while(pNode != pStart);
+		//find next corner
+		edge.corner.corner = (edge.corner.corner + 1) % (face.size);
+		edge.edge = pMesh->fpEdge(pMesh->pUserData, edge.corner);
+		if (edge.edge < pMem->edgeTable.size && pMem->edgeTable.pArr[edge.edge].valid ||
+			pMesh->fpAdjCorner(pMesh->pUserData, edge.corner).face == -1
+		) {
+			edge.pNode = pMem->edges.pArr + pMem->edgeTable.pArr[edge.edge].idx;
+		}
+		else {
+			err = adjCornerFind(pMem, pMesh, &edge, &face);
+			PIX_ERR_RETURN_IFNOT(err, "");
+		}
+		if (isEdgeIntern(pMem, pMesh, edge.pNode, NULL)) {
+			I32 newIdx = 0;
+			PIXALC_DYN_ARR_ADD(PixmshSplitEdgeInfo, pAlloc, &pMem->edgeBuf, newIdx);
+			pMem->edgeBuf.pArr[newIdx] = edge;
+		}
+		else if (pMem->edgeBuf.count) {
+			I32 prevIdx = pMem->edgeBuf.count - 1;
+			if (pMem->edgeBuf.pArr[0].edge != pMem->edgeBuf.pArr[prevIdx].edge) {
+				err = edgeBufAddToBorder(
+					pAlloc,
+					pMem,
+					pMesh,
+					pIslands,
+					pIslandIdx,
+					side,
+					borderIdx
+				);
+				PIX_ERR_RETURN_IFNOT(err, "");
+			}
+			//else internal border exits where it enters (non manifold), so don't add buf
+			pMem->edgeBuf.count = 0;
+		}
+	} while(++i, !pixmshCornerCmp(edge.corner, pStart->corners[side]));
 	return err;
 }
 
@@ -477,14 +584,22 @@ PixErr pixmshSplitToIslands(
 	for (I32 i = 0; i < pMem->edges.count; ++i) {
 		PixmshBorderNode *pStart = pMem->edges.pArr + i;
 		I32 islands[2] = {0};
-		if (isEdgeIntern(pMem, pStart, islands)) {
+		if (isEdgeIntern(pMem, pMesh, pStart, islands)) {
 			continue;
 		}
 		for (I32 j = 0; j < 2; ++j) {
 			if (islands[j] == -1) {
 				continue;
 			}
-			err = walkAndAddBorder(pAlloc, pMem, pMesh, pIslands, pStart, islands, j);
+			err = walkAndAddBorder(
+				pAlloc,
+				pMem,
+				pMesh,
+				pIslands,
+				pStart,
+				islands,
+				j
+			);
 			PIX_ERR_THROW_IFNOT(err, "", 0);
 		}
 	}
@@ -526,6 +641,9 @@ void pixmshSplitMemDestroy(const PixalcFPtrs *pAlloc, PixmshSplitMem *pMem) {
 	}
 	if (pMem->bb.pArr) {
 		pAlloc->fpFree(pMem->bb.pArr);
+	}
+	if (pMem->edgeBuf.pArr) {
+		pAlloc->fpFree(pMem->edgeBuf.pArr);
 	}
 	*pMem = (PixmshSplitMem){0};
 }
