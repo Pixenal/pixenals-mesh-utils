@@ -466,7 +466,7 @@ PixtyV3_F32 pixmshGetBarycentricInFace(
 	}
 	PixtyV3_F32 up = {.d = {.0f, .0f, 1.0f}};
 	PixtyV3_F32 vertBc = pixmCartesianToBarycentric(triA, &vert, &up);
-	if (face.size == 4 && pixmV3F32IsFinite(vertBc) && vertBc.d[1] < 0) {
+	if (face.size == 4 && (!pixmV3F32IsFinite(vertBc) || vertBc.d[1] < 0)) {
 		//base face is a quad, and vert is outside first tri,
 		//so use the second tri
 		
