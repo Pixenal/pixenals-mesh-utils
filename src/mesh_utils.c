@@ -103,7 +103,7 @@ void islandIdxInit(
 	I32 face
 ) {
 	I32 newIdx = 0;
-	PIXALC_DYN_ARR_ADD(PixmshIdxRedir, pAlloc, pArr, newIdx);
+	PIXALC_DYN_ARR_ADD(pAlloc, pArr, newIdx);
 	pArr->pArr[newIdx] = (PixmshIdxRedir){.idx = newIdx};
 	pFaceTable->pArr[face].idx = newIdx;
 	pFaceTable->pArr[face].valid = true;
@@ -128,7 +128,7 @@ PixmshBorderNode *pixmshBorderNodeInit(
 	const PixmshEdgeCorners *pCorners
 ) {
 	I32 idx = 0;
-	PIXALC_DYN_ARR_ADD(PixmshBorderNode, pAlloc, pEdges, idx);
+	PIXALC_DYN_ARR_ADD(pAlloc, pEdges, idx);
 	pEdges->pArr[idx] = (PixmshBorderNode) {
 		.idx = idx,
 		.corners[0] = pCorners->corners[0],
@@ -391,7 +391,7 @@ PixErr walkAndAddBorder(
 		}
 		if (isEdgeIntern(pMem, pMesh, edge.pNode, NULL)) {
 			I32 newIdx = 0;
-			PIXALC_DYN_ARR_ADD(PixmshSplitEdgeInfo, pAlloc, &pMem->edgeBuf, newIdx);
+			PIXALC_DYN_ARR_ADD(pAlloc, &pMem->edgeBuf, newIdx);
 			pMem->edgeBuf.pArr[newIdx] = edge;
 		}
 		else if (pMem->edgeBuf.count) {
@@ -418,7 +418,7 @@ PixErr walkAndAddBorder(
 static
 void edgeTableAdd(const PixalcFPtrs *pAlloc, PixmshSplitIdxTableArr *pTable, I32 edge, I32 idx) {
 	I32 oldSize = pTable->size;
-	PIXALC_DYN_ARR_RESIZE(PixmshSplitIdxTable, pAlloc, pTable, edge + 1);
+	PIXALC_DYN_ARR_RESIZE(pAlloc, pTable, edge + 1);
 	if (oldSize <= edge) {
 		memset(
 			pTable->pArr + oldSize,
@@ -482,7 +482,7 @@ PixErr findAdjForCorner(
 
 static
 void pixmshSplitMemInit(const PixalcFPtrs *pAlloc, PixmshSplitMem *pMem, I32 faceCount) {
-	PIXALC_DYN_ARR_RESIZE(PixmshSplitIdxTable, pAlloc, &pMem->faceTable, faceCount);
+	PIXALC_DYN_ARR_RESIZE(pAlloc, &pMem->faceTable, faceCount);
 	if (pMem->faceTable.pArr) {
 		memset(pMem->faceTable.pArr, 0, sizeof(PixmshSplitIdxTable) * faceCount);
 	}
@@ -495,6 +495,7 @@ void pixmshSplitMemInit(const PixalcFPtrs *pAlloc, PixmshSplitMem *pMem, I32 fac
 	pMem->edgeTable.count = 0;
 	pMem->edges.count = 0;
 	pMem->bb.count = 0;
+	pMem->edgeBuf.count = 0;
 }
 
 //TODO reuse memory across multiple calls for tables, buffers
@@ -526,7 +527,7 @@ PixErr pixmshSplitToIslands(
 	PIX_ERR_THROW_IFNOT_COND(err, pMem->redirArr.count, "failed to split mesh", 0);
 	{
 		I32 oldSize = pMem->faceBuf.size;
-		PIXALC_DYN_ARR_RESIZE(PixmshFaceBuf, pAlloc, &pMem->faceBuf, pMem->redirArr.count);
+		PIXALC_DYN_ARR_RESIZE(pAlloc, &pMem->faceBuf, pMem->redirArr.count);
 		if (pMem->faceBuf.size > oldSize) {
 			memset(
 				pMem->faceBuf.pArr + oldSize,
@@ -543,7 +544,7 @@ PixErr pixmshSplitToIslands(
 		PixmshIdxRedir *pId = getBuf(&pMem->faceTable, &pMem->redirArr, i);
 		PixmshFaceBuf *pBuf = pMem->faceBuf.pArr + pId->idx;
 		I32 newIdx = 0;
-		PIXALC_DYN_ARR_ADD(I32, pAlloc, &pBuf->faces, newIdx);
+		PIXALC_DYN_ARR_ADD(pAlloc, &pBuf->faces, newIdx);
 		pBuf->faces.pArr[newIdx] = i;
 	}
 	I32 *pFaces = NULL;
@@ -572,7 +573,7 @@ PixErr pixmshSplitToIslands(
 		++islandCount;
 	}
 	PIX_ERR_ASSERT("", islandCount >= 0 && offset == pMesh->faceCount);
-	PIXALC_DYN_ARR_RESIZE(PixmshBorderBb, pAlloc, &pMem->bb, islandCount);
+	PIXALC_DYN_ARR_RESIZE(pAlloc, &pMem->bb, islandCount);
 	for (I32 i = 0; i < islandCount; ++i) {
 		pMem->bb.pArr[i] = (PixmshBorderBb){
 			.min = {FLT_MAX, FLT_MAX},
@@ -619,31 +620,15 @@ PixErr pixmshSplitToIslands(
 }
 
 void pixmshSplitMemDestroy(const PixalcFPtrs *pAlloc, PixmshSplitMem *pMem) {
-	if (pMem->faceBuf.pArr) {
-		for (I32 i = 0; i < pMem->faceBuf.size; ++i) {
-			if (pMem->faceBuf.pArr[i].faces.pArr) {
-				pAlloc->fpFree(pMem->faceBuf.pArr[i].faces.pArr);
-			}
-		}
-		pAlloc->fpFree(pMem->faceBuf.pArr);
+	for (I32 i = 0; i < pMem->faceBuf.size; ++i) {
+		PIXALC_DYN_ARR_DESTROY(pAlloc, &pMem->faceBuf.pArr[i].faces);
 	}
-	if (pMem->redirArr.pArr) {
-		pAlloc->fpFree(pMem->redirArr.pArr);
-	}
-	if (pMem->faceTable.pArr) {
-		pAlloc->fpFree(pMem->faceTable.pArr);
-	}
-	if (pMem->edgeTable.pArr) {
-		pAlloc->fpFree(pMem->edgeTable.pArr);
-	}
-	if (pMem->edges.pArr) {
-		pAlloc->fpFree(pMem->edges.pArr);
-	}
-	if (pMem->bb.pArr) {
-		pAlloc->fpFree(pMem->bb.pArr);
-	}
-	if (pMem->edgeBuf.pArr) {
-		pAlloc->fpFree(pMem->edgeBuf.pArr);
-	}
+	PIXALC_DYN_ARR_DESTROY(pAlloc, &pMem->faceBuf);
+	PIXALC_DYN_ARR_DESTROY(pAlloc, &pMem->redirArr);
+	PIXALC_DYN_ARR_DESTROY(pAlloc, &pMem->faceTable);
+	PIXALC_DYN_ARR_DESTROY(pAlloc, &pMem->edgeTable);
+	PIXALC_DYN_ARR_DESTROY(pAlloc, &pMem->edges);
+	PIXALC_DYN_ARR_DESTROY(pAlloc, &pMem->bb);
+	PIXALC_DYN_ARR_DESTROY(pAlloc, &pMem->edgeBuf);
 	*pMem = (PixmshSplitMem){0};
 }
