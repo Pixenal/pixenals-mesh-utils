@@ -581,6 +581,11 @@ typedef struct PixmshSplitEdgeInfoArr {
 	int32_t count;
 } PixmshSplitEdgeInfoArr;
 
+typedef struct PixmshBorderNodePtrArr {
+	PixmshBorderNode **pArr;
+	int32_t size;
+} PixmshBorderNodePtrArr;
+
 typedef struct PixmshSplitMem {
 	PixmshFaceBufArr faceBuf;
 	PixmshIdxRedirArr redirArr;
@@ -589,6 +594,7 @@ typedef struct PixmshSplitMem {
 	PixmshBorderNodeArr edges;
 	PixmshBorderBbArr bb;
 	PixmshSplitEdgeInfoArr edgeBuf;
+	PixmshBorderNodePtrArr fallbacks;
 } PixmshSplitMem;
 
 //TODO replace all func ptrs in param lists with typedefs? maybe?

@@ -334,6 +334,39 @@ PixErr adjCornerFind(
 }
 
 static
+PixErr addEdgeBufIfValid(
+	const PixalcFPtrs *pAlloc,
+	PixmshSplitMem *pMem,
+	const PixmshSplitIntfIn *pMesh,
+	PixmshSplitIntfOut *pIslands,
+	I32 *pIslandIdx,
+	I32 side,
+	I32 borderIdx,
+	I32 *pBorderLen
+) {
+	PixErr err = PIX_ERR_SUCCESS;
+	I32 edgeBufLast = pMem->edgeBuf.count - 1;
+	if (pMem->edgeBuf.count == 1 || 
+		pMem->edgeBuf.pArr[0].edge != pMem->edgeBuf.pArr[edgeBufLast].edge
+	) {
+		err = edgeBufAddToBorder(
+			pAlloc,
+			pMem,
+			pMesh,
+			pIslands,
+			pIslandIdx,
+			side,
+			borderIdx
+		);
+		PIX_ERR_RETURN_IFNOT(err, "");
+		*pBorderLen += pMem->edgeBuf.count;
+	}
+	//else internal border exits where it enters (non manifold), so don't add buf
+	pMem->edgeBuf.count = 0;
+	return err;
+}
+
+static
 PixErr walkAndAddBorder(
 	const PixalcFPtrs *pAlloc,
 	PixmshSplitMem *pMem,
@@ -356,6 +389,8 @@ PixErr walkAndAddBorder(
 	edge.edge = pMesh->fpEdge(pMesh->pUserData, edge.corner);
 	PixmshFaceRange face = pMesh->fpFaceRange(pMesh->pUserData, edge.corner.face);
 	I32 i = 0;
+	I32 borderLen = 0;
+	bool intern = isEdgeIntern(pMem, pMesh, pStart, NULL);
 	do {
 		PIX_ERR_ASSERT(
 			"",
@@ -363,7 +398,13 @@ PixErr walkAndAddBorder(
 			!seenThisEdge(edge.pNode, edge.corner, islandIdx)
 		);
 		markEdgeSeen(edge.pNode, edge.corner, islandIdx);
-		if (!pMem->edgeBuf.count) {//don't add yet if edge-buf is active
+		if (intern) {
+			I32 newIdx = 0;
+			PIXALC_DYN_ARR_ADD(pAlloc, &pMem->edgeBuf, newIdx);
+			pMem->edgeBuf.pArr[newIdx] = edge;
+		}
+		else {
+			PIX_ERR_ASSERT("", !pMem->edgeBuf.count);
 			err = edgeAddToBorder(
 				pAlloc,
 				pMem,
@@ -376,6 +417,7 @@ PixErr walkAndAddBorder(
 				face
 			);
 			PIX_ERR_RETURN_IFNOT(err, "");
+			++borderLen;
 		}
 		//find next corner
 		edge.corner.corner = (edge.corner.corner + 1) % (face.size);
@@ -389,29 +431,27 @@ PixErr walkAndAddBorder(
 			err = adjCornerFind(pMem, pMesh, &edge, &face);
 			PIX_ERR_RETURN_IFNOT(err, "");
 		}
-		if (isEdgeIntern(pMem, pMesh, edge.pNode, NULL)) {
-			I32 newIdx = 0;
-			PIXALC_DYN_ARR_ADD(pAlloc, &pMem->edgeBuf, newIdx);
-			pMem->edgeBuf.pArr[newIdx] = edge;
+		intern = isEdgeIntern(pMem, pMesh, edge.pNode, NULL);
+		bool atStart = pixmshCornerCmp(edge.corner, pStart->corners[side]);
+		if ((!intern || atStart) && pMem->edgeBuf.count) {
+			//at-start is included here for cases where all border edges are intern,
+			//like on a cube with a single uv island
+			err = addEdgeBufIfValid(
+				pAlloc,
+				pMem,
+				pMesh,
+				pIslands,
+				pIslandIdx,
+				side,
+				borderIdx,
+				&borderLen
+			);
+			PIX_ERR_RETURN_IFNOT(err, "");
 		}
-		else if (pMem->edgeBuf.count) {
-			I32 prevIdx = pMem->edgeBuf.count - 1;
-			if (pMem->edgeBuf.pArr[0].edge != pMem->edgeBuf.pArr[prevIdx].edge) {
-				err = edgeBufAddToBorder(
-					pAlloc,
-					pMem,
-					pMesh,
-					pIslands,
-					pIslandIdx,
-					side,
-					borderIdx
-				);
-				PIX_ERR_RETURN_IFNOT(err, "");
-			}
-			//else internal border exits where it enters (non manifold), so don't add buf
-			pMem->edgeBuf.count = 0;
+		if (atStart) {
+			break;
 		}
-	} while(++i, !pixmshCornerCmp(edge.corner, pStart->corners[side]));
+	} while(++i, true);
 	return err;
 }
 
@@ -582,14 +622,23 @@ PixErr pixmshSplitToIslands(
 		};
 	}
 	PIX_ERR_ASSERT("", pMem->edges.count > 0);
+	//TODO combine this with bb in a single struct, and allocate at once
+	PIXALC_DYN_ARR_RESIZE(pAlloc, &pMem->fallbacks, islandCount);
+	memset(pMem->fallbacks.pArr, 0, islandCount * PIXALC_ITEMSIZE(pMem->fallbacks.pArr));
 	for (I32 i = 0; i < pMem->edges.count; ++i) {
 		PixmshBorderNode *pStart = pMem->edges.pArr + i;
-		I32 islands[2] = {0};
-		if (isEdgeIntern(pMem, pMesh, pStart, islands)) {
-			continue;
-		}
+		I32 edgeIslands[2] = {0};
+		bool intern = isEdgeIntern(pMem, pMesh, pStart, edgeIslands);
 		for (I32 j = 0; j < 2; ++j) {
-			if (islands[j] == -1) {
+			I32 island = edgeIslands[j];
+			if (island == -1) {
+				continue;
+			}
+			PIX_ERR_ASSERT("", island < islandCount);
+			if (!pMem->fallbacks.pArr[island]) {
+				pMem->fallbacks.pArr[island] = pStart;
+			}
+			if (intern) {
 				continue;
 			}
 			err = walkAndAddBorder(
@@ -598,14 +647,36 @@ PixErr pixmshSplitToIslands(
 				pMesh,
 				pIslands,
 				pStart,
-				islands,
+				edgeIslands,
 				j
 			);
 			PIX_ERR_THROW_IFNOT(err, "", 0);
 		}
 	}
 	for (I32 i = 0; i < islandCount; ++i) {
-		PIX_ERR_ASSERT("", pMem->bb.pArr[i].border != -1);
+		if (pMem->bb.pArr[i].border == -1 && pMem->fallbacks.pArr[i]) {
+			//no border, use fallback (internal) starting edge if present
+			PixmshBorderNode *pStart = pMem->fallbacks.pArr[i];
+			I32 edgeIslands[2] = {0};
+			getEdgeIslands(pMem, pStart, edgeIslands);
+			bool side = i == edgeIslands[1];
+			PIX_ERR_ASSERT("", i == edgeIslands[side]);
+			err = walkAndAddBorder(
+				pAlloc,
+				pMem,
+				pMesh,
+				pIslands,
+				pStart,
+				edgeIslands,
+				side
+			);
+			PIX_ERR_THROW_IFNOT(err, "", 0);
+		}
+		PIX_ERR_RETURN_IFNOT_COND(
+			err,
+			pMem->bb.pArr[i].border != -1,
+			"unable to create island border(s)"
+		);
 		if (pIslands->fpBorderMarkAsOuter) {
 			err = pIslands->fpBorderMarkAsOuter(
 				pIslands->pUserData,
@@ -630,5 +701,6 @@ void pixmshSplitMemDestroy(const PixalcFPtrs *pAlloc, PixmshSplitMem *pMem) {
 	PIXALC_DYN_ARR_DESTROY(pAlloc, &pMem->edges);
 	PIXALC_DYN_ARR_DESTROY(pAlloc, &pMem->bb);
 	PIXALC_DYN_ARR_DESTROY(pAlloc, &pMem->edgeBuf);
+	PIXALC_DYN_ARR_DESTROY(pAlloc, &pMem->fallbacks);
 	*pMem = (PixmshSplitMem){0};
 }
