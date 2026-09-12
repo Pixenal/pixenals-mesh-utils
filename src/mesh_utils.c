@@ -95,8 +95,7 @@ void pixmshGetTriScale(I32 size, PixmshBaseTriVerts *pTri) {
 	}
 }
 
-static
-void islandIdxInit(
+void pixmshSplitIslandIdxInit(
 	const PixalcFPtrs *pAlloc,
 	PixmshSplitIdxTableArr *pFaceTable,
 	PixmshIdxRedirArr *pArr,
@@ -109,19 +108,6 @@ void islandIdxInit(
 	pFaceTable->pArr[face].valid = true;
 }
 
-/*
-static
-PixmshBorderNode *pixmshBorderNodeGet(
-	const PixmshSplitIntfIn *pMesh,
-	const PixmshSplitIdxTable *pTable,
-	PixalcLinAlloc *pEdgeAlloc,
-	I32 vert
-) {
-	return pTable[vert].valid ? pixalcLinAllocIdx(pEdgeAlloc, pTable[vert].idx) : NULL;
-}
-*/
-
-static
 PixmshBorderNode *pixmshBorderNodeInit(
 	const PixalcFPtrs *pAlloc,
 	PixmshBorderNodeArr *pEdges,
@@ -455,8 +441,12 @@ PixErr walkAndAddBorder(
 	return err;
 }
 
-static
-void edgeTableAdd(const PixalcFPtrs *pAlloc, PixmshSplitIdxTableArr *pTable, I32 edge, I32 idx) {
+void pixmshSplitEdgeTableAdd(
+	const PixalcFPtrs *pAlloc,
+	PixmshSplitIdxTableArr *pTable,
+	I32 edge,
+	I32 idx
+) {
 	I32 oldSize = pTable->size;
 	PIXALC_DYN_ARR_RESIZE(pAlloc, pTable, edge + 1);
 	if (oldSize <= edge) {
@@ -469,58 +459,30 @@ void edgeTableAdd(const PixalcFPtrs *pAlloc, PixmshSplitIdxTableArr *pTable, I32
 	pTable->pArr[edge] = (PixmshSplitIdxTable){.idx = idx, .valid = true};
 }
 
-static
-PixErr findAdjForCorner(
+void pixmshSplitHandleAdj(
 	const PixalcFPtrs *pAlloc,
 	PixmshSplitMem *pMem,
-	const PixmshSplitIntfIn *pMesh,
-	bool (*fpSplitPredicate)(const void *, I32),
-	PixmshFaceCorner corner,
-	I32 *pSplitTotal
+	I32 *pFaces
 ) {
-	PixErr err = PIX_ERR_SUCCESS;
-	I32 edge = pMesh->fpEdge(pMesh->pUserData, corner);
-	if (edge < pMem->edgeTable.count && pMem->edgeTable.pArr[edge].valid) {
-		return err;
-	}
-	PixmshEdgeCorners corners = pMesh->fpEdgeCorners(pMesh->pUserData, edge);
-	I32 faces[2] = {corners.corners[0].face, corners.corners[1].face};
-	bool borderEdge = faces[0] == -1 || faces[1] == -1;
-	if (borderEdge || fpSplitPredicate && fpSplitPredicate(pMesh->pUserData, edge)) {
-		++*pSplitTotal;
-		if (faces[0] != -1 && !pMem->faceTable.pArr[faces[0]].valid) {
-			islandIdxInit(pAlloc, &pMem->faceTable, &pMem->redirArr, faces[0]);
-		}
-		if (faces[1] != -1 && !pMem->faceTable.pArr[faces[1]].valid) {
-			islandIdxInit(pAlloc, &pMem->faceTable, &pMem->redirArr, faces[1]);
-		}
-		if (edge >= pMem->edgeTable.size || !pMem->edgeTable.pArr[edge].valid) {
-			PixmshBorderNode *pNode = pixmshBorderNodeInit(pAlloc, &pMem->edges, &corners);
-			edgeTableAdd(pAlloc, &pMem->edgeTable, edge, pNode->idx);
-		}
-		return err;
-	}
 	bool joinTo;
-	if (!pMem->faceTable.pArr[faces[0]].valid && !pMem->faceTable.pArr[faces[1]].valid) {
+	if (!pMem->faceTable.pArr[pFaces[0]].valid && !pMem->faceTable.pArr[pFaces[1]].valid) {
 		joinTo = 0;
-		islandIdxInit(pAlloc, &pMem->faceTable, &pMem->redirArr, faces[joinTo]);
+		pixmshSplitIslandIdxInit(pAlloc, &pMem->faceTable, &pMem->redirArr, pFaces[joinTo]);
 	}
 	else {
-		joinTo = pMem->faceTable.pArr[faces[1]].valid;
+		joinTo = pMem->faceTable.pArr[pFaces[1]].valid;
 	}
-	if (!pMem->faceTable.pArr[faces[!joinTo]].valid) {
-		islandIdxInit(pAlloc, &pMem->faceTable, &pMem->redirArr, faces[!joinTo]);
+	if (!pMem->faceTable.pArr[pFaces[!joinTo]].valid) {
+		pixmshSplitIslandIdxInit(pAlloc, &pMem->faceTable, &pMem->redirArr, pFaces[!joinTo]);
 	}
-	PixmshIdxRedir *pIdTo = getBuf(&pMem->faceTable, &pMem->redirArr, faces[joinTo]);
-	PixmshIdxRedir *pIdFrom = getBuf(&pMem->faceTable, &pMem->redirArr, faces[!joinTo]);
+	PixmshIdxRedir *pIdTo = getBuf(&pMem->faceTable, &pMem->redirArr, pFaces[joinTo]);
+	PixmshIdxRedir *pIdFrom = getBuf(&pMem->faceTable, &pMem->redirArr, pFaces[!joinTo]);
 	if (pIdTo != pIdFrom) {
 		pIdFrom->idx = pIdTo->idx;
 		pIdFrom->redir = true;
 	}
-	return err;
 }
 
-static
 void pixmshSplitMemInit(const PixalcFPtrs *pAlloc, PixmshSplitMem *pMem, I32 faceCount) {
 	PIXALC_DYN_ARR_RESIZE(pAlloc, &pMem->faceTable, faceCount);
 	if (pMem->faceTable.pArr) {
@@ -538,8 +500,7 @@ void pixmshSplitMemInit(const PixalcFPtrs *pAlloc, PixmshSplitMem *pMem, I32 fac
 	pMem->edgeBuf.count = 0;
 }
 
-static
-PixErr splitBordersMake(
+PixErr pixmshSplitBordersMake(
 	const PixalcFPtrs *pAlloc,
 	PixmshSplitMem *pMem,
 	const PixmshSplitIntfIn *pMesh,
@@ -623,37 +584,18 @@ PixErr splitBordersMake(
 	return err;
 }
 
-//TODO should this be in header?
-PixErr pixmshSplitToIslands(
+PixErr pixmshSplitConstructIslandsFromAdj(
 	const PixalcFPtrs *pAlloc,
 	PixmshSplitMem *pMem,
 	const PixmshSplitIntfIn *pMesh,
 	PixmshSplitIntfOut *pIslands,
-	bool makeBorders,
-	bool (*fpSplitPredicate)(const void *, I32)
+	I32 splitTotal,
+	I32 *pIslandCount
 ) {
 	PixErr err = PIX_ERR_SUCCESS;
-	pixmshSplitMemInit(pAlloc, pMem, pMesh->faceCount);
-	I32 splitTotal = 0;
-	for (I32 i = 0; i < pMesh->faceCount; ++i) {
-		PixmshFaceRange face = pMesh->fpFaceRange(pMesh->pUserData, i);
-		for (I32 j = 0; j < face.size; ++j) {
-			PixmshFaceCorner corner = {.face = i, .corner = j};
-			err = findAdjForCorner(
-				pAlloc,
-				pMem,
-				pMesh,
-				fpSplitPredicate,
-				corner,
-				&splitTotal
-			);
-			PIX_ERR_THROW_IFNOT(err, "", 0);
-		}
-	}
-	PIX_ERR_THROW_IFNOT_COND(err, pMem->redirArr.count, "failed to split mesh", 0);
+	I32 oldSize = pMem->faceBuf.size;
+	PIXALC_DYN_ARR_RESIZE(pAlloc, &pMem->faceBuf, pMem->redirArr.count);
 	{
-		I32 oldSize = pMem->faceBuf.size;
-		PIXALC_DYN_ARR_RESIZE(pAlloc, &pMem->faceBuf, pMem->redirArr.count);
 		if (pMem->faceBuf.size > oldSize) {
 			memset(
 				pMem->faceBuf.pArr + oldSize,
@@ -666,7 +608,7 @@ PixErr pixmshSplitToIslands(
 		pMem->faceBuf.pArr[i].faces.count = 0;
 	}
 	for (I32 i = 0; i < pMesh->faceCount; ++i) {
-		PIX_ERR_THROW_IFNOT_COND(err, pMem->faceTable.pArr[i].valid, "", 0);
+		PIX_ERR_RETURN_IFNOT_COND(err, pMem->faceTable.pArr[i].valid, "");
 		PixmshIdxRedir *pId = getBuf(&pMem->faceTable, &pMem->redirArr, i);
 		PixmshFaceBuf *pBuf = pMem->faceBuf.pArr + pId->idx;
 		I32 newIdx = 0;
@@ -675,7 +617,7 @@ PixErr pixmshSplitToIslands(
 	}
 	I32 *pFaces = NULL;
 	err = pIslands->fpFacesInit(pAlloc, pIslands->pUserData, pMesh->faceCount, &pFaces);
-	PIX_ERR_THROW_IFNOT_COND(err, pFaces, "", 0);
+	PIX_ERR_RETURN_IFNOT_COND(err, pFaces, "");
 	I32 offset = 0;
 	I32 islandCount = 0;
 	for (I32 i = 0; i < pMem->redirArr.count; ++i) {
@@ -684,7 +626,7 @@ PixErr pixmshSplitToIslands(
 		}
 		I32 newIdx = 0;
 		err = pIslands->fpIslandAdd(pAlloc, pIslands->pUserData, splitTotal, &newIdx);
-		PIX_ERR_THROW_IFNOT(err, "", 0);
+		PIX_ERR_RETURN_IFNOT(err, "");
 		pMem->faceBuf.pArr[i].island = newIdx;
 		PixtyRange range = {.start = offset};
 		memcpy(
@@ -695,16 +637,11 @@ PixErr pixmshSplitToIslands(
 		offset += pMem->faceBuf.pArr[i].faces.count;
 		range.end = offset;
 		err = pIslands->fpRangeSet(pIslands->pUserData, newIdx, range);
-		PIX_ERR_THROW_IFNOT(err, "", 0);
+		PIX_ERR_RETURN_IFNOT(err, "");
 		++islandCount;
 	}
 	PIX_ERR_ASSERT("", islandCount >= 0 && offset == pMesh->faceCount);
-
-	if (makeBorders) {
-		err = splitBordersMake(pAlloc, pMem, pMesh, pIslands, islandCount);
-		PIX_ERR_THROW_IFNOT(err, "failed to make border(s)", 0);
-	}
-	PIX_ERR_CATCH(0, err, ;);
+	*pIslandCount = islandCount;
 	return err;
 }
 

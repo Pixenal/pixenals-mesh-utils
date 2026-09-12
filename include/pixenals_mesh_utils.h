@@ -618,6 +618,81 @@ typedef struct PixmshSplitIntfOut {
 	PixErr (*fpBorderMarkAsOuter)(void *, int32_t, int32_t, const PixmshV2Bb *);
 } PixmshSplitIntfOut;
 
+void pixmshSplitMemInit(const PixalcFPtrs *pAlloc, PixmshSplitMem *pMem, int32_t faceCount);
+PixErr pixmshSplitConstructIslandsFromAdj(
+	const PixalcFPtrs *pAlloc,
+	PixmshSplitMem *pMem,
+	const PixmshSplitIntfIn *pMesh,
+	PixmshSplitIntfOut *pIslands,
+	int32_t splitTotal,
+	int32_t *pIslandCount
+);
+PixErr pixmshSplitBordersMake(
+	const PixalcFPtrs *pAlloc,
+	PixmshSplitMem *pMem,
+	const PixmshSplitIntfIn *pMesh,
+	PixmshSplitIntfOut *pIslands,
+	int32_t islandCount
+);
+PixmshBorderNode *pixmshBorderNodeInit(
+	const PixalcFPtrs *pAlloc,
+	PixmshBorderNodeArr *pEdges,
+	const PixmshEdgeCorners *pCorners
+);
+void pixmshSplitIslandIdxInit(
+	const PixalcFPtrs *pAlloc,
+	PixmshSplitIdxTableArr *pFaceTable,
+	PixmshIdxRedirArr *pArr,
+	int32_t face
+);
+void pixmshSplitEdgeTableAdd(
+	const PixalcFPtrs *pAlloc,
+	PixmshSplitIdxTableArr *pTable,
+	int32_t edge,
+	int32_t idx
+);
+void pixmshSplitHandleAdj(
+	const PixalcFPtrs *pAlloc,
+	PixmshSplitMem *pMem,
+	int32_t *pFaces
+);
+
+PIX_FORCE_INLINE
+PixErr pixmshSplitFindAdjForCorner(
+	const PixalcFPtrs *pAlloc,
+	PixmshSplitMem *pMem,
+	const PixmshSplitIntfIn *pMesh,
+	bool (*fpSplitPredicate)(const void *, int32_t),
+	PixmshFaceCorner corner,
+	int32_t *pSplitTotal
+) {
+	PixErr err = PIX_ERR_SUCCESS;
+	int32_t edge = pMesh->fpEdge(pMesh->pUserData, corner);
+	if (edge < pMem->edgeTable.count && pMem->edgeTable.pArr[edge].valid) {
+		return err;
+	}
+	PixmshEdgeCorners corners = pMesh->fpEdgeCorners(pMesh->pUserData, edge);
+	int32_t faces[2] = {corners.corners[0].face, corners.corners[1].face};
+	bool borderEdge = faces[0] == -1 || faces[1] == -1;
+	if (borderEdge || fpSplitPredicate && fpSplitPredicate(pMesh->pUserData, edge)) {
+		++*pSplitTotal;
+		if (faces[0] != -1 && !pMem->faceTable.pArr[faces[0]].valid) {
+			pixmshSplitIslandIdxInit(pAlloc, &pMem->faceTable, &pMem->redirArr, faces[0]);
+		}
+		if (faces[1] != -1 && !pMem->faceTable.pArr[faces[1]].valid) {
+			pixmshSplitIslandIdxInit(pAlloc, &pMem->faceTable, &pMem->redirArr, faces[1]);
+		}
+		if (edge >= pMem->edgeTable.size || !pMem->edgeTable.pArr[edge].valid) {
+			PixmshBorderNode *pNode = pixmshBorderNodeInit(pAlloc, &pMem->edges, &corners);
+			pixmshSplitEdgeTableAdd(pAlloc, &pMem->edgeTable, edge, pNode->idx);
+		}
+		return err;
+	}
+	pixmshSplitHandleAdj(pAlloc, pMem, faces);
+	return err;
+}
+
+PIX_FORCE_INLINE
 PixErr pixmshSplitToIslands(
 	const PixalcFPtrs *pAlloc,
 	PixmshSplitMem *pMem,
@@ -625,6 +700,45 @@ PixErr pixmshSplitToIslands(
 	PixmshSplitIntfOut *pIslands,
 	bool makeBorders,
 	bool (*fpSplitPredicate)(const void *, int32_t)
-);
+) {
+	PixErr err = PIX_ERR_SUCCESS;
+	pixmshSplitMemInit(pAlloc, pMem, pMesh->faceCount);
+	int32_t splitTotal = 0;
+	//determine adjacency
+	for (int32_t i = 0; i < pMesh->faceCount; ++i) {
+		PixmshFaceRange face = pMesh->fpFaceRange(pMesh->pUserData, i);
+		for (int32_t j = 0; j < face.size; ++j) {
+			PixmshFaceCorner corner = {.face = i, .corner = j};
+			err = pixmshSplitFindAdjForCorner(
+				pAlloc,
+				pMem,
+				pMesh,
+				fpSplitPredicate,
+				corner,
+				&splitTotal
+			);
+			PIX_ERR_THROW_IFNOT(err, "", 0);
+		}
+	}
+	PIX_ERR_THROW_IFNOT_COND(err, pMem->redirArr.count, "failed to split mesh", 0);
+
+	int32_t islandCount = 0;
+	err = pixmshSplitConstructIslandsFromAdj(
+		pAlloc,
+		pMem,
+		pMesh,
+		pIslands,
+		splitTotal,
+		&islandCount
+	);
+	PIX_ERR_THROW_IFNOT(err, "", 0);
+	
+	if (makeBorders) {
+		err = pixmshSplitBordersMake(pAlloc, pMem, pMesh, pIslands, islandCount);
+		PIX_ERR_THROW_IFNOT(err, "failed to make border(s)", 0);
+	}
+	PIX_ERR_CATCH(0, err, ;);
+	return err;
+}
 
 void pixmshSplitMemDestroy(const PixalcFPtrs *pAlloc, PixmshSplitMem *pMem);
