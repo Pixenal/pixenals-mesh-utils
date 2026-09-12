@@ -538,12 +538,98 @@ void pixmshSplitMemInit(const PixalcFPtrs *pAlloc, PixmshSplitMem *pMem, I32 fac
 	pMem->edgeBuf.count = 0;
 }
 
-//TODO reuse memory across multiple calls for tables, buffers
+static
+PixErr splitBordersMake(
+	const PixalcFPtrs *pAlloc,
+	PixmshSplitMem *pMem,
+	const PixmshSplitIntfIn *pMesh,
+	PixmshSplitIntfOut *pIslands,
+	I32 islandCount
+) {
+	PixErr err = PIX_ERR_SUCCESS;
+	PIXALC_DYN_ARR_RESIZE(pAlloc, &pMem->bb, islandCount);
+	for (I32 i = 0; i < islandCount; ++i) {
+		pMem->bb.pArr[i] = (PixmshBorderBb){
+			.min = {FLT_MAX, FLT_MAX},
+			.max = {-FLT_MAX, -FLT_MAX},
+			.border = -1
+		};
+	}
+	PIX_ERR_ASSERT("", pMem->edges.count > 0);
+	//TODO combine this with bb in a single struct, and allocate at once
+	PIXALC_DYN_ARR_RESIZE(pAlloc, &pMem->fallbacks, islandCount);
+	memset(pMem->fallbacks.pArr, 0, islandCount * PIXALC_ITEMSIZE(pMem->fallbacks.pArr));
+	for (I32 i = 0; i < pMem->edges.count; ++i) {
+		PixmshBorderNode *pStart = pMem->edges.pArr + i;
+		I32 edgeIslands[2] = {0};
+		bool intern = isEdgeIntern(pMem, pMesh, pStart, edgeIslands);
+		for (I32 j = 0; j < 2; ++j) {
+			I32 island = edgeIslands[j];
+			if (island == -1) {
+				continue;
+			}
+			PIX_ERR_ASSERT("", island < islandCount);
+			if (!pMem->fallbacks.pArr[island]) {
+				pMem->fallbacks.pArr[island] = pStart;
+			}
+			if (intern) {
+				continue;
+			}
+			err = walkAndAddBorder(
+				pAlloc,
+				pMem,
+				pMesh,
+				pIslands,
+				pStart,
+				edgeIslands,
+				j
+			);
+			PIX_ERR_RETURN_IFNOT(err, "");
+		}
+	}
+	for (I32 i = 0; i < islandCount; ++i) {
+		if (pMem->bb.pArr[i].border == -1 && pMem->fallbacks.pArr[i]) {
+			//no border, use fallback (internal) starting edge if present
+			PixmshBorderNode *pStart = pMem->fallbacks.pArr[i];
+			I32 edgeIslands[2] = {0};
+			getEdgeIslands(pMem, pStart, edgeIslands);
+			bool side = i == edgeIslands[1];
+			PIX_ERR_ASSERT("", i == edgeIslands[side]);
+			err = walkAndAddBorder(
+				pAlloc,
+				pMem,
+				pMesh,
+				pIslands,
+				pStart,
+				edgeIslands,
+				side
+			);
+			PIX_ERR_RETURN_IFNOT(err, "");
+		}
+		PIX_ERR_RETURN_IFNOT_COND(
+			err,
+			pMem->bb.pArr[i].border != -1,
+			"unable to create island border(s)"
+		);
+		if (pIslands->fpBorderMarkAsOuter) {
+			err = pIslands->fpBorderMarkAsOuter(
+				pIslands->pUserData,
+				i,
+				pMem->bb.pArr[i].border,
+				&(PixmshV2Bb){.min = pMem->bb.pArr[i].min, .max = pMem->bb.pArr[i].max}
+			);
+		}
+	}
+	return err;
+}
+
+//TODO should this be in header?
 PixErr pixmshSplitToIslands(
 	const PixalcFPtrs *pAlloc,
 	PixmshSplitMem *pMem,
 	const PixmshSplitIntfIn *pMesh,
 	PixmshSplitIntfOut *pIslands,
+	bool makeBorders,
 	bool (*fpSplitPredicate)(const void *, I32)
 ) {
 	PixErr err = PIX_ERR_SUCCESS;
@@ -613,78 +699,10 @@ PixErr pixmshSplitToIslands(
 		++islandCount;
 	}
 	PIX_ERR_ASSERT("", islandCount >= 0 && offset == pMesh->faceCount);
-	PIXALC_DYN_ARR_RESIZE(pAlloc, &pMem->bb, islandCount);
-	for (I32 i = 0; i < islandCount; ++i) {
-		pMem->bb.pArr[i] = (PixmshBorderBb){
-			.min = {FLT_MAX, FLT_MAX},
-			.max = {-FLT_MAX, -FLT_MAX},
-			.border = -1
-		};
-	}
-	PIX_ERR_ASSERT("", pMem->edges.count > 0);
-	//TODO combine this with bb in a single struct, and allocate at once
-	PIXALC_DYN_ARR_RESIZE(pAlloc, &pMem->fallbacks, islandCount);
-	memset(pMem->fallbacks.pArr, 0, islandCount * PIXALC_ITEMSIZE(pMem->fallbacks.pArr));
-	for (I32 i = 0; i < pMem->edges.count; ++i) {
-		PixmshBorderNode *pStart = pMem->edges.pArr + i;
-		I32 edgeIslands[2] = {0};
-		bool intern = isEdgeIntern(pMem, pMesh, pStart, edgeIslands);
-		for (I32 j = 0; j < 2; ++j) {
-			I32 island = edgeIslands[j];
-			if (island == -1) {
-				continue;
-			}
-			PIX_ERR_ASSERT("", island < islandCount);
-			if (!pMem->fallbacks.pArr[island]) {
-				pMem->fallbacks.pArr[island] = pStart;
-			}
-			if (intern) {
-				continue;
-			}
-			err = walkAndAddBorder(
-				pAlloc,
-				pMem,
-				pMesh,
-				pIslands,
-				pStart,
-				edgeIslands,
-				j
-			);
-			PIX_ERR_THROW_IFNOT(err, "", 0);
-		}
-	}
-	for (I32 i = 0; i < islandCount; ++i) {
-		if (pMem->bb.pArr[i].border == -1 && pMem->fallbacks.pArr[i]) {
-			//no border, use fallback (internal) starting edge if present
-			PixmshBorderNode *pStart = pMem->fallbacks.pArr[i];
-			I32 edgeIslands[2] = {0};
-			getEdgeIslands(pMem, pStart, edgeIslands);
-			bool side = i == edgeIslands[1];
-			PIX_ERR_ASSERT("", i == edgeIslands[side]);
-			err = walkAndAddBorder(
-				pAlloc,
-				pMem,
-				pMesh,
-				pIslands,
-				pStart,
-				edgeIslands,
-				side
-			);
-			PIX_ERR_THROW_IFNOT(err, "", 0);
-		}
-		PIX_ERR_RETURN_IFNOT_COND(
-			err,
-			pMem->bb.pArr[i].border != -1,
-			"unable to create island border(s)"
-		);
-		if (pIslands->fpBorderMarkAsOuter) {
-			err = pIslands->fpBorderMarkAsOuter(
-				pIslands->pUserData,
-				i,
-				pMem->bb.pArr[i].border,
-				&(PixmshV2Bb){.min = pMem->bb.pArr[i].min, .max = pMem->bb.pArr[i].max}
-			);
-		}
+
+	if (makeBorders) {
+		err = splitBordersMake(pAlloc, pMem, pMesh, pIslands, islandCount);
+		PIX_ERR_THROW_IFNOT(err, "failed to make border(s)", 0);
 	}
 	PIX_ERR_CATCH(0, err, ;);
 	return err;

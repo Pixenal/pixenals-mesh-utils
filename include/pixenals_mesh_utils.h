@@ -623,6 +623,7 @@ PixErr pixmshSplitToIslands(
 	PixmshSplitMem *pMem,
 	const PixmshSplitIntfIn *pMesh,
 	PixmshSplitIntfOut *pIslands,
+	bool makeBorders,
 	bool (*fpSplitPredicate)(const void *, int32_t)
 );
 
