@@ -72,12 +72,16 @@ typedef struct PixmshEar {
 	float len;
 } PixmshEar;
 
-typedef struct PixmshTriangulateState {
+typedef struct PixmshTriMem {
+	PixtyI8Arr removedArr;
 	PixalcLinAlloc earAlloc;
+} PixmshTriMem;
+
+typedef struct PixmshTriangulateState {
+	PixmshTriMem *pMem;
 	PixmshEar *pEarList;
 	const void *pMesh;
 	PixtyV3_F32 (* fpPos)(const void *, PixmshFaceRange, int32_t);
-	int8_t *pRemoved;
 	PixmshFaceRange face;
 	PixtyV3_F32 normal;
 } PixmshTriangulateState;
@@ -129,7 +133,7 @@ int32_t pixmshGetNextRemaining(
 	PIX_ERR_ASSERT("", corner >= 0 && corner < face.size);
 	int32_t start = corner;
 	while (corner = pixmshGetCornerNext(corner, face), corner != start) {
-		if (!pState->pRemoved[corner]) {
+		if (!pState->pMem->removedArr.pArr[corner]) {
 			return corner;
 		}
 	}
@@ -146,7 +150,7 @@ int32_t pixmshGetPrevRemaining(
 	PIX_ERR_ASSERT("", corner >= 0 && corner < face.size);
 	int32_t start = corner;
 	while (corner = pixmshGetCornerPrev(corner, face), corner != start) {
-		if (!pState->pRemoved[corner]) {
+		if (!pState->pMem->removedArr.pArr[corner]) {
 			return corner;
 		}
 	}
@@ -176,7 +180,7 @@ PixmshEar *pixmshAddEarCandidate(PixmshTriangulateState *pState, int32_t corner)
 	float len = pixmV3F32Len(ac);
 	PixmshEar *pNewEar = NULL;
 	if (!pState->pEarList) {
-		pixalcLinAlloc(&pState->earAlloc, (void **)&pState->pEarList, 1);
+		pixalcLinAlloc(&pState->pMem->earAlloc, (void **)&pState->pEarList, 1);
 		pNewEar = pState->pEarList;
 	}
 	else {
@@ -184,7 +188,7 @@ PixmshEar *pixmshAddEarCandidate(PixmshTriangulateState *pState, int32_t corner)
 		while(pEar->pNext && len > pEar->pNext->len) {
 			pEar = pEar->pNext;
 		}
-		pixalcLinAlloc(&pState->earAlloc, (void **)&pNewEar, 1);
+		pixalcLinAlloc(&pState->pMem->earAlloc, (void **)&pNewEar, 1);
 		if (len < pEar->len) {
 			pEar->pPrev = pNewEar;
 			pNewEar->pNext = pEar;
@@ -228,7 +232,7 @@ PixmshEar *pixmshAddEar(PixmshTriangulateState *pState, int32_t *pCount, uint8_t
 	pTri[2] = cornerNext;
 	++*pCount;
 	
-	pState->pRemoved[pEar->corner] = true;
+	pState->pMem->removedArr.pArr[pEar->corner] = true;
 	return pEar;
 }
 
@@ -378,19 +382,37 @@ PixtyV3_F32 pixmshCalcFaceNormal(
 	return normalize ? pixmV3F32Normalize(normal) : normal;
 }
 
+static inline
+void pixmshTriMemClear(PixmshTriMem *pMem) {
+	if (pMem->removedArr.count) {
+		memset(
+			pMem->removedArr.pArr,
+			0,
+			pMem->removedArr.count * PIXALC_ITEMSIZE(pMem->removedArr.pArr)
+		);
+		pMem->removedArr.count = 0;
+	}
+	if (pMem->earAlloc.valid) {
+		pixalcLinAllocClear(&pMem->earAlloc);
+	}
+}
+
 //returns tri count (may be less than size - 2 if face is degen)
 //TODO take in PixtyU8Arr and pass final tri-count as .count,
 //this way func can return error
 PIX_FORCE_INLINE
 int32_t pixmshTriangulateFace(
 	const PixalcFPtrs *pAlloc,
+	PixmshTriMem *pMem,
 	const PixmshFaceRange face,
 	const void *pMesh,
 	PixtyV3_F32 (* fpPos)(const void *, PixmshFaceRange, int32_t),
 	uint8_t *pTris
 ) {
 	PIX_ERR_ASSERT("", pTris);
+	pixmshTriMemClear(pMem);
 	PixmshTriangulateState state = {
+		.pMem = pMem,
 		.pMesh = pMesh,
 		.fpPos = fpPos,
 		.face = face,
@@ -399,9 +421,11 @@ int32_t pixmshTriangulateFace(
 	if (_(state.normal V3EQL (PixtyV3_F32){0})) {
 		return 0;
 	}
-	state.pRemoved = pAlloc->fpCalloc(face.size, 1);
-
-	pixalcLinAllocInit(pAlloc, &state.earAlloc, sizeof(PixmshEar), face.size, true);
+	pMem->removedArr.count = face.size;
+	PIXALC_DYN_ARR_RESIZE_ZERO(pAlloc, &pMem->removedArr, pMem->removedArr.count);
+	if (!pMem->earAlloc.valid) {
+		pixalcLinAllocInit(pAlloc, &pMem->earAlloc, sizeof(PixmshEar), face.size, true);
+	}
 
 	//add initial ears
 	for (int32_t i = 0; i < face.size; ++i) {
@@ -410,9 +434,9 @@ int32_t pixmshTriangulateFace(
 	int32_t triCount = 0;
 	while (state.pEarList) {
 		PixmshEar *pAddedEar = NULL;
-		if (!state.pRemoved[state.pEarList->cornerPrev] &&
-			!state.pRemoved[state.pEarList->corner] &&
-			!state.pRemoved[state.pEarList->cornerNext]
+		if (!pMem->removedArr.pArr[state.pEarList->cornerPrev] &&
+			!pMem->removedArr.pArr[state.pEarList->corner] &&
+			!pMem->removedArr.pArr[state.pEarList->cornerNext]
 		) {
 			pAddedEar = pixmshAddEar(&state, &triCount, pTris);
 		}
@@ -421,10 +445,17 @@ int32_t pixmshTriangulateFace(
 			pixmshAddAdjEarCandidates(&state, pAddedEar);
 		}
 	}
-	pixalcLinAllocDestroy(&state.earAlloc);
-	pAlloc->fpFree(state.pRemoved);
 	PIX_ERR_ASSERT("", triCount <= face.size - 2);
 	return triCount;
+}
+
+static inline
+void pixmshTriMemDestroy(const PixalcFPtrs *pAlloc, PixmshTriMem *pMem) {
+	PIXALC_DYN_ARR_DESTROY(pAlloc, &pMem->removedArr);
+	if (pMem->earAlloc.valid) {
+		pixalcLinAllocDestroy(&pMem->earAlloc);
+	}
+	*pMem = (PixmshTriMem){0};
 }
 
 PIX_FORCE_INLINE
