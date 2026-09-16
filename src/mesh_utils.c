@@ -327,12 +327,14 @@ PixErr addEdgeBufIfValid(
 	PixmshSplitIntfOut *pIslands,
 	I32 *pIslandIdx,
 	I32 side,
+	bool atStart,
 	I32 borderIdx,
 	I32 *pBorderLen
 ) {
 	PixErr err = PIX_ERR_SUCCESS;
 	I32 edgeBufLast = pMem->edgeBuf.count - 1;
-	if (pMem->edgeBuf.count == 1 || 
+	if (atStart ||
+		pMem->edgeBuf.count == 1 || 
 		pMem->edgeBuf.pArr[0].edge != pMem->edgeBuf.pArr[edgeBufLast].edge
 	) {
 		err = edgeBufAddToBorder(
@@ -429,6 +431,7 @@ PixErr walkAndAddBorder(
 				pIslands,
 				pIslandIdx,
 				side,
+				atStart,
 				borderIdx,
 				&borderLen
 			);
