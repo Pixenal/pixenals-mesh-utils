@@ -421,6 +421,11 @@ int32_t pixmshTriangulateFace(
 	if (_(state.normal V3EQL (PixtyV3_F32){0})) {
 		return 0;
 	}
+	for (I32 i = 0; i < face.size; ++i) {
+		if (!pixmV3F32IsFinite(fpPos(pMesh, face, i))) {
+			return 0;
+		}
+	}
 	pMem->removedArr.count = face.size;
 	PIXALC_DYN_ARR_RESIZE_ZERO(pAlloc, &pMem->removedArr, pMem->removedArr.count);
 	if (!pMem->earAlloc.valid) {
